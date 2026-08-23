@@ -1,0 +1,48 @@
+@namespace SogutmaHakedisKontrol.Web.Components
+@inject IUnitPriceListService UnitPriceListService
+
+<MudDialog Style="min-width:520px">
+    <TitleContent>
+        <MudText Typo="Typo.h6">Değişiklik Geçmişi — @MaterialName</MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (_loading)
+        {
+            <MudProgressLinear Indeterminate Color="Color.Primary" />
+        }
+        else if (_logs.Count == 0)
+        {
+            <MudAlert Severity="Severity.Info" Dense>Bu kalemde henüz kayıtlı bir değişiklik yok.</MudAlert>
+        }
+        else
+        {
+            <MudTimeline TimelinePosition="TimelinePosition.Left">
+                @foreach (var log in _logs)
+                {
+                    <MudTimelineItem Color="Color.Primary" Size="Size.Small">
+                        <MudText Typo="Typo.body2">@log.Note</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@log.ChangedAt.ToString("dd.MM.yyyy HH:mm")</MudText>
+                    </MudTimelineItem>
+                }
+            </MudTimeline>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => MudDialog.Close())">Kapat</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public int ItemId { get; set; }
+    [Parameter] public string MaterialName { get; set; } = string.Empty;
+
+    private bool _loading = true;
+    private List<UnitPriceItemAuditLogDto> _logs = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _logs = await UnitPriceListService.GetAuditLogAsync(ItemId);
+        _loading = false;
+    }
+}

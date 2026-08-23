@@ -1,0 +1,158 @@
+@namespace SogutmaHakedisKontrol.Web.Components
+@inject IProgressPaymentCheckService CheckService
+@inject IDialogService DialogService
+
+<MudDialog Style="min-width:680px;max-width:820px" Options="@(new DialogOptions { CloseOnEscapeKey = false })">
+    <TitleContent>
+        <MudText Typo="Typo.h6">Eşleşme Kontrolü</MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (_loading)
+        {
+            <MudProgressLinear Indeterminate Color="Color.Primary" />
+        }
+        else if (_queue.Count == 0)
+        {
+            <MudAlert Severity="Severity.Success">Tüm tahmini eşleşmeler karara bağlandı.</MudAlert>
+        }
+        else
+        {
+            var current = _queue[_index];
+            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-2 d-block">
+                @(_index + 1) / @_queue.Count eşleşme kontrolü
+                @if (current.OccurrenceCount > 1)
+                {
+                    <span> — bu isimde @current.OccurrenceCount satır var, kararınız hepsine uygulanacak</span>
+                }
+            </MudText>
+            <MudProgressLinear Value="@(((double)_index / _queue.Count) * 100)" Color="Color.Primary" Class="mb-4" />
+
+            <MudPaper Class="pa-3 mb-3" Outlined>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Firma</MudText>
+                <MudText Typo="Typo.subtitle1" Style="font-weight:700">@current.OriginalMaterialName</MudText>
+                @if (!string.IsNullOrWhiteSpace(current.OriginalMaterialSpec))
+                {
+                    <MudText Typo="Typo.body2">Tip: @current.OriginalMaterialSpec</MudText>
+                }
+            </MudPaper>
+
+            @if (current.Candidates.Count == 0)
+            {
+                <MudAlert Severity="Severity.Warning" Class="mb-3">Bu isimle uyumlu bir aday bulunamadı.</MudAlert>
+            }
+            else
+            {
+                var best = current.Candidates[0];
+                <MudPaper Class="pa-3 mb-3" Outlined Style="border-color:var(--mud-palette-warning)">
+                    <MudText Typo="Typo.body2">
+                        Hakedişteki <b>"@current.OriginalMaterialName"</b> kaleminin, birim fiyat listesindeki
+                        <b>"@best.MaterialName @best.Spec"</b> ürünü olduğunu tahmin ediyorum.
+                    </MudText>
+                    <MudStack Row Spacing="4" Class="mt-2">
+                        <MudText Typo="Typo.body2">Birim: @best.Unit</MudText>
+                        <MudText Typo="Typo.body2">Birim fiyat: @best.Price.ToString("N4") @best.Currency</MudText>
+                        <MudText Typo="Typo.body2">Benzerlik: %@((best.Confidence * 100).ToString("N0"))</MudText>
+                    </MudStack>
+                    @if (best.SpecMismatchWarning)
+                    {
+                        <MudAlert Severity="Severity.Error" Dense Class="mt-2">
+                            TEKNİK ÖLÇÜ UYUŞMUYOR — isim benzer olsa da ölçü/tip farklı olabilir, dikkatlice kontrol edin.
+                        </MudAlert>
+                    }
+                </MudPaper>
+
+                @if (current.Candidates.Count > 1)
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Diğer adaylar:</MudText>
+                    <MudList T="string" Dense>
+                        @foreach (var c in current.Candidates.Skip(1))
+                        {
+                            <MudListItem T="string">
+                                @c.MaterialName @c.Spec — @c.Price.ToString("N4") @c.Currency (%@((c.Confidence * 100).ToString("N0")))
+                            </MudListItem>
+                        }
+                    </MudList>
+                }
+            }
+        }
+    </DialogContent>
+    <DialogActions>
+        @if (!_loading && _queue.Count > 0)
+        {
+            var current = _queue[_index];
+            <MudButton OnClick="@(() => MudDialog.Close(DialogResult.Ok(true)))">Sonra Devam Et</MudButton>
+            <MudButton Color="Color.Error" Variant="Variant.Outlined" OnClick="@(() => RejectAsync(current))">Hayır</MudButton>
+            <MudButton Color="Color.Secondary" Variant="Variant.Outlined" OnClick="@(() => ManualSelectAsync(current))">Başka Ürün Seç</MudButton>
+            @if (current.Candidates.Count > 0)
+            {
+                <MudButton Color="Color.Success" Variant="Variant.Filled"
+                           OnClick="@(() => ConfirmAsync(current, current.Candidates[0].UnitPriceItemId))">
+                    Evet, Aynı Ürün
+                </MudButton>
+            }
+        }
+        else
+        {
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="@(() => MudDialog.Close(DialogResult.Ok(true)))">Kapat</MudButton>
+        }
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public int CheckId { get; set; }
+    [Parameter] public int UnitPriceListId { get; set; }
+    [Parameter] public string? CompanyName { get; set; }
+
+    private bool _loading = true;
+    private List<MaterialMatchQueueEntryDto> _queue = new();
+    private int _index;
+
+    protected override async Task OnInitializedAsync() => await LoadQueueAsync();
+
+    private async Task LoadQueueAsync()
+    {
+        _loading = true;
+        StateHasChanged();
+        _queue = await CheckService.GetPendingMatchQueueAsync(CheckId);
+        _index = 0;
+        _loading = false;
+    }
+
+    private async Task ConfirmAsync(MaterialMatchQueueEntryDto entry, int unitPriceItemId)
+    {
+        await CheckService.ResolveMatchAsync(CheckId, entry.CheckItemIds, unitPriceItemId, saveAsAlias: true, CompanyName);
+        await AdvanceAsync();
+    }
+
+    private async Task RejectAsync(MaterialMatchQueueEntryDto entry)
+    {
+        await CheckService.RejectMatchAsync(CheckId, entry.CheckItemIds);
+        await AdvanceAsync();
+    }
+
+    private async Task ManualSelectAsync(MaterialMatchQueueEntryDto entry)
+    {
+        var parameters = new DialogParameters
+        {
+            ["UnitPriceListId"] = UnitPriceListId,
+            ["InitialQuery"] = entry.OriginalMaterialName,
+        };
+        var dialog = await DialogService.ShowAsync<ManualMaterialSearchDialog>("Doğru Malzemeyi Seçin", parameters);
+        var result = await dialog.Result;
+        if (!result.Canceled && result.Data is UnitPriceItemDto selected)
+        {
+            await CheckService.ResolveMatchAsync(CheckId, entry.CheckItemIds, selected.Id, saveAsAlias: true, CompanyName);
+            await AdvanceAsync();
+        }
+    }
+
+    private async Task AdvanceAsync()
+    {
+        await LoadQueueAsync();
+        if (_queue.Count == 0)
+        {
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+    }
+}

@@ -1,0 +1,131 @@
+@page "/"
+@using SogutmaHakedisKontrol.Web.Components
+@inject IUnitPriceListService UnitPriceListService
+@inject IDialogService DialogService
+@inject NavigationManager Nav
+
+<PageTitle>Soğutma Hakediş Kontrolü</PageTitle>
+
+<MudStack Row AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-1">
+    <div>
+        <MudText Typo="Typo.h5" Style="font-weight:700">Hakediş Kontrol Merkezi</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">
+            Firma tarafından gönderilen hakedişleri onaylı birim fiyat listeleri ile karşılaştırın.
+        </MudText>
+    </div>
+    <MudStack Row Spacing="2">
+        <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Outlined.PriceChange"
+                   Href="/fiyat-listesi">
+            Birim Fiyat Yönetimi
+        </MudButton>
+        <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Outlined.History"
+                   Href="/gecmis-kontroller">
+            Geçmiş Kontroller
+        </MudButton>
+    </MudStack>
+</MudStack>
+
+<MudDivider Class="my-4" />
+
+<MudGrid Spacing="3">
+    <MudItem xs="12" md="6">
+        <MudPaper Class="pa-4" Elevation="2" Style="height:100%">
+            <MudStack Row AlignItems="AlignItems.Center" Spacing="2" Class="mb-3">
+                <MudAvatar Color="Color.Primary" Variant="Variant.Filled">1</MudAvatar>
+                <MudText Typo="Typo.h6">Birim Fiyat Listesi</MudText>
+            </MudStack>
+
+            @if (_loading)
+            {
+                <MudProgressLinear Indeterminate Color="Color.Primary" />
+            }
+            else if (_activeList is null)
+            {
+                <MudAlert Severity="Severity.Warning" Dense>
+                    Bu firma/bölge için aktif birim fiyat listesi bulunamadı.
+                    Önce birim fiyat listesini içe aktarmalısınız.
+                </MudAlert>
+            }
+            else
+            {
+                <MudSimpleTable Dense Elevation="0">
+                    <tbody>
+                        <tr><td>Firma</td><td style="font-weight:600">@_activeList.CompanyName</td></tr>
+                        <tr><td>Bölge</td><td style="font-weight:600">@_activeList.Region</td></tr>
+                        <tr><td>Durum</td><td><MudChip T="string" Size="Size.Small" Color="Color.Success">Aktif</MudChip></td></tr>
+                        <tr><td>Son Güncelleme</td><td>@((_activeList.UpdatedAt ?? _activeList.CreatedAt).ToString("dd.MM.yyyy"))</td></tr>
+                        <tr><td>Toplam Kalem</td><td style="font-weight:600">@_activeList.TotalItems</td></tr>
+                        <tr><td>Kaynak</td><td><MudText Typo="Typo.caption">@_activeList.SourceFileName</MudText></td></tr>
+                    </tbody>
+                </MudSimpleTable>
+            }
+
+            <MudStack Row Spacing="2" Class="mt-4">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.Visibility"
+                           Href="/fiyat-listesi">
+                    Birim Fiyatları Görüntüle / Düzenle
+                </MudButton>
+            </MudStack>
+        </MudPaper>
+    </MudItem>
+
+    <MudItem xs="12" md="6">
+        <MudPaper Class="pa-4" Elevation="2" Style="height:100%">
+            <MudStack Row AlignItems="AlignItems.Center" Spacing="2" Class="mb-3">
+                <MudAvatar Color="Color.Primary" Variant="Variant.Filled">2</MudAvatar>
+                <MudText Typo="Typo.h6">Hakediş Dosyasını Yükle</MudText>
+            </MudStack>
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+                Firmanın gönderdiği aylık hakediş Excel dosyasını (.xlsx/.xls) seçin.
+                Sistem malzeme adı ve miktar bilgisini otomatik tanır; kesin eşleşmeler otomatik,
+                tahmini eşleşmeler onayınıza sunulur.
+            </MudText>
+            <MudButton Variant="Variant.Filled" Color="Color.Success" Size="Size.Large"
+                       StartIcon="@Icons.Material.Filled.UploadFile"
+                       Disabled="@(_activeList is null)"
+                       OnClick="OpenUploadDialog">
+                Hakediş Dosyasını Yükle ve Kontrol Et
+            </MudButton>
+            @if (_activeList is null)
+            {
+                <MudText Typo="Typo.caption" Color="Color.Error" Class="mt-2 d-block">
+                    Önce sol taraftan bir birim fiyat listesi içe aktarın.
+                </MudText>
+            }
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+@code {
+    private const string DefaultCompany = "İNTİKOŞ";
+    private const string DefaultRegion = "İÇ ANADOLU";
+
+    private bool _loading = true;
+    private UnitPriceListDto? _activeList;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            _activeList = await UnitPriceListService.GetActiveAsync(DefaultCompany, DefaultRegion);
+        }
+        finally { _loading = false; }
+    }
+
+    private async Task OpenUploadDialog()
+    {
+        if (_activeList is null) return;
+        var parameters = new DialogParameters { ["UnitPriceList"] = _activeList };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseOnEscapeKey = false };
+        var dialog = await DialogService.ShowAsync<CoolingCheckUploadDialog>("Hakediş Yükle", parameters, options);
+        var result = await dialog.Result;
+        if (!result.Canceled && result.Data is int checkId)
+        {
+            Nav.NavigateTo($"/kontrol/{checkId}");
+        }
+    }
+}

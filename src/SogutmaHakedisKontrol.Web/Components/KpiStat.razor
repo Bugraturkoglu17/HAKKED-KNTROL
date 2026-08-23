@@ -1,0 +1,12 @@
+@namespace SogutmaHakedisKontrol.Web.Components
+
+<MudPaper Class="pa-2 text-center" Elevation="1">
+    <MudText Typo="Typo.caption" Color="Color.Secondary">@Label</MudText>
+    <MudText Typo="Typo.h6" Color="@Color" Style="font-weight:700">@Value</MudText>
+</MudPaper>
+
+@code {
+    [Parameter] public string Label { get; set; } = string.Empty;
+    [Parameter] public string Value { get; set; } = "0";
+    [Parameter] public Color Color { get; set; } = Color.Default;
+}

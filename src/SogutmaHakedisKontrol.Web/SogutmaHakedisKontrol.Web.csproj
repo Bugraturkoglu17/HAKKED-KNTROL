@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <OutputType>WinExe</OutputType>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>SogutmaHakedisKontrol.Web</RootNamespace>
+    <AssemblyName>SogutmaHakedisKontrol</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebView.Wpf" Version="8.0.*" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.*" />
+    <PackageReference Include="MudBlazor" Version="7.15.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\SogutmaHakedisKontrol.Infrastructure\SogutmaHakedisKontrol.Infrastructure.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="SeedData\sogutma_hakedis_seed.db">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+</Project>

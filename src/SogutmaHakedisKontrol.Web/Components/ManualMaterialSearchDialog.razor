@@ -1,0 +1,61 @@
+@namespace SogutmaHakedisKontrol.Web.Components
+@inject IUnitPriceListService UnitPriceListService
+
+<MudDialog Style="min-width:600px">
+    <TitleContent>
+        <MudText Typo="Typo.h6">Doğru Malzemeyi Seçin</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudTextField @bind-Value="_query" @bind-Value:after="SearchAsync" Label="Malzeme ara..." Variant="Variant.Outlined"
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Immediate Autofocus />
+        <MudList T="UnitPriceItemDto" Class="mt-2" Style="max-height:360px;overflow-y:auto">
+            @foreach (var item in _results)
+            {
+                <MudListItem T="UnitPriceItemDto"
+                             OnClick="@(() => Select(item))"
+                             Class="@(item.Id == _selected?.Id ? "mud-selected-item" : "")">
+                    <div>
+                        <MudText Typo="Typo.body2" Style="font-weight:600">@item.DisplayName</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            @item.Category · @item.Unit · @item.Price.ToString("N4") @item.Currency
+                        </MudText>
+                    </div>
+                </MudListItem>
+            }
+            @if (_results.Count == 0 && !string.IsNullOrWhiteSpace(_query))
+            {
+                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="pa-2">Sonuç bulunamadı.</MudText>
+            }
+        </MudList>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => MudDialog.Cancel())">İptal</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" Disabled="_selected is null"
+                   OnClick="@(() => MudDialog.Close(DialogResult.Ok(_selected)))">
+            Bu Ürünle Eşleştir
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public int UnitPriceListId { get; set; }
+    [Parameter] public string? InitialQuery { get; set; }
+
+    private string _query = string.Empty;
+    private List<UnitPriceItemDto> _results = new();
+    private UnitPriceItemDto? _selected;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _query = InitialQuery ?? string.Empty;
+        await SearchAsync();
+    }
+
+    private async Task SearchAsync()
+    {
+        _results = await UnitPriceListService.GetItemsAsync(UnitPriceListId, includeInactive: false, search: _query);
+    }
+
+    private void Select(UnitPriceItemDto item) => _selected = item;
+}

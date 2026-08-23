@@ -1,0 +1,16 @@
+<Router AppAssembly="typeof(App).Assembly">
+    <Found Context="routeData">
+        <RouteView RouteData="routeData" DefaultLayout="typeof(SogutmaHakedisKontrol.Web.Layout.MainLayout)" />
+        <FocusOnNavigate RouteData="routeData" Selector="h1" />
+    </Found>
+    <NotFound>
+        <LayoutView Layout="typeof(SogutmaHakedisKontrol.Web.Layout.MainLayout)">
+            <MudContainer MaxWidth="MaxWidth.Small" Class="mt-16 text-center">
+                <MudIcon Icon="@Icons.Material.Filled.SearchOff" Size="Size.Large" Color="Color.Secondary" Class="mb-4" />
+                <MudText Typo="Typo.h5">Sayfa bulunamadı</MudText>
+                <MudText Typo="Typo.body2" Class="mt-2">İstediğiniz sayfa mevcut değil.</MudText>
+                <MudButton Href="/" Variant="Variant.Filled" Color="Color.Primary" Class="mt-4">Ana Sayfaya Dön</MudButton>
+            </MudContainer>
+        </LayoutView>
+    </NotFound>
+</Router>

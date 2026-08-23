@@ -1,0 +1,35 @@
+/* Soğutma Hakediş Kontrolü — Ana CSS */
+
+:root {
+    --mud-appbar-height: 64px;
+}
+
+html, body {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    font-family: 'Roboto', sans-serif;
+}
+
+/* Aktif nav link vurgusu */
+.nav-active {
+    background-color: color-mix(in srgb, var(--mud-palette-primary) 14%, transparent) !important;
+    color: var(--mud-palette-primary) !important;
+    font-weight: 600 !important;
+    border-left: 3px solid var(--mud-palette-primary) !important;
+}
+
+/* Kart hover efekti */
+.mud-card {
+    transition: box-shadow 0.2s ease, transform 0.15s ease;
+}
+
+.mud-card:hover {
+    transform: translateY(-1px);
+}
+
+/* Scrollbar özelleştirme */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--mud-palette-background); }
+::-webkit-scrollbar-thumb { background: var(--mud-palette-action-default); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--mud-palette-text-secondary); }

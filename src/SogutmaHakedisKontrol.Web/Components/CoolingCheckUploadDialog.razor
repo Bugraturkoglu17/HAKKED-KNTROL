@@ -1,0 +1,201 @@
+@namespace SogutmaHakedisKontrol.Web.Components
+@inject IProgressPaymentCheckService CheckService
+@inject IFilePickerService FilePicker
+@inject ISnackbar Snackbar
+
+<MudDialog Style="min-width:760px;max-width:960px">
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.UploadFile" Class="mr-2" Style="vertical-align:middle" />
+            Hakediş Dosyasını Yükle
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (_state == State.SelectFile)
+        {
+            <MudButton Variant="Variant.Outlined" Size="Size.Large" FullWidth
+                       StartIcon="@Icons.Material.Filled.FolderOpen" OnClick="SelectFile">
+                @(_filePath is null ? "Hakediş Excel Dosyası Seç..." : System.IO.Path.GetFileName(_filePath))
+            </MudButton>
+        }
+        else if (_state == State.Analyzing)
+        {
+            <MudText Align="Align.Center" Class="mb-2">Hakediş dosyası analiz ediliyor...</MudText>
+            <MudProgressLinear Indeterminate Color="Color.Primary" />
+        }
+        else if (_state == State.Review && _preview is not null)
+        {
+            @if (_preview.Errors.Count > 0)
+            {
+                <MudAlert Severity="Severity.Error" Class="mb-3">
+                    @foreach (var err in _preview.Errors) { <MudText Typo="Typo.body2">@err</MudText> }
+                </MudAlert>
+            }
+            else
+            {
+                <MudGrid Spacing="2" Class="mb-3">
+                    <MudItem xs="12" md="4">
+                        <MudTextField @bind-Value="_claimTypeName" Label="Hakediş Türü" Variant="Variant.Outlined" />
+                    </MudItem>
+                    <MudItem xs="6" md="4">
+                        <MudNumericField T="int" @bind-Value="_year" Label="Yıl" Variant="Variant.Outlined" />
+                    </MudItem>
+                    <MudItem xs="6" md="4">
+                        <MudNumericField T="int" @bind-Value="_month" Label="Ay" Variant="Variant.Outlined" Min="1" Max="12" />
+                    </MudItem>
+                </MudGrid>
+
+                <MudGrid Spacing="2" Class="mb-3">
+                    <MudItem xs="6" md="3">
+                        <MudPaper Class="pa-2 text-center" Elevation="1">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Malzeme Satırı</MudText>
+                            <MudText Typo="Typo.h6">@_preview.MaterialLineCount</MudText>
+                        </MudPaper>
+                    </MudItem>
+                    <MudItem xs="6" md="3">
+                        <MudPaper Class="pa-2 text-center" Elevation="1">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Hizmet Satırı</MudText>
+                            <MudText Typo="Typo.h6">@_preview.ServiceLineCount</MudText>
+                        </MudPaper>
+                    </MudItem>
+                    <MudItem xs="6" md="3">
+                        <MudPaper Class="pa-2 text-center" Elevation="1">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Mağaza Sayısı</MudText>
+                            <MudText Typo="Typo.h6">@_preview.StoreCount</MudText>
+                        </MudPaper>
+                    </MudItem>
+                    <MudItem xs="6" md="3">
+                        <MudPaper Class="pa-2 text-center" Elevation="1">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Miktar Hatası</MudText>
+                            <MudText Typo="Typo.h6" Color="@(_preview.MissingQuantityCount > 0 ? Color.Error : Color.Default)">@_preview.MissingQuantityCount</MudText>
+                        </MudPaper>
+                    </MudItem>
+                </MudGrid>
+
+                @if (_preview.DetectedCompanyGrandTotal.HasValue)
+                {
+                    <MudText Typo="Typo.body2" Class="mb-2">
+                        Firma hakediş toplamı (özet sayfasından): <b>@_preview.DetectedCompanyGrandTotal.Value.ToString("N2") TL</b>
+                    </MudText>
+                }
+
+                @if (RequiresEurRate)
+                {
+                    <MudAlert Severity="Severity.Warning" Class="mb-3">
+                        <MudText Typo="Typo.body2" Style="font-weight:600">Ortalama EUR/TL Kuru</MudText>
+                        <MudText Typo="Typo.caption">
+                            Bu birim fiyat listesinde EUR bazlı fiyatlar bulunmaktadır.
+                            Hakediş kontrolünde kullanılacak ortalama EUR/TL kurunu giriniz.
+                        </MudText>
+                        @if (!string.IsNullOrEmpty(_preview.SuggestedEurRate))
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block mt-1">
+                                Dosyada bulunan olası kur önerisi: <b>@_preview.SuggestedEurRate</b> (@_preview.SuggestedEurRateSource) —
+                                bu bir öneridir, sistem otomatik uygulamaz.
+                                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="UseSuggestedRate">Bu değeri kullan</MudButton>
+                            </MudText>
+                        }
+                        <MudNumericField T="decimal?" @bind-Value="_eurRate" Label="Ortalama EUR/TL Kuru *" Variant="Variant.Outlined"
+                                         Format="N4" Min="0" Class="mt-2" Style="max-width:280px" />
+                    </MudAlert>
+                }
+            }
+        }
+        else if (_state == State.Submitting)
+        {
+            <MudText Align="Align.Center" Class="mb-2">Hakediş kaydediliyor ve eşleştirme çalıştırılıyor...</MudText>
+            <MudProgressLinear Indeterminate Color="Color.Success" />
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Disabled="_state == State.Analyzing || _state == State.Submitting">İptal</MudButton>
+        @if (_state == State.Review && _preview is not null && _preview.Errors.Count == 0)
+        {
+            <MudButton Color="Color.Success" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.PlayArrow"
+                       Disabled="@(RequiresEurRate && !_eurRate.HasValue)"
+                       OnClick="SubmitAsync">
+                Kaydet ve Kontrole Başla
+            </MudButton>
+        }
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public UnitPriceListDto UnitPriceList { get; set; } = null!;
+
+    private enum State { SelectFile, Analyzing, Review, Submitting }
+    private State _state = State.SelectFile;
+    private string? _filePath;
+    private byte[]? _fileBytes;
+    private ProgressPaymentImportPreviewDto? _preview;
+
+    private string _claimTypeName = string.Empty;
+    private int _year = DateTime.Now.Year;
+    private int _month = DateTime.Now.Month;
+    private decimal? _eurRate;
+
+    private bool RequiresEurRate => UnitPriceList.HasEurItems;
+
+    private async Task SelectFile()
+    {
+        _filePath = await FilePicker.PickExcelFileAsync();
+        if (_filePath is null) return;
+        _state = State.Analyzing;
+        StateHasChanged();
+        try
+        {
+            _fileBytes = await File.ReadAllBytesAsync(_filePath);
+            using var ms = new MemoryStream(_fileBytes);
+            _preview = await CheckService.ParseExcelAsync(ms, System.IO.Path.GetFileName(_filePath), UnitPriceList.Id);
+            _claimTypeName = _preview.DetectedClaimTypeName;
+            _year = _preview.DetectedYear ?? DateTime.Now.Year;
+            _month = _preview.DetectedMonth ?? DateTime.Now.Month;
+            _state = State.Review;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Analiz hatası: {ex.Message}", Severity.Error);
+            _state = State.SelectFile;
+        }
+    }
+
+    private void UseSuggestedRate()
+    {
+        if (_preview is not null && decimal.TryParse(_preview.SuggestedEurRate,
+            System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var r))
+            _eurRate = r;
+    }
+
+    private async Task SubmitAsync()
+    {
+        if (_preview is null || _fileBytes is null || _filePath is null) return;
+        _state = State.Submitting;
+        StateHasChanged();
+        try
+        {
+            var periodLabel = $"{TurkishMonth(_month)} {_year}";
+            var check = await CheckService.CreateCheckAsync(
+                UnitPriceList.Id, UnitPriceList.CompanyName, UnitPriceList.Region, _claimTypeName,
+                _year, _month, periodLabel,
+                System.IO.Path.GetFileName(_filePath), _fileBytes,
+                RequiresEurRate ? _eurRate : null,
+                _preview);
+            Snackbar.Add("Hakediş yüklendi, otomatik eşleştirme tamamlandı.", Severity.Success);
+            MudDialog.Close(DialogResult.Ok(check.Id));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Kaydetme hatası: {ex.Message}", Severity.Error);
+            _state = State.Review;
+        }
+    }
+
+    private static string TurkishMonth(int m) => m switch
+    {
+        1 => "Ocak", 2 => "Şubat", 3 => "Mart", 4 => "Nisan", 5 => "Mayıs", 6 => "Haziran",
+        7 => "Temmuz", 8 => "Ağustos", 9 => "Eylül", 10 => "Ekim", 11 => "Kasım", 12 => "Aralık", _ => m.ToString()
+    };
+
+    private void Cancel() => MudDialog.Cancel();
+}
