@@ -1,0 +1,41 @@
+@namespace HakedisOtomasyon.Web.Components
+
+<MudDialog>
+    <DialogContent>
+        <MudGrid Spacing="2">
+            <MudItem xs="12" md="4">
+                <MudTextField @bind-Value="Store.Code" Label="Mağaza Kodu *"
+                              Variant="Variant.Outlined" Required MaxLength="50" />
+            </MudItem>
+            <MudItem xs="12" md="8">
+                <MudTextField @bind-Value="Store.Name" Label="Mağaza Adı *"
+                              Variant="Variant.Outlined" Required MaxLength="200" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudSwitch T="bool" @bind-Value="Store.IsActive" Color="Color.Success" Label="Aktif" />
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">İptal</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled"
+                   OnClick="Submit"
+                   Disabled="@(string.IsNullOrWhiteSpace(Store.Code) || string.IsNullOrWhiteSpace(Store.Name))">
+            Kaydet
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public StoreDto Store { get; set; } = new();
+
+    private void Submit()
+    {
+        Store.Code = Store.Code.Trim().ToUpper();
+        Store.Name = Store.Name.Trim();
+        MudDialog.Close(DialogResult.Ok(Store));
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

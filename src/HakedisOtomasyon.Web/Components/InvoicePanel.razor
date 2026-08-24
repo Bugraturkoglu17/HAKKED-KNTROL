@@ -1,0 +1,303 @@
+@namespace HakedisOtomasyon.Web.Components
+@using System.Globalization
+@inject ISnackbar Snackbar
+@inject IFilePickerService FilePicker
+@inject IDialogService DialogService
+
+<MudCard Elevation="2" Class="mt-2">
+    <MudCardHeader>
+        <CardHeaderContent>
+            <MudStack Row AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                <MudStack Row AlignItems="AlignItems.Center" Spacing="1">
+                    <MudIcon Icon="@Icons.Material.Filled.Receipt" Color="Color.Warning" />
+                    <MudText Typo="Typo.h6">Faturalar</MudText>
+                </MudStack>
+                <MudSwitch T="bool" Value="_hasInvoice" ValueChanged="@(v => SetHasInvoiceAsync(v))" Color="Color.Warning" Label="Fatura Var" />
+            </MudStack>
+        </CardHeaderContent>
+    </MudCardHeader>
+
+    @if (_hasInvoice)
+    {
+        <MudCardContent>
+            <!-- Yeni Fatura Formu -->
+            <MudPaper Elevation="1" Class="pa-3 mb-3" Style="border-left:4px solid #E65100">
+                <MudText Typo="Typo.subtitle2" Class="mb-2">Yeni Fatura Ekle</MudText>
+                <MudGrid Spacing="2">
+                    <MudItem xs="12">
+                        <MudTextField @bind-Value="_newInvoice.Description"
+                                      Label="Açıklama *" Variant="Variant.Outlined" Dense
+                                      MaxLength="300" />
+                    </MudItem>
+                    <MudItem xs="12" md="4">
+                        <MudNumericField T="decimal" Value="_newInvoice.InvoiceAmount"
+                                         Label="Fatura Tutarı (TL) *" Variant="Variant.Outlined" Dense
+                                         Min="0.01m" Format="N2"
+                                         ValueChanged="@(v => { _newInvoice.InvoiceAmount = v; _newInvoice.Recalculate(); })" />
+                    </MudItem>
+                    <MudItem xs="12" md="4">
+                        <MudNumericField T="decimal" Value="_newInvoice.Quantity"
+                                         Label="Miktar" Variant="Variant.Outlined" Dense
+                                         Min="0.01m" Format="N2"
+                                         ValueChanged="@(v => { _newInvoice.Quantity = v; _newInvoice.Recalculate(); })" />
+                    </MudItem>
+                    <MudItem xs="12" md="4">
+                        <MudTextField Value="@_newInvoice.CalculatedTotal.ToString("N2", TrCulture)"
+                                      Label="Hesaplanan Toplam (+%10)" Variant="Variant.Outlined" Dense
+                                      ReadOnly Disabled />
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Fatura Dosyası (opsiyonel)</MudText>
+                        <MudStack Row AlignItems="AlignItems.Center" Spacing="2">
+                            <MudButton Variant="Variant.Outlined" Color="Color.Default"
+                                       StartIcon="@Icons.Material.Filled.AttachFile"
+                                       Size="Size.Small"
+                                       OnClick="PickInvoiceFileAsync">
+                                Dosya Seç
+                            </MudButton>
+                            @if (!string.IsNullOrEmpty(_newInvoice.FileName))
+                            {
+                                <MudText Typo="Typo.caption">@_newInvoice.FileName</MudText>
+                                <MudIconButton Icon="@Icons.Material.Filled.Clear" Size="Size.Small"
+                                               OnClick="ClearInvoiceFile" />
+                            }
+                        </MudStack>
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudButton Variant="Variant.Filled" Color="Color.Warning"
+                                   StartIcon="@Icons.Material.Filled.Add"
+                                   OnClick="AddInvoice"
+                                   Disabled="@(!CanAddInvoice)">
+                            Fatura Ekle
+                        </MudButton>
+                    </MudItem>
+                </MudGrid>
+            </MudPaper>
+
+            <!-- Mevcut Faturalar -->
+            @if (Invoices.Any())
+            {
+                <MudText Typo="Typo.subtitle2" Class="mb-2">Eklenen Faturalar (@Invoices.Count)</MudText>
+                @foreach (var inv in Invoices)
+                {
+                    <MudCard Class="invoice-card mb-2" Elevation="1">
+                        <MudCardContent Class="pa-3">
+                            <MudStack Row AlignItems="AlignItems.Start" Justify="Justify.SpaceBetween">
+                                <div>
+                                    <MudText Typo="Typo.subtitle2">@inv.Description</MudText>
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                        Tutar: @inv.InvoiceAmount.ToString("N2", TrCulture) ₺ ×
+                                        @inv.Quantity.ToString("N2") = @inv.CalculatedTotal.ToString("N2", TrCulture) ₺
+                                        (@inv.MarkupRateDisplay ekli)
+                                    </MudText>
+                                    @if (!string.IsNullOrEmpty(inv.FileName))
+                                    {
+                                        <MudText Typo="Typo.caption">
+                                            <MudIcon Icon="@Icons.Material.Filled.AttachFile" Size="Size.Small" />
+                                            @inv.FileName
+                                        </MudText>
+                                    }
+                                </div>
+                                <MudStack Row Spacing="0">
+                                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small"
+                                                   Color="Color.Error" OnClick="@(() => RemoveInvoice(inv))"
+                                                   Title="Faturayı Sil" />
+                                </MudStack>
+                            </MudStack>
+                        </MudCardContent>
+                    </MudCard>
+                }
+            }
+        </MudCardContent>
+    }
+</MudCard>
+
+@code {
+    [Parameter] public List<InvoiceDto> Invoices { get; set; } = new();
+    [Parameter] public int ServiceFormId { get; set; }
+    [Parameter] public int Year { get; set; }
+    [Parameter] public int Month { get; set; }
+    [Parameter] public IFileStorageService FileStorage { get; set; } = null!;
+    [Parameter] public ISettingsService Settings { get; set; } = null!;
+    [Parameter] public EventCallback OnChanged { get; set; }
+    /// <summary>
+    /// Bir fatura silindiğinde tetiklenir. null = tüm faturalar temizlendi (Fatura Var kapatıldı).
+    /// </summary>
+    [Parameter] public EventCallback<InvoiceDto?> OnInvoiceDeleted { get; set; }
+
+    private static readonly CultureInfo TrCulture = new("tr-TR");
+    private bool _hasInvoice;
+    private InvoiceDto _newInvoice = new();
+    private string? _selectedInvoiceFilePath;
+    private string _invoiceInputId = $"inv-{Guid.NewGuid():N}";
+
+    // Kaydet sırasında DB'den silinecek fatura ID'leri
+    private readonly List<int> _pendingDeleteIds = new();
+    // Kaydet sırasında DB'den silinecek fatura dosya yolları (ID'si olmayan yeni faturalar için)
+    private readonly List<string> _pendingDeletePaths = new();
+
+    // Form geçişlerinde state'i sıfırlamak için son ServiceFormId'yi izle
+    private int _prevServiceFormId = -1;
+
+    /// <summary>Fatura Var toggle'ının güncel durumu (save sırasında dışarıdan okunabilir).</summary>
+    public bool HasInvoice => _hasInvoice;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ResetForFormAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // ServiceFormId değiştiyse (farklı forma geçildi) alanları sıfırla
+        if (_prevServiceFormId != ServiceFormId)
+            await ResetForFormAsync();
+    }
+
+    private async Task ResetForFormAsync()
+    {
+        _prevServiceFormId = ServiceFormId;
+        _hasInvoice = Invoices.Any();
+        _pendingDeleteIds.Clear();
+        _pendingDeletePaths.Clear();
+        var rate = await Settings.GetDecimalAsync(SettingKeys.InvoiceMarkupRate, 0.10m);
+        _newInvoice = new InvoiceDto { ServiceFormId = ServiceFormId, MarkupRate = rate, Quantity = 1 };
+        _selectedInvoiceFilePath = null;
+    }
+
+    /// <summary>
+    /// "Fatura Var" toggle değiştiğinde çağrılır.
+    /// Kapatılırken onay ister; onay alınırsa tüm faturalar temizlenir.
+    /// </summary>
+    private async Task SetHasInvoiceAsync(bool value)
+    {
+        if (!value && Invoices.Any())
+        {
+            var confirm = await DialogService.ShowMessageBox(
+                "Fatura Kaldır",
+                "Fatura kapatılırsa eklenen fatura dosyaları ve fatura kaynaklı kalemler kaldırılacaktır. Devam edilsin mi?",
+                yesText: "Evet, Kaldır",
+                cancelText: "İptal");
+            if (confirm != true) return; // Onay verilmedi — toggle açık kalır
+            await ClearAllInvoicesAsync();
+        }
+        _hasInvoice = value;
+        await OnChanged.InvokeAsync();
+    }
+
+    /// <summary>Tüm faturaları pending-delete listesine ekler ve görünür listeden temizler.</summary>
+    private async Task ClearAllInvoicesAsync()
+    {
+        // Önce ebeveyne bildir (null = tümü silindi)
+        await OnInvoiceDeleted.InvokeAsync(null);
+
+        foreach (var inv in Invoices.ToList())
+        {
+            if (inv.Id > 0)
+                _pendingDeleteIds.Add(inv.Id);
+            if (!string.IsNullOrEmpty(inv.FilePath))
+                _pendingDeletePaths.Add(inv.FilePath);
+        }
+        Invoices.Clear();
+    }
+
+    /// <summary>Kaydet sırasında DB'den silinmesi gereken fatura ID'lerini döner.</summary>
+    public List<int> GetPendingDeleteIds() => _pendingDeleteIds.ToList();
+
+    /// <summary>Kaydet sırasında DB'den silinmesi gereken fatura dosya yollarını döner.</summary>
+    public List<string> GetPendingDeletePaths() => _pendingDeletePaths.ToList();
+
+    /// <summary>Başarılı kayıt sonrası çağrılır — tüm pending listeler temizlenir.</summary>
+    public void ClearPendingDeletes()
+    {
+        _pendingDeleteIds.Clear();
+        _pendingDeletePaths.Clear();
+    }
+
+    // Geriye dönük uyumluluk için eski isim
+    public void ClearPendingDeleteIds() => ClearPendingDeletes();
+
+    private bool CanAddInvoice =>
+        !string.IsNullOrWhiteSpace(_newInvoice.Description) && _newInvoice.InvoiceAmount > 0;
+
+    private void OnInvoiceFileSelected(InputFileChangeEventArgs e)
+    {
+        // Artık kullanılmıyor — PickInvoiceFileAsync ile değiştirildi
+    }
+
+    private async Task PickInvoiceFileAsync()
+    {
+        try
+        {
+            var paths = await FilePicker.PickInvoiceFilesAsync();
+            if (paths.Count > 0)
+            {
+                _selectedInvoiceFilePath = paths[0];
+                _newInvoice.FileName = Path.GetFileName(paths[0]);
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Dosya seçme hatası: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private void ClearInvoiceFile()
+    {
+        _selectedInvoiceFilePath = null;
+        _newInvoice.FileName = null;
+        _newInvoice.FilePath = null;
+    }
+
+    private async Task AddInvoice()
+    {
+        if (!CanAddInvoice) return;
+
+        if (_selectedInvoiceFilePath is not null)
+        {
+            try
+            {
+                var path = await FileStorage.CopyInvoiceAsync(_selectedInvoiceFilePath, Year, Month);
+                _newInvoice.FilePath = path;
+                _newInvoice.FileUrl = FileStorage.GetFileUrl(path);
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Dosya kopyalama hatası: {ex.Message}", Severity.Error);
+                return;
+            }
+        }
+
+        _newInvoice.ServiceFormId = ServiceFormId;
+        _newInvoice.Recalculate();
+        Invoices.Add(_newInvoice);
+
+        var rate = await Settings.GetDecimalAsync(SettingKeys.InvoiceMarkupRate, 0.10m);
+        _newInvoice = new InvoiceDto { ServiceFormId = ServiceFormId, MarkupRate = rate, Quantity = 1 };
+        _selectedInvoiceFilePath = null;
+
+        await OnChanged.InvokeAsync();
+        Snackbar.Add("Fatura eklendi.", Severity.Success);
+    }
+
+    private async Task RemoveInvoice(InvoiceDto inv)
+    {
+        // Ebeveyne bildir (servis kalemlerini temizleyebilsin) — listeden çıkarmadan önce
+        await OnInvoiceDeleted.InvokeAsync(inv);
+
+        // DB kaydı varsa silinmek üzere işaretle (ID ve yol ile)
+        if (inv.Id > 0)
+            _pendingDeleteIds.Add(inv.Id);
+        if (!string.IsNullOrEmpty(inv.FilePath))
+            _pendingDeletePaths.Add(inv.FilePath);
+
+        Invoices.Remove(inv);
+
+        // Liste boşaldıysa toggle'ı da kapat
+        if (!Invoices.Any())
+            _hasInvoice = false;
+
+        await OnChanged.InvokeAsync();
+    }
+}

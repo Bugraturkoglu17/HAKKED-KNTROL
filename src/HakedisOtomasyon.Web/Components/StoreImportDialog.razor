@@ -1,0 +1,80 @@
+@namespace HakedisOtomasyon.Web.Components
+@inject IStoreService StoreService
+@inject ISnackbar Snackbar
+@inject IFilePickerService FilePicker
+@inject IAppPathService AppPathService
+@inject ISettingsService SettingsService
+
+<MudDialog>
+    <DialogContent>
+        <MudText Typo="Typo.body2" Class="mb-3">
+            Excel dosyası ilk satır başlık, sonraki satırlar veri olmalıdır.<br />
+            Sütun sırası: <b>Mağaza Kodu</b> | <b>Mağaza Adı</b>
+        </MudText>
+        <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.UploadFile"
+                   OnClick="SelectFile" Disabled="_importing">
+            @(_filePath is null ? "Excel Dosyası Seç" : Path.GetFileName(_filePath))
+        </MudButton>
+        @if (_importing) { <MudProgressLinear Indeterminate Class="mt-3" /> }
+        @if (_result.HasValue) { <MudAlert Severity="Severity.Success" Class="mt-3">@_result.Value kayıt içe aktarıldı.</MudAlert> }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">İptal</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled"
+                   OnClick="Import" Disabled="@(_filePath is null || _importing)">
+            İçe Aktar
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+    private string? _filePath;
+    private bool _importing;
+    private int? _result;
+
+    private async Task SelectFile()
+    {
+        _filePath = await FilePicker.PickExcelFileAsync();
+    }
+
+    private async Task Import()
+    {
+        if (_filePath is null) return;
+        _importing = true;
+        try
+        {
+            using var stream = new MemoryStream(await File.ReadAllBytesAsync(_filePath));
+            _result = await StoreService.ImportFromExcelAsync(stream);
+            // Kalıcı kopya — MasterData\Stores klasörüne kaydet
+            await SaveMasterFileCopyAsync(
+                _filePath,
+                AppPathService.StoresCatalogPath,
+                SettingKeys.StoreExcelFilePath,
+                SettingKeys.LastStoreImportDate);
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"İçe aktarma hatası: {ex.Message}", Severity.Error);
+        }
+        finally { _importing = false; }
+    }
+
+    /// <summary>Excel dosyasını kalıcı klasöre kopyalar ve yolunu AppSetting'e yazar.</summary>
+    private async Task SaveMasterFileCopyAsync(
+        string sourcePath, string destDir, string pathKey, string dateKey)
+    {
+        try
+        {
+            Directory.CreateDirectory(destDir);
+            var destPath = Path.Combine(destDir, Path.GetFileName(sourcePath));
+            File.Copy(sourcePath, destPath, overwrite: true);
+            await SettingsService.SetAsync(pathKey, destPath);
+            await SettingsService.SetAsync(dateKey, DateTime.Now.ToString("dd.MM.yyyy HH:mm:ss"));
+        }
+        catch { /* kopyalama hatası import işlemini engellemez */ }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

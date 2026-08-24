@@ -1,0 +1,924 @@
+@page "/new-claim"
+@page "/new-claim/{ClaimId:int}"
+@page "/discipline/yangin/progress-claims/new"
+@page "/discipline/yangin/progress-claims/new/{ClaimId:int}"
+@page "/discipline/klima/progress-claims/new"
+@page "/discipline/klima/progress-claims/new/{ClaimId:int}"
+@page "/discipline/asansor/progress-claims/new"
+@page "/discipline/asansor/progress-claims/new/{ClaimId:int}"
+@page "/discipline/sogutma/progress-claims/new"
+@page "/discipline/sogutma/progress-claims/new/{ClaimId:int}"
+@inject IProgressClaimService ClaimService
+@inject IServiceFormService FormService
+@inject IStoreService StoreService
+@inject IPriceListService PriceListService
+@inject IInvoiceService InvoiceService
+@inject IExcelExportService ExcelExportService
+@inject IFileStorageService FileStorage
+@inject IDesktopFileService DesktopFileService
+@inject ISettingsService Settings
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject NavigationManager Nav
+
+<PageTitle>Yeni Hakediş — Hakediş Otomasyonu</PageTitle>
+
+@if (_exporting)
+{
+    <div class="processing-overlay">
+        <MudPaper Class="pa-8" Elevation="8" Style="min-width:320px;text-align:center">
+            <MudProgressCircular Color="Color.Primary" Indeterminate Size="Size.Large" />
+            <MudText Typo="Typo.h6" Class="mt-4">Excel Hazırlanıyor</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-2">@_exportStatus</MudText>
+        </MudPaper>
+    </div>
+}
+
+<MudStack Row AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-3">
+    <MudText Typo="Typo.h5" Style="font-weight:700">@(ClaimId.HasValue ? "Hakedişi Düzenle" : "Yeni Hakediş")</MudText>
+    @if (_claim is not null)
+    {
+        <MudStack Row Spacing="1">
+            <MudChip T="string" Color="Color.Info" Size="Size.Small">@_claim.Name</MudChip>
+            <MudChip T="string" Color="@GetClaimTypeColor(_claim.ClaimType)" Size="Size.Small">@_claim.ClaimTypeLabel</MudChip>
+        </MudStack>
+    }
+</MudStack>
+
+<MudStepper @ref="_stepper" ActiveIndex="@_activeStep" NonLinear="false" HeaderSize="Size.Medium" Color="Color.Primary">
+
+    <!-- ─── ADIM 1: Hakediş Bilgileri ──────────────────────────────── -->
+    <MudStep Title="Hakediş Bilgileri" Icon="@Icons.Material.Filled.Edit">
+        <MudCard Elevation="2" Class="pa-1">
+            <MudCardContent>
+                <MudGrid Spacing="2">
+                    <MudItem xs="12" md="6">
+                        <MudTextField @bind-Value="_dto.Name"
+                                      Label="Hakediş Adı *"
+                                      Variant="Variant.Outlined"
+                                      Required
+                                      MaxLength="300"
+                                      AdornmentIcon="@Icons.Material.Outlined.Assignment"
+                                      Adornment="Adornment.Start"
+                                      HelperText="Örn: Nisan 2026 Bakım Hakedişi" />
+                    </MudItem>
+                    <MudItem xs="12" md="6">
+                        <MudTextField @bind-Value="_dto.CompanyName"
+                                      Label="Firma Adı *"
+                                      Placeholder="Örn: SİSMİK"
+                                      HelperText="Excel çıktısında başlıkta görünür"
+                                      Variant="Variant.Outlined"
+                                      Required
+                                      MaxLength="300"
+                                      AdornmentIcon="@Icons.Material.Outlined.Business"
+                                      Adornment="Adornment.Start" />
+                    </MudItem>
+                    <MudItem xs="12" md="6">
+                        <MudSelect T="ProgressClaimType" @bind-Value="_dto.ClaimType"
+                                   Label="Hakediş Türü *"
+                                   Variant="Variant.Outlined"
+                                   AdornmentIcon="@Icons.Material.Outlined.Category"
+                                   Adornment="Adornment.Start"
+                                   HelperText="Servis formu zorunluluğunu belirler">
+                            <MudSelectItem Value="ProgressClaimType.MaintenanceRepair">Bakım / Onarım</MudSelectItem>
+                            <MudSelectItem Value="ProgressClaimType.NewConstruction">Yeni Yapım</MudSelectItem>
+                            <MudSelectItem Value="ProgressClaimType.Renovation">Tadilat</MudSelectItem>
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="12" md="3">
+                        <MudSelect T="int" @bind-Value="_dto.Month"
+                                   Label="Ay *" Variant="Variant.Outlined">
+                            @for (int m = 1; m <= 12; m++)
+                            {
+                                var monthNum = m;
+                                <MudSelectItem Value="@monthNum">
+                                    @System.Globalization.CultureInfo.GetCultureInfo("tr-TR").DateTimeFormat.GetMonthName(monthNum)
+                                </MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="12" md="3">
+                        <MudNumericField T="int" @bind-Value="_dto.Year"
+                                         Label="Yıl *" Variant="Variant.Outlined"
+                                         Min="2000" Max="2099" />
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudTextField @bind-Value="_dto.Description"
+                                      Label="Açıklama"
+                                      Variant="Variant.Outlined"
+                                      Lines="2"
+                                      MaxLength="500" />
+                    </MudItem>
+                </MudGrid>
+            </MudCardContent>
+            <MudCardActions Class="justify-end pa-4">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                           EndIcon="@Icons.Material.Filled.ArrowForward"
+                           OnClick="SaveClaimAndNext"
+                           Disabled="@(string.IsNullOrWhiteSpace(_dto.Name) || string.IsNullOrWhiteSpace(_dto.CompanyName))">
+                    Devam Et
+                </MudButton>
+            </MudCardActions>
+        </MudCard>
+    </MudStep>
+
+    <!-- ─── ADIM 2: Form Yükleme ──────────────────────────────────── -->
+    <MudStep Title="Form Yükleme" Icon="@Icons.Material.Filled.UploadFile">
+        <MudCard Elevation="2" Class="pa-1">
+            <MudCardContent>
+
+                @if (!IsFormRequired)
+                {
+                    <MudAlert Severity="Severity.Info" Dense Class="mb-3">
+                        <MudText Typo="Typo.body2">
+                            <strong>@_dto.ClaimTypeLabel</strong> türünde servis formu yüklemek zorunlu değildir.
+                            Dosya eklemeden devam edebilir, kalemleri manuel olarak girebilirsiniz.
+                        </MudText>
+                    </MudAlert>
+                }
+
+                <FileDropZone OnFilesSelected="OnServiceFormsSelected" />
+
+                @if (_forms.Any())
+                {
+                    <MudText Typo="Typo.subtitle2" Class="mt-4 mb-2">Yüklenen Formlar (@_forms.Count)</MudText>
+                    <MudList T="string" Dense>
+                        @foreach (var form in _forms.Where(f => !string.IsNullOrEmpty(f.FilePath)))
+                        {
+                            <MudListItem Icon="@GetFormStatusIcon(form.Status)"
+                                         IconColor="@GetFormStatusColor(form.Status)">
+                                <MudStack Row AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                                    <MudStack Spacing="0">
+                                        <MudText Typo="Typo.body2" Style="font-weight:500">@form.OriginalFileName</MudText>
+                                        <MudStack Row Spacing="2">
+                                            <MudChip T="string" Size="Size.Small" Color="Color.Default" Class="pa-0 ma-0">
+                                                @Path.GetExtension(form.OriginalFileName).TrimStart('.').ToUpper()
+                                            </MudChip>
+                                            @if (form.FileSizeBytes > 0)
+                                            {
+                                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                                    @FormatFileSize(form.FileSizeBytes)
+                                                </MudText>
+                                            }
+                                            <MudText Typo="Typo.caption" Color="Color.Secondary">@form.StatusLabel</MudText>
+                                        </MudStack>
+                                    </MudStack>
+                                    <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                                   Size="Size.Small"
+                                                   Color="Color.Error"
+                                                   OnClick="@(() => DeleteFormAsync(form))"
+                                                   Title="Formu sil" />
+                                </MudStack>
+                            </MudListItem>
+                            <MudDivider />
+                        }
+                    </MudList>
+                }
+            </MudCardContent>
+            <MudCardActions Class="justify-space-between pa-4">
+                <MudButton Variant="Variant.Text"
+                           StartIcon="@Icons.Material.Filled.ArrowBack"
+                           OnClick="@(() => _activeStep = 0)">
+                    Geri
+                </MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                           EndIcon="@Icons.Material.Filled.ArrowForward"
+                           OnClick="GoToProcessing"
+                           Disabled="@(IsFormRequired && !_forms.Any())">
+                    @(_forms.Any() ? "Formları İşle" : "Devam Et")
+                </MudButton>
+            </MudCardActions>
+        </MudCard>
+    </MudStep>
+
+    <!-- ─── ADIM 3: Form İşleme ───────────────────────────────────── -->
+    <MudStep Title="Form İşleme" Icon="@Icons.Material.Filled.DataObject">
+        @if (_currentForm is not null)
+        {
+            <!-- Normal form işleme (servis formu yüklü) -->
+            <MudGrid Spacing="2">
+                <!-- Sol: PDF/Görsel Önizleme -->
+                <MudItem xs="12" md="5">
+                    @if (!string.IsNullOrEmpty(_currentForm.FilePath))
+                    {
+                        <PdfViewer FileUrl="@_currentForm.FileUrl"
+                                   FileName="@_currentForm.OriginalFileName"
+                                   FilePath="@_currentForm.FilePath" />
+                    }
+                    else
+                    {
+                        <MudPaper Elevation="1" Class="pa-6 d-flex flex-column align-center justify-center" Style="min-height:200px">
+                            <MudIcon Icon="@Icons.Material.Outlined.EditNote" Size="Size.Large" Color="Color.Primary" />
+                            <MudText Typo="Typo.body1" Class="mt-2" Align="Align.Center">Manuel Giriş</MudText>
+                            <MudText Typo="Typo.body2" Color="Color.Secondary" Align="Align.Center">
+                                @(_claim?.ClaimTypeLabel ?? "Hakediş") — dosya yüklenmeden oluşturuldu
+                            </MudText>
+                        </MudPaper>
+                    }
+                    <!-- Form navigasyon -->
+                    @if (_forms.Count > 1)
+                    {
+                        <MudPaper Elevation="1" Class="pa-2 mt-2">
+                            <MudStack Row AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                                <MudIconButton Icon="@Icons.Material.Filled.NavigateBefore"
+                                               OnClick="PreviousForm"
+                                               Disabled="@(_currentFormIndex == 0)" />
+                                <MudText Typo="Typo.body2">
+                                    Form @(_currentFormIndex + 1) / @_forms.Count
+                                </MudText>
+                                <MudIconButton Icon="@Icons.Material.Filled.NavigateNext"
+                                               OnClick="NextForm"
+                                               Disabled="@(_currentFormIndex >= _forms.Count - 1)" />
+                            </MudStack>
+                        </MudPaper>
+                    }
+                </MudItem>
+
+                <!-- Sağ: Veri Giriş Paneli -->
+                <MudItem xs="12" md="7">
+                    <MudCard Elevation="2">
+                        <MudCardHeader>
+                            <CardHeaderContent>
+                                <MudStack Row AlignItems="AlignItems.Center" Spacing="1">
+                                    <MudIcon Icon="@Icons.Material.Filled.Store" Color="Color.Primary" />
+                                    <MudText Typo="Typo.h6">Mağaza Bilgisi</MudText>
+                                </MudStack>
+                            </CardHeaderContent>
+                        </MudCardHeader>
+                        <MudCardContent>
+                            <MudGrid Spacing="2">
+                                <MudItem xs="12" md="4">
+                                    <MudTextField @bind-Value="_storeCode"
+                                                  Label="Mağaza Kodu *"
+                                                  Variant="Variant.Outlined"
+                                                  MaxLength="50"
+                                                  OnBlur="LookupStoreAsync"
+                                                  @onkeydown="@(e => { if (e.Key == "Enter") _ = LookupStoreAsync(); })"
+                                                  AdornmentIcon="@Icons.Material.Filled.Search"
+                                                  Adornment="Adornment.End"
+                                                  Error="@_storeNotFound"
+                                                  ErrorText="Mağaza bulunamadı" />
+                                </MudItem>
+                                <MudItem xs="12" md="8">
+                                    <MudTextField Value="@_storeName"
+                                                  Label="Mağaza Adı"
+                                                  Variant="Variant.Outlined"
+                                                  ReadOnly
+                                                  Disabled="@string.IsNullOrEmpty(_storeName)" />
+                                </MudItem>
+                                @if (_storeNotFound)
+                                {
+                                    <MudItem xs="12">
+                                        <MudAlert Severity="Severity.Warning" Dense>
+                                            <MudText Typo="Typo.body2">
+                                                "@_storeCode" kodu bulunamadı.
+                                                <MudLink Href="/stores">Mağaza eklemek için tıklayın.</MudLink>
+                                            </MudText>
+                                        </MudAlert>
+                                    </MudItem>
+                                }
+                            </MudGrid>
+                        </MudCardContent>
+                    </MudCard>
+
+                    <!-- Servis Kalemleri -->
+                    <MudCard Elevation="2" Class="mt-2">
+                        <MudCardHeader>
+                            <CardHeaderContent>
+                                <MudStack Row AlignItems="AlignItems.Center" Spacing="1">
+                                    <MudIcon Icon="@Icons.Material.Filled.List" Color="Color.Primary" />
+                                    <MudText Typo="Typo.h6">Servis Kalemleri</MudText>
+                                </MudStack>
+                            </CardHeaderContent>
+                        </MudCardHeader>
+                        <MudCardContent Class="pa-0">
+                            <ServiceItemGrid @ref="_serviceItemGrid"
+                                             Items="@_currentForm.ServiceItems"
+                                             PriceListService="@PriceListService"
+                                             Claim="@_claim"
+                                             OnChanged="@StateHasChanged" />
+                        </MudCardContent>
+                        <MudCardActions Class="pa-3 justify-space-between">
+                            <MudText Typo="Typo.subtitle1" Style="font-weight:700">
+                                Ara Toplam: @((_currentForm.ServiceItems.Sum(i => i.TotalPrice) + _currentForm.Invoices.Sum(i => i.CalculatedTotal)).ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("tr-TR"))) ₺
+                            </MudText>
+                        </MudCardActions>
+                    </MudCard>
+
+                    <!-- Fatura Paneli -->
+                    <InvoicePanel @ref="_invoicePanel"
+                                  Invoices="@_currentForm.Invoices"
+                                  ServiceFormId="@_currentForm.Id"
+                                  Year="@(_claim?.Year ?? DateTime.Now.Year)"
+                                  Month="@(_claim?.Month ?? DateTime.Now.Month)"
+                                  FileStorage="@FileStorage"
+                                  Settings="@Settings"
+                                  OnChanged="@StateHasChanged"
+                                  OnInvoiceDeleted="@HandleInvoiceDeleted" />
+
+                    <!-- Form Aksiyon Butonları -->
+                    <MudCard Elevation="1" Class="mt-2">
+                        <MudCardActions Class="pa-3 justify-space-between">
+                            <MudButton Variant="Variant.Text" Color="Color.Default"
+                                       StartIcon="@Icons.Material.Filled.ArrowBack"
+                                       OnClick="@(() => _activeStep = 1)">
+                                Form Listesi
+                            </MudButton>
+                            <MudStack Row Spacing="1">
+                                <MudButton Variant="Variant.Outlined" Color="Color.Primary"
+                                           StartIcon="@Icons.Material.Filled.Save"
+                                           OnClick="SaveCurrentFormAsync">
+                                    Kaydet
+                                </MudButton>
+                                @if (_currentFormIndex < _forms.Count - 1)
+                                {
+                                    <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                                               EndIcon="@Icons.Material.Filled.SkipNext"
+                                               OnClick="SaveAndNextFormAsync">
+                                        Kaydet &amp; Sonraki Form
+                                    </MudButton>
+                                }
+                                else
+                                {
+                                    <MudButton Variant="Variant.Filled" Color="Color.Success"
+                                               EndIcon="@Icons.Material.Filled.TableChart"
+                                               OnClick="ExportExcelAsync">
+                                        Excel Oluştur
+                                    </MudButton>
+                                }
+                            </MudStack>
+                        </MudCardActions>
+                    </MudCard>
+                </MudItem>
+            </MudGrid>
+        }
+        else
+        {
+            <!-- Servis formsuz manuel giriş modu (Yeni Yapım / Tadilat) -->
+            <MudAlert Severity="Severity.Info" Class="mb-3">
+                <MudText Typo="Typo.body2">
+                    Servis formu yüklenmedi. Mağaza kodunu girin ve kalemleri ekleyin, ardından Excel oluşturun.
+                </MudText>
+            </MudAlert>
+            <MudGrid Spacing="2">
+                <MudItem xs="12" md="5">
+                    <MudPaper Elevation="1" Class="pa-6 d-flex flex-column align-center justify-center" Style="min-height:200px">
+                        <MudIcon Icon="@Icons.Material.Outlined.EditNote" Size="Size.Large" Color="Color.Primary" />
+                        <MudText Typo="Typo.body1" Class="mt-2">@(_claim?.ClaimTypeLabel ?? "Hakediş")</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary" Align="Align.Center">
+                            Servis formu olmadan kalem girişi
+                        </MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" md="7">
+                    <MudCard Elevation="2">
+                        <MudCardHeader>
+                            <CardHeaderContent>
+                                <MudStack Row AlignItems="AlignItems.Center" Spacing="1">
+                                    <MudIcon Icon="@Icons.Material.Filled.Store" Color="Color.Primary" />
+                                    <MudText Typo="Typo.h6">Mağaza Bilgisi</MudText>
+                                </MudStack>
+                            </CardHeaderContent>
+                        </MudCardHeader>
+                        <MudCardContent>
+                            <MudGrid Spacing="2">
+                                <MudItem xs="12" md="4">
+                                    <MudTextField @bind-Value="_storeCode"
+                                                  Label="Mağaza Kodu *"
+                                                  Variant="Variant.Outlined"
+                                                  MaxLength="50"
+                                                  OnBlur="LookupStoreAsync"
+                                                  @onkeydown="@(e => { if (e.Key == "Enter") _ = LookupStoreAsync(); })"
+                                                  AdornmentIcon="@Icons.Material.Filled.Search"
+                                                  Adornment="Adornment.End"
+                                                  Error="@_storeNotFound"
+                                                  ErrorText="Mağaza bulunamadı" />
+                                </MudItem>
+                                <MudItem xs="12" md="8">
+                                    <MudTextField Value="@_storeName"
+                                                  Label="Mağaza Adı"
+                                                  Variant="Variant.Outlined"
+                                                  ReadOnly
+                                                  Disabled="@string.IsNullOrEmpty(_storeName)" />
+                                </MudItem>
+                                @if (_storeNotFound)
+                                {
+                                    <MudItem xs="12">
+                                        <MudAlert Severity="Severity.Warning" Dense>
+                                            <MudText Typo="Typo.body2">
+                                                "@_storeCode" kodu bulunamadı.
+                                                <MudLink Href="/stores">Mağaza eklemek için tıklayın.</MudLink>
+                                            </MudText>
+                                        </MudAlert>
+                                    </MudItem>
+                                }
+                            </MudGrid>
+                        </MudCardContent>
+                    </MudCard>
+
+                    <MudCard Elevation="1" Class="mt-2">
+                        <MudCardActions Class="pa-3 justify-space-between">
+                            <MudButton Variant="Variant.Text"
+                                       StartIcon="@Icons.Material.Filled.ArrowBack"
+                                       OnClick="@(() => _activeStep = 1)">
+                                Geri
+                            </MudButton>
+                            <MudStack Row Spacing="1">
+                                <MudButton Variant="Variant.Outlined" Color="Color.Primary"
+                                           StartIcon="@Icons.Material.Filled.Add"
+                                           OnClick="CreateBlankFormAndContinueAsync"
+                                           Disabled="@(string.IsNullOrWhiteSpace(_storeCode) || _storeNotFound)">
+                                    Kalem Ekle
+                                </MudButton>
+                                <MudButton Variant="Variant.Filled" Color="Color.Success"
+                                           EndIcon="@Icons.Material.Filled.TableChart"
+                                           OnClick="ExportExcelAsync">
+                                    Excel Oluştur
+                                </MudButton>
+                            </MudStack>
+                        </MudCardActions>
+                    </MudCard>
+                </MudItem>
+            </MudGrid>
+        }
+    </MudStep>
+
+</MudStepper>
+
+@code {
+    [Parameter] public int? ClaimId { get; set; }
+
+    private MudStepper? _stepper;
+    private ServiceItemGrid? _serviceItemGrid;
+    private InvoicePanel? _invoicePanel;
+    private int _activeStep = 0;
+
+    private ProgressClaimDto _dto = new()
+    {
+        Month     = DateTime.Now.Month,
+        Year      = DateTime.Now.Year,
+        ClaimType = ProgressClaimType.MaintenanceRepair
+    };
+    private ProgressClaimDto? _claim;
+    private List<ServiceFormDto> _forms = new();
+    private ServiceFormDto? _currentForm;
+    private int _currentFormIndex = 0;
+
+    private string _storeCode = string.Empty;
+    private string _storeName = string.Empty;
+    private bool _storeNotFound = false;
+
+    private bool _exporting = false;
+    private string _exportStatus = string.Empty;
+
+    /// <summary>Mevcut hakediş türüne göre servis formu zorunlu mu?</summary>
+    private bool IsFormRequired => _dto.ClaimType == ProgressClaimType.MaintenanceRepair;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var rawCompany = await Settings.GetAsync(SettingKeys.CompanyName);
+        _dto.CompanyName = rawCompany == "Şirket Adı" ? string.Empty : rawCompany;
+
+        if (ClaimId.HasValue)
+        {
+            var existing = await ClaimService.GetByIdAsync(ClaimId.Value);
+            if (existing is not null)
+            {
+                _claim = existing;
+                _dto = existing;
+                _forms = await FormService.GetByClaimIdAsync(ClaimId.Value);
+
+                _activeStep = existing.CurrentStep;
+
+                if (_forms.Any())
+                {
+                    if (existing.LastOpenedServiceFormId.HasValue)
+                    {
+                        var idx = _forms.FindIndex(f => f.Id == existing.LastOpenedServiceFormId.Value);
+                        _currentFormIndex = idx >= 0 ? idx : 0;
+                    }
+                    else
+                    {
+                        _currentFormIndex = 0;
+                    }
+                    if (_activeStep >= 2) LoadCurrentForm();
+                }
+            }
+        }
+    }
+
+    private async Task SaveClaimAndNext()
+    {
+        if (string.IsNullOrWhiteSpace(_dto.Name) || string.IsNullOrWhiteSpace(_dto.CompanyName))
+        {
+            Snackbar.Add("Hakediş adı ve firma adı zorunludur.", Severity.Warning);
+            return;
+        }
+        try
+        {
+            if (_claim is null)
+                _claim = await ClaimService.CreateAsync(_dto);
+            else
+                _claim = await ClaimService.UpdateAsync(_dto);
+
+            _activeStep = 1;
+            await ClaimService.SaveProgressAsync(_claim.Id, 1);
+            Snackbar.Add("Hakediş bilgileri kaydedildi.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Hata: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task OnServiceFormsSelected(IReadOnlyList<string> filePaths)
+    {
+        if (_claim is null)
+        {
+            Snackbar.Add("Önce hakediş bilgilerini kaydedin.", Severity.Warning);
+            return;
+        }
+
+        foreach (var filePath in filePaths)
+        {
+            var fileName = Path.GetFileName(filePath);
+            try
+            {
+                var storedPath = await FileStorage.CopyServiceFormAsync(filePath, _claim.Year, _claim.Month);
+                var formDto = await FormService.AddFormAsync(_claim.Id, storedPath, fileName);
+                _forms.Add(formDto);
+                Snackbar.Add($"{fileName} yüklendi.", Severity.Success);
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"{fileName} yüklenirken hata: {ex.Message}", Severity.Error);
+            }
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task DeleteFormAsync(ServiceFormDto form)
+    {
+        var result = await DialogService.ShowMessageBox(
+            "Form Silme", $"'{form.OriginalFileName}' formu silinecek. Onaylıyor musunuz?",
+            "Evet, Sil", cancelText: "İptal");
+        if (result != true) return;
+        await FormService.DeleteAsync(form.Id);
+        _forms.Remove(form);
+        Snackbar.Add("Form silindi.", Severity.Info);
+    }
+
+    private async Task GoToProcessing()
+    {
+        // Bakım/Onarım ve form yoksa uyar
+        if (IsFormRequired && !_forms.Any())
+        {
+            Snackbar.Add("Bakım / Onarım türü için en az bir servis formu yükleyin.", Severity.Warning);
+            return;
+        }
+
+        if (_forms.Any())
+        {
+            _currentFormIndex = 0;
+            LoadCurrentForm();
+        }
+        else
+        {
+            // Dosyasız mod: _currentForm null kalır, Step 3 manuel giriş UI gösterir
+            _currentForm = null;
+        }
+
+        _activeStep = 2;
+        if (_claim is not null)
+            await ClaimService.SaveProgressAsync(_claim.Id, 2, _currentForm?.Id);
+    }
+
+    /// <summary>
+    /// Dosyasız (manuel giriş) mod: blank form oluştur ve kalemlere geç.
+    /// </summary>
+    private async Task CreateBlankFormAndContinueAsync()
+    {
+        if (_claim is null) return;
+        if (string.IsNullOrWhiteSpace(_storeCode) || _storeNotFound)
+        {
+            Snackbar.Add("Geçerli bir mağaza kodu girin.", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            var blankForm = await FormService.AddBlankFormAsync(_claim.Id);
+            await FormService.UpdateStoreAsync(blankForm.Id, _storeCode);
+
+            // Formu yenile
+            var refreshed = await FormService.GetByIdAsync(blankForm.Id);
+            if (refreshed is not null)
+            {
+                _forms.Add(refreshed);
+                _currentFormIndex = _forms.Count - 1;
+                _currentForm = refreshed;
+                _storeName = refreshed.StoreName;
+            }
+
+            await ClaimService.SaveProgressAsync(_claim.Id, 2, _currentForm?.Id);
+            StateHasChanged();
+            Snackbar.Add("Manuel giriş formu oluşturuldu. Kalemleri ekleyin.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Form oluşturulurken hata: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private void LoadCurrentForm()
+    {
+        if (_currentFormIndex >= 0 && _currentFormIndex < _forms.Count)
+        {
+            _currentForm = _forms[_currentFormIndex];
+            _storeCode = _currentForm.StoreCode;
+            _storeName = _currentForm.StoreName;
+            _storeNotFound = false;
+        }
+    }
+
+    private async Task LookupStoreAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_storeCode)) { _storeName = ""; _storeNotFound = false; return; }
+        var store = await StoreService.GetByCodeAsync(_storeCode.Trim().ToUpper());
+        if (store is not null)
+        {
+            _storeName = store.Name;
+            _storeNotFound = false;
+        }
+        else
+        {
+            _storeName = "";
+            _storeNotFound = true;
+        }
+    }
+
+    /// <summary>
+    /// InvoicePanel'den gelen fatura silme bildirimi.
+    /// inv == null → tüm faturalar temizlendi (Fatura Var kapatıldı).
+    /// inv != null → belirli bir fatura silindi.
+    /// </summary>
+    private void HandleInvoiceDeleted(InvoiceDto? inv)
+    {
+        if (_currentForm is null) return;
+
+        if (inv is null)
+        {
+            // Fatura Var kapatıldı — TÜM fatura bazlı kalemleri kaldır
+            _currentForm.ServiceItems.RemoveAll(x =>
+                x.IsInvoiceBased ||
+                x.AutoGeneratedType == "InvoicePlus10");
+        }
+        else
+        {
+            // Sadece bu faturaya ait kalemleri kaldır.
+            // inv.Id == 0 → henüz kaydedilmemiş (yeni) fatura: InvoiceId null/0 olan kalemler.
+            // inv.Id > 0 → kaydedilmiş fatura: InvoiceId == inv.Id ile eşleşen kalemler.
+            _currentForm.ServiceItems.RemoveAll(x =>
+                (x.IsInvoiceBased || x.AutoGeneratedType == "InvoicePlus10") &&
+                (inv.Id == 0
+                    ? !x.InvoiceId.HasValue || x.InvoiceId == 0
+                    : x.InvoiceId == inv.Id));
+        }
+        StateHasChanged();
+    }
+
+    private async Task SaveCurrentFormAsync()
+    {
+        if (_currentForm is null) return;
+
+        if (string.IsNullOrWhiteSpace(_storeCode))
+        {
+            Snackbar.Add("Mağaza kodu zorunludur.", Severity.Warning);
+            return;
+        }
+        if (_storeNotFound)
+        {
+            Snackbar.Add("Geçerli bir mağaza kodu giriniz.", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            // ── 1. Mağaza güncelle ────────────────────────────────────────
+            await FormService.UpdateStoreAsync(_currentForm.Id, _storeCode);
+
+            // ── 2. Fatura silme bilgilerini topla ─────────────────────────
+            //    _invoicePanel null olabilir (render gecikmesi) — null'da
+            //    listeyi boş bırak; mevcut DB faturaları dokunulmadan kalır.
+            var invoiceIdsToDelete  = new List<int>();
+            var invoicePathsToDelete = new List<string>();
+            var hasInvoice = true; // varsayılan: toggle açık / panel henüz yüklenmedi
+
+            if (_invoicePanel is not null)
+            {
+                invoiceIdsToDelete   = _invoicePanel.GetPendingDeleteIds();
+                invoicePathsToDelete = _invoicePanel.GetPendingDeletePaths();
+                hasInvoice           = _invoicePanel.HasInvoice;
+            }
+
+            // Fatura Var kapatıldıysa: bu forma ait tüm DB faturalarını sil listesine ekle
+            if (!hasInvoice)
+            {
+                var allFormInvoiceIds = _currentForm.Invoices
+                    .Where(i => i.Id > 0)
+                    .Select(i => i.Id)
+                    .ToList();
+                invoiceIdsToDelete = invoiceIdsToDelete.Union(allFormInvoiceIds).Distinct().ToList();
+            }
+
+            // ── 3. Silinen faturaları DB'den hard-delete et (arşive taşı) ─
+            foreach (var id in invoiceIdsToDelete.Where(id => id > 0))
+                await InvoiceService.DeleteAsync(id);
+
+            // ── 4. Aktif (silinmeyen) fatura listesini belirle ───────────
+            var activeInvoices = hasInvoice
+                ? _currentForm.Invoices
+                    .Where(i =>
+                        !invoiceIdsToDelete.Contains(i.Id) &&
+                        (string.IsNullOrEmpty(i.FilePath) ||
+                         !invoicePathsToDelete.Contains(i.FilePath)))
+                    .ToList()
+                : new List<InvoiceDto>();
+
+            // ── 5. Fatura bazlı servis kalemlerini de temizle (güvenlik katmanı) ──
+            //    HandleInvoiceDeleted zaten çalıştı; bu, olası kaçakları temizler.
+            if (!hasInvoice)
+            {
+                _currentForm.ServiceItems.RemoveAll(x =>
+                    x.IsInvoiceBased || x.AutoGeneratedType == "InvoicePlus10");
+            }
+            else
+            {
+                foreach (var id in invoiceIdsToDelete.Where(id => id > 0))
+                {
+                    _currentForm.ServiceItems.RemoveAll(x =>
+                        (x.IsInvoiceBased || x.AutoGeneratedType == "InvoicePlus10") &&
+                        x.InvoiceId == id);
+                }
+            }
+
+            // ── 6. Servis kalemlerini kaydet ──────────────────────────────
+            await FormService.SaveItemsAsync(_currentForm.Id, _currentForm.ServiceItems);
+
+            // ── 7. Aktif faturaları oluştur veya güncelle ─────────────────
+            foreach (var inv in activeInvoices)
+            {
+                if (inv.Id == 0) await InvoiceService.CreateAsync(inv);
+                else await InvoiceService.UpdateAsync(inv);
+            }
+
+            // ── 8. Pending listeleri temizle (başarılı kayıt sonrası) ─────
+            _invoicePanel?.ClearPendingDeletes();
+
+            // ── 9. Formu DB'den taze yükle ────────────────────────────────
+            var refreshed = await FormService.GetByIdAsync(_currentForm.Id);
+            if (refreshed is not null)
+            {
+                _forms[_currentFormIndex] = refreshed;
+                _currentForm = refreshed;
+            }
+
+            Snackbar.Add("Form kaydedildi.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Kaydetme hatası: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task SaveAndNextFormAsync()
+    {
+        await SaveCurrentFormAsync();
+        await NextForm();
+    }
+
+    private async Task NextForm()
+    {
+        if (_currentFormIndex < _forms.Count - 1)
+        {
+            _currentFormIndex++;
+            LoadCurrentForm();
+            if (_claim is not null)
+                await ClaimService.SaveProgressAsync(_claim.Id, 2, _currentForm?.Id);
+        }
+    }
+
+    private async Task PreviousForm()
+    {
+        if (_currentFormIndex > 0)
+        {
+            _currentFormIndex--;
+            LoadCurrentForm();
+            if (_claim is not null)
+                await ClaimService.SaveProgressAsync(_claim.Id, 2, _currentForm?.Id);
+        }
+    }
+
+    private async Task ExportExcelAsync()
+    {
+        if (_claim is null) return;
+
+        // Bakım/Onarım dışı türlerde form olmadan da export edilebilir
+        if (!IsFormRequired || _forms.Any())
+        {
+            var incomplete = await FormService.GetIncompleteFormsAsync(_claim.Id);
+            if (incomplete.Any())
+            {
+                var names = string.Join(", ", incomplete.Select(f => f.OriginalFileName));
+                var proceed = await DialogService.ShowMessageBox(
+                    "Eksik Formlar",
+                    $"Şu formlar tamamlanmamış:\n{names}\n\nYine de Excel oluşturulsun mu?",
+                    "Evet, Devam Et", cancelText: "İptal");
+                if (proceed != true) return;
+            }
+        }
+
+        _exporting = true;
+        _exportStatus = "Başlatılıyor...";
+        StateHasChanged();
+
+        try
+        {
+            var progress = new Progress<string>(msg =>
+            {
+                _exportStatus = msg;
+                InvokeAsync(StateHasChanged);
+            });
+
+            string? filePath = await ExcelExportService.ExportClaimAsync(_claim.Id, progress);
+
+            if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath) || new FileInfo(filePath).Length == 0)
+            {
+                Snackbar.Add("Excel dosyası oluşturulamadı.", Severity.Error);
+                return;
+            }
+
+            var captured = filePath;
+            Snackbar.Add("Excel dosyası oluşturuldu.", Severity.Success, cfg =>
+            {
+                cfg.Action = "Klasörde Göster";
+                cfg.ActionColor = Color.Primary;
+                cfg.Onclick = _ =>
+                {
+                    DesktopFileService.ShowFileInExplorer(captured);
+                    return Task.CompletedTask;
+                };
+            });
+
+            try
+            {
+                DesktopFileService.OpenFile(filePath);
+            }
+            catch
+            {
+                Snackbar.Add("Excel oluşturuldu ancak otomatik açılamadı. Klasörden açabilirsiniz.", Severity.Warning);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Excel oluşturulurken hata: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _exporting = false;
+            StateHasChanged();
+        }
+    }
+
+    private static Color GetClaimTypeColor(ProgressClaimType t) => t switch
+    {
+        ProgressClaimType.NewConstruction => Color.Success,
+        ProgressClaimType.Renovation      => Color.Warning,
+        _                                 => Color.Info
+    };
+
+    private string GetFormStatusIcon(ServiceFormStatus status) => status switch
+    {
+        ServiceFormStatus.Tamamlandi      => Icons.Material.Filled.CheckCircle,
+        ServiceFormStatus.EksikBilgi      => Icons.Material.Filled.Warning,
+        ServiceFormStatus.Isleniyor       => Icons.Material.Filled.Sync,
+        ServiceFormStatus.DisaAktarildi   => Icons.Material.Filled.DownloadDone,
+        _                                 => Icons.Material.Outlined.Circle
+    };
+
+    private Color GetFormStatusColor(ServiceFormStatus status) => status switch
+    {
+        ServiceFormStatus.Tamamlandi      => Color.Success,
+        ServiceFormStatus.EksikBilgi      => Color.Warning,
+        ServiceFormStatus.Isleniyor       => Color.Info,
+        ServiceFormStatus.DisaAktarildi   => Color.Tertiary,
+        _                                 => Color.Default
+    };
+
+    private static string FormatFileSize(long bytes)
+    {
+        if (bytes >= 1024 * 1024) return $"{bytes / (1024.0 * 1024):N1} MB";
+        if (bytes >= 1024) return $"{bytes / 1024.0:N1} KB";
+        return $"{bytes} B";
+    }
+}

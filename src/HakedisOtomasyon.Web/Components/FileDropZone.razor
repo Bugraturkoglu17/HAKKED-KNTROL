@@ -1,0 +1,96 @@
+@namespace HakedisOtomasyon.Web.Components
+@inject IFilePickerService FilePicker
+@inject ISnackbar Snackbar
+
+<div class="file-drop-zone @(_dragOver ? "drag-over" : "")"
+     @onclick="PickFilesAsync"
+     @ondragover:preventDefault
+     @ondragover="@(() => _dragOver = true)"
+     @ondragleave="@(() => _dragOver = false)"
+     @ondrop:preventDefault
+     @ondrop="OnDropAsync">
+    @if (_picking)
+    {
+        <MudProgressCircular Color="Color.Primary" Size="Size.Small" Indeterminate />
+    }
+    else
+    {
+        <MudStack AlignItems="AlignItems.Center" Spacing="2">
+            <MudIcon Icon="@Icons.Material.Outlined.CloudUpload" Size="Size.Large" Color="Color.Primary" />
+            <MudText Typo="Typo.h6">Dosyaları buraya sürükleyin</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">veya tıklayarak seçin</MudText>
+            <MudChip T="string" Size="Size.Small" Color="Color.Default">PDF, JPG, PNG (maks. 50 MB)</MudChip>
+        </MudStack>
+    }
+</div>
+
+@code {
+    [Parameter] public EventCallback<IReadOnlyList<string>> OnFilesSelected { get; set; }
+
+    private bool _dragOver;
+    private bool _picking;
+
+    private static readonly string[] AllowedExtensions = { ".pdf", ".jpg", ".jpeg", ".png" };
+    private const long MaxBytes = 50L * 1024 * 1024;
+
+    private async Task PickFilesAsync()
+    {
+        if (_picking) return;
+        _picking = true;
+        StateHasChanged();
+        try
+        {
+            var paths = await FilePicker.PickServiceFormFilesAsync();
+            await ProcessPathsAsync(paths);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Dosya seçme hatası: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _picking = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task OnDropAsync(DragEventArgs _)
+    {
+        _dragOver = false;
+        // WPF BlazorWebView'de tarayıcı drag-drop çalışmaz; kullanıcıya yönlendir
+        Snackbar.Add("Sürükle-bırak bu uygulamada desteklenmiyor. Lütfen tıklayarak dosya seçin.", Severity.Info);
+        await Task.CompletedTask;
+    }
+
+    private async Task ProcessPathsAsync(IReadOnlyList<string> paths)
+    {
+        var valid = new List<string>();
+        foreach (var path in paths)
+        {
+            var ext = Path.GetExtension(path).ToLowerInvariant();
+            if (!AllowedExtensions.Contains(ext))
+            {
+                Snackbar.Add($"{Path.GetFileName(path)}: Desteklenmeyen dosya türü (sadece PDF, JPG, PNG).", Severity.Warning);
+                continue;
+            }
+            try
+            {
+                var size = new FileInfo(path).Length;
+                if (size > MaxBytes)
+                {
+                    Snackbar.Add($"{Path.GetFileName(path)}: Dosya boyutu 50 MB'ı aşıyor.", Severity.Warning);
+                    continue;
+                }
+            }
+            catch
+            {
+                Snackbar.Add($"{Path.GetFileName(path)}: Dosyaya erişilemiyor.", Severity.Warning);
+                continue;
+            }
+            valid.Add(path);
+        }
+
+        if (valid.Count > 0)
+            await OnFilesSelected.InvokeAsync(valid);
+    }
+}

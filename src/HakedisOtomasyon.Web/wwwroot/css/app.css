@@ -1,0 +1,267 @@
+/* Hakediş Otomasyonu — Ana CSS */
+
+:root {
+    --mud-appbar-height: 64px;
+}
+
+html, body {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    font-family: 'Roboto', sans-serif;
+}
+
+/* Aktif nav link vurgusu */
+.nav-active {
+    background-color: color-mix(in srgb, var(--mud-palette-primary) 14%, transparent) !important;
+    color: var(--mud-palette-primary) !important;
+    font-weight: 600 !important;
+    border-left: 3px solid var(--mud-palette-primary) !important;
+}
+
+/* Kart hover efekti */
+.mud-card {
+    transition: box-shadow 0.2s ease, transform 0.15s ease;
+}
+
+.mud-card:hover {
+    transform: translateY(-1px);
+}
+
+/* Stat kartları */
+.stat-card {
+    border-left: 4px solid var(--mud-palette-primary);
+}
+
+/* Dosya yükleme alanı */
+.file-drop-zone {
+    border: 2px dashed var(--mud-palette-lines-inputs);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--mud-palette-primary) 5%, transparent);
+    transition: all 0.2s ease;
+    cursor: pointer;
+    min-height: 120px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.file-drop-zone:hover,
+.file-drop-zone.drag-over {
+    border-color: var(--mud-palette-primary);
+    background: color-mix(in srgb, var(--mud-palette-primary) 10%, transparent);
+}
+
+/* PDF görüntüleyici */
+.pdf-viewer-container {
+    border: 1px solid #E0E0E0;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #525659;
+    display: flex;
+    flex-direction: column;
+}
+
+.pdf-viewer-toolbar {
+    background: #3A3A3A;
+    color: white;
+    padding: 6px 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+}
+
+.pdf-viewer-frame {
+    width: 100%;
+    height: 680px;
+    border: none;
+}
+
+/* Form kartı durum renkleri */
+.form-status-bekliyor { border-left: 4px solid #90A4AE; }
+.form-status-isleniyor { border-left: 4px solid #42A5F5; }
+.form-status-eksik { border-left: 4px solid #FFA726; }
+.form-status-tamamlandi { border-left: 4px solid #66BB6A; }
+.form-status-aktarildi { border-left: 4px solid #26C6DA; }
+
+/* İlerleme göstergesi */
+.processing-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+}
+
+/* ─── Servis Kalemleri Tablosu ────────────────────────────────────────── */
+
+/* Yatay kaydırma için sarmalayıcı */
+.service-table-container {
+    overflow-x: auto;
+    width: 100%;
+}
+
+/* Tablo genel */
+.service-items-table {
+    width: 100%;
+}
+
+/* Başlık hücreleri */
+.service-items-table th {
+    background-color: var(--mud-palette-primary) !important;
+    color: #ffffff !important;
+    font-weight: 600 !important;
+    white-space: nowrap;
+    text-align: center !important;
+    vertical-align: middle !important;
+    padding: 6px 4px !important;
+    font-size: 0.78rem !important;
+}
+
+/* Veri hücreleri — tümü ortalı */
+.service-items-table td {
+    vertical-align: middle !important;
+    text-align: center !important;
+    padding: 1px 3px !important;
+    font-size: 0.875rem;
+    color: var(--mud-palette-text-primary);
+}
+
+/* No kolonu */
+.sit-td-no {
+    text-align: center;
+    color: var(--mud-palette-text-secondary);
+    font-size: 0.78rem;
+    font-weight: 600;
+}
+
+/* Açıklama kolonu — yeterli genişlikte, ellipsis + tooltip */
+.sit-td-desc {
+    overflow: hidden;
+    min-width: 160px;
+    text-align: left !important;
+}
+.sit-td-desc .mud-input > input {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Açıklama tooltip */
+.desc-tooltip {
+    max-width: 360px !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+    line-height: 1.5 !important;
+    font-size: 0.8rem !important;
+    z-index: 9999 !important;
+}
+
+/* Sayısal input hücreleri */
+.sit-td-num {
+    text-align: center !important;
+    padding: 2px 4px !important;
+}
+
+/* Sayısal inputlarda metin ortalı */
+.num-right .mud-input > input,
+.num-right .mud-input-slot {
+    text-align: center !important;
+}
+
+/* Birim kolonu */
+.sit-td-unit {
+    text-align: center !important;
+}
+
+/* Fiyat gösterim hücreleri — ortalı */
+.sit-td-price,
+.sit-td-totalprice {
+    text-align: center !important;
+    padding-right: 5px !important;
+}
+
+/* Fiyat metin bloğu — asla alt satıra kırılmaz */
+.price-amount {
+    white-space: nowrap;
+    display: inline-block;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+/* Toplam fiyat vurgusu */
+.price-total {
+    font-weight: 700 !important;
+    color: var(--mud-palette-primary);
+    font-size: 0.9rem;
+}
+
+/* İşlemler kolonu */
+.sit-td-actions {
+    white-space: nowrap;
+    text-align: center !important;
+    padding: 2px 4px !important;
+}
+
+/* Zebra satır rengi */
+.service-items-table .mud-table-body .mud-table-row:nth-child(even) {
+    background-color: var(--mud-palette-table-striped);
+}
+
+/* Hover efekti */
+.service-items-table .mud-table-body .mud-table-row:hover {
+    background-color: var(--mud-palette-table-hover) !important;
+}
+
+/* Fatura kartı */
+.invoice-card {
+    border-left: 4px solid #E65100;
+    background: rgba(230, 81, 0, 0.07);
+}
+
+/* Input numara hizalama */
+.number-input input {
+    text-align: right;
+}
+
+/* Scrollbar özelleştirme */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--mud-palette-background); }
+::-webkit-scrollbar-thumb { background: var(--mud-palette-action-default); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--mud-palette-text-secondary); }
+
+/* Mobil uyum */
+@media (max-width: 960px) {
+    .pdf-viewer-frame { height: 400px; }
+}
+
+/* ─── Tam ekran önizleme dialog ────────────────────────────────────────── */
+.fullscreen-preview-container {
+    width: 100%;
+    height: calc(100vh - 180px);
+    overflow: auto;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    background: #1e1e1e;
+    padding: 16px;
+    box-sizing: border-box;
+}
+
+.fullscreen-preview-pdf {
+    width: 100%;
+    height: 100%;
+    border: none;
+}
+
+.fullscreen-preview-img-wrapper {
+    display: flex;
+    justify-content: center;
+    min-width: 100%;
+    padding-bottom: 16px;
+}

@@ -1,0 +1,920 @@
+﻿@page "/settings"
+@page "/discipline/yangin/settings"
+@page "/discipline/klima/settings"
+@page "/discipline/asansor/settings"
+@page "/discipline/sogutma/settings"
+@using HakedisOtomasyon.Application.DTOs
+@using HakedisOtomasyon.Application.Interfaces
+@using HakedisOtomasyon.Web.Components
+@inject ISettingsService SettingsService
+@inject IDataBackupService DataBackupService
+@inject IDataRecoveryService DataRecoveryService
+@inject IFilePickerService FilePicker
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject IAppPathService AppPath
+@inject IFileCleanupService CleanupService
+@inject IPosMappingService PosMapping
+@inject IDesktopFileService DesktopFiles
+@inject IDisciplineProfileService DisciplineProfileService
+@inject HakedisOtomasyon.Infrastructure.Services.CurrentDisciplineService CurrentDiscipline
+
+<PageTitle>Ayarlar — Servis Otomasyonu</PageTitle>
+
+<MudText Typo="Typo.h5" Style="font-weight:700" Class="mb-1">
+    Servis Otomasyonu / @(_activeProfile?.DisplayName ?? "Yangın") Ayarları
+</MudText>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+    Aşağıdaki ayarlar mevcut çalışan sistem içindir. Yangın disiplinine özel klasör kısayolları en altta yer alır.
+</MudText>
+
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate Color="Color.Primary" />
+}
+else
+{
+    <MudGrid Spacing="3">
+        <!-- Varsayılan Değerler -->
+        <MudItem xs="12" md="6">
+            <MudCard Elevation="2">
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudStack Row AlignItems="AlignItems.Center" Spacing="1">
+                            <MudIcon Icon="@Icons.Material.Filled.Tune" Color="Color.Primary" />
+                            <MudText Typo="Typo.h6">Varsayılan Değerler</MudText>
+                        </MudStack>
+                    </CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent>
+                    <MudNumericField T="decimal" @bind-Value="_serviceFee"
+                                     Label="Varsayılan Servis Ücreti (TL)" Variant="Variant.Outlined"
+                                     Min="0" Format="N2"
+                                     HelperText="Her yeni formda otomatik eklenir" />
+                    <MudNumericField T="decimal" @bind-Value="_markupRate"
+                                     Label="Fatura Ek Oranı (örn: 0.10 = %10)" Variant="Variant.Outlined"
+                                     Min="0" Max="1" Format="N4"
+                                     Class="mt-3"
+                                     HelperText="Fatura +%10 hesaplamasında kullanılır" />
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+
+        <!-- Şirket Bilgileri -->
+        <MudItem xs="12" md="6">
+            <MudCard Elevation="2">
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudStack Row AlignItems="AlignItems.Center" Spacing="1">
+                            <MudIcon Icon="@Icons.Material.Filled.Business" Color="Color.Primary" />
+                            <MudText Typo="Typo.h6">Şirket Bilgileri</MudText>
+                        </MudStack>
+                    </CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent>
+                    <MudTextField @bind-Value="_companyName"
+                                  Label="Şirket Adı" Variant="Variant.Outlined"
+                                  Placeholder="Örn: SİSMİK"
+                                  MaxLength="200"
+                                  HelperText="Excel başlığında görünür" />
+                    <MudTextField @bind-Value="_companyAddress"
+                                  Label="Adres" Variant="Variant.Outlined"
+                                  MaxLength="500" Lines="2" Class="mt-3" />
+                    <MudTextField @bind-Value="_companyPhone"
+                                  Label="Telefon" Variant="Variant.Outlined"
+                                  MaxLength="50" Class="mt-3" />
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+
+        <!-- Excel Çıktı Yolu -->
+        <MudItem xs="12">
+            <MudCard Elevation="2">
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudStack Row AlignItems="AlignItems.Center" Spacing="1">
+                            <MudIcon Icon="@Icons.Material.Filled.FolderOpen" Color="Color.Primary" />
+                            <MudText Typo="Typo.h6">Depolama</MudText>
+                        </MudStack>
+                    </CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent>
+                    <MudTextField @bind-Value="_excelOutputPath"
+                                  Label="Excel Çıktı Klasörü (opsiyonel)"
+                                  Variant="Variant.Outlined"
+                                  HelperText="Boş bırakılırsa uygulama klasörü kullanılır" />
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+
+        <!-- Excel Görsel Kalitesi -->
+        <MudItem xs="12" md="6">
+            <MudCard Elevation="2">
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudStack Row AlignItems="AlignItems.Center" Spacing="1">
+                            <MudIcon Icon="@Icons.Material.Filled.Image" Color="Color.Primary" />
+                            <MudText Typo="Typo.h6">Excel Görsel Kalitesi</MudText>
+                        </MudStack>
+                    </CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+                        Excel'e eklenecek servis formu ve fatura görselleri için kalite ve boyut ayarı.
+                        Teknik tablo görselleri (BDKF/BDTX/FLEXIVA) her zaman Yüksek Okunurluk kalitesinde eklenir.
+                    </MudText>
+                    <MudRadioGroup T="string" @bind-Value="_excelImageQuality">
+                        <MudRadio T="string" Value="@("low")" Color="Color.Default">
+                            <MudStack Spacing="0">
+                                <MudText Typo="Typo.body1"><b>Düşük Boyut</b></MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">Maks. 1200 px — JPEG kalite 70 — Küçük dosya boyutu</MudText>
+                            </MudStack>
+                        </MudRadio>
+                        <MudRadio T="string" Value="@("standard")" Color="Color.Primary">
+                            <MudStack Spacing="0">
+                                <MudText Typo="Typo.body1"><b>Standart</b> <MudChip T="string" Size="Size.Small" Color="Color.Primary" Class="ml-1">Önerilen</MudChip></MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">Maks. 1600 px — JPEG kalite 80 — Okunurluk ve boyut dengesi</MudText>
+                            </MudStack>
+                        </MudRadio>
+                        <MudRadio T="string" Value="@("high")" Color="Color.Success">
+                            <MudStack Spacing="0">
+                                <MudText Typo="Typo.body1"><b>Yüksek Okunurluk</b></MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">Maks. 2000 px — JPEG kalite 85 — Servis formu okunamıyorsa seçin</MudText>
+                            </MudStack>
+                        </MudRadio>
+                    </MudRadioGroup>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+
+        <!-- Kaydet Butonu -->
+        <MudItem xs="12">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.Save"
+                       Size="Size.Large"
+                       OnClick="SaveAsync">
+                Ayarları Kaydet
+            </MudButton>
+        </MudItem>
+
+        <!-- POS Tablosu — SADECE Yangın disiplini için görünür -->
+        @if (CurrentDiscipline.CurrentDiscipline == MechanicalDiscipline.Fire)
+        {
+            <MudItem xs="12">
+                <MudCard Elevation="2">
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudStack Row AlignItems="AlignItems.Center" Spacing="1">
+                                <MudIcon Icon="@Icons.Material.Filled.Tag" Color="Color.Primary" />
+                                <MudText Typo="Typo.h6">POS Numarası Tablosu</MudText>
+                            </MudStack>
+                        </CardHeaderContent>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        <MudAlert Severity="Severity.Info" Dense Class="mb-3">
+                            Eksik POS numarası varsa POS tablosunu açarak ilgili satırın POS hücresini
+                            düzenleyebilirsiniz. Değişiklikten sonra kaydedip tekrar Excel export almaniz yeterlidir.
+                        </MudAlert>
+                        <MudText Typo="Typo.caption" Class="mb-2">Dosya: <b>@PosMapping.PosFilePath</b></MudText>
+                        <MudStack Row Spacing="2" Wrap="Wrap.Wrap" Class="mt-2">
+                            <MudButton StartIcon="@Icons.Material.Filled.TableChart" Variant="Variant.Filled" Color="Color.Primary" OnClick="OpenPosFileAsync">
+                                POS Tablosunu Aç
+                            </MudButton>
+                            <MudButton StartIcon="@Icons.Material.Filled.Refresh" Variant="Variant.Outlined" Color="Color.Secondary" Disabled="_posRefreshing" OnClick="ReloadPosMapAsync">
+                                @(_posRefreshing ? "Yenileniyor..." : "POS Tablosunu Yenile")
+                            </MudButton>
+                        </MudStack>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        }
+
+        <!-- Veri Klasörü -->
+        <MudItem xs="12">
+            <MudCard Elevation="2">
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6">Veri Klasörü</MudText>
+                    </CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent>
+                    <MudGrid Spacing="2">
+                        <MudItem xs="12">
+                            <MudTextField Label="Aktif Veri Klasörü" Value="@AppPath.DataRootPath"
+                                          ReadOnly Variant="Variant.Outlined" FullWidth
+                                          Adornment="Adornment.End"
+                                          AdornmentIcon="@Icons.Material.Filled.FolderOpen"
+                                          OnAdornmentClick="OpenDataFolder" />
+                        </MudItem>
+                        <MudItem xs="12">
+                            <MudTextField Label="Veritabanı Konumu" Value="@AppPath.DatabasePath"
+                                          ReadOnly Variant="Variant.Outlined" FullWidth />
+                        </MudItem>
+                        @if (_folderSizes is not null)
+                        {
+                            <MudItem xs="12" sm="3">
+                                <MudPaper Elevation="0" Class="pa-2 mud-background-gray rounded">
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">Toplam Boyut</MudText>
+                                    <MudText Typo="Typo.body1"><b>@_folderSizes["Toplam"]</b></MudText>
+                                </MudPaper>
+                            </MudItem>
+                            <MudItem xs="12" sm="3">
+                                <MudPaper Elevation="0" Class="pa-2 mud-background-gray rounded">
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">Servis Formları</MudText>
+                                    <MudText Typo="Typo.body1">@_folderSizes["Servis Formları"]</MudText>
+                                </MudPaper>
+                            </MudItem>
+                            <MudItem xs="12" sm="3">
+                                <MudPaper Elevation="0" Class="pa-2 mud-background-gray rounded">
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">Faturalar</MudText>
+                                    <MudText Typo="Typo.body1">@_folderSizes["Faturalar"]</MudText>
+                                </MudPaper>
+                            </MudItem>
+                            <MudItem xs="12" sm="3">
+                                <MudPaper Elevation="0" Class="pa-2 mud-background-gray rounded">
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">Excel Çıktıları</MudText>
+                                    <MudText Typo="Typo.body1">@_folderSizes["Excel Çıktıları"]</MudText>
+                                </MudPaper>
+                            </MudItem>
+                        }
+                        <MudItem xs="12">
+                            <MudStack Row Spacing="2" Wrap="Wrap.Wrap">
+                                <MudButton StartIcon="@Icons.Material.Filled.FolderOpen"
+                                           Variant="Variant.Outlined" Color="Color.Primary"
+                                           OnClick="OpenDataFolder">
+                                    Veri Klasörünü Aç
+                                </MudButton>
+                                <MudButton StartIcon="@Icons.Material.Filled.DriveFileMove"
+                                           Variant="Variant.Outlined" Color="Color.Secondary"
+                                           OnClick="ChangeDataFolderAsync"
+                                           Disabled="_folderChangeBusy">
+                                    Veri Klasörü Değiştir
+                                </MudButton>
+                                <MudButton StartIcon="@Icons.Material.Filled.Refresh"
+                                           Variant="Variant.Text" Color="Color.Default"
+                                           OnClick="RefreshFolderSizesAsync">
+                                    Boyutları Yenile
+                                </MudButton>
+                            </MudStack>
+                        </MudItem>
+                        @if (!string.IsNullOrEmpty(_folderChangeStatus))
+                        {
+                            <MudItem xs="12">
+                                <MudAlert Severity="Severity.Info">@_folderChangeStatus</MudAlert>
+                            </MudItem>
+                        }
+                    </MudGrid>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+
+        <!-- Veri Yönetimi -->
+        <MudItem xs="12">
+            <MudCard Elevation="2">
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudStack Row AlignItems="AlignItems.Center" Spacing="1">
+                            <MudIcon Icon="@Icons.Material.Filled.Backup" Color="Color.Secondary" />
+                            <MudText Typo="Typo.h6">Veri Yönetimi</MudText>
+                        </MudStack>
+                    </CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+                        Mağaza listesi ve birim fiyat listesini farklı bir PC'ye taşımak veya yedeklemek için kullanın.
+                    </MudText>
+
+                    <MudGrid Spacing="2">
+                        <!-- Ana Veri Dışa Aktar -->
+                        <MudItem xs="12" sm="6">
+                            <MudButton FullWidth Variant="Variant.Outlined" Color="Color.Primary"
+                                       StartIcon="@Icons.Material.Filled.Upload"
+                                       Size="Size.Large"
+                                       Disabled="_backupBusy"
+                                       OnClick="ExportMasterDataAsync">
+                                Ana Veriyi Dışa Aktar
+                            </MudButton>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-1">
+                                Mağaza + fiyat listesi → Masaüstü'ne ZIP
+                            </MudText>
+                        </MudItem>
+
+                        <!-- Ana Veri İçeri Aktar -->
+                        <MudItem xs="12" sm="6">
+                            <MudButton FullWidth Variant="Variant.Outlined" Color="Color.Success"
+                                       StartIcon="@Icons.Material.Filled.Download"
+                                       Size="Size.Large"
+                                       Disabled="_backupBusy"
+                                       OnClick="ImportMasterDataAsync">
+                                Ana Veriyi İçeri Aktar
+                            </MudButton>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-1">
+                                ZIP seç → önizle → veritabanına aktar
+                            </MudText>
+                        </MudItem>
+
+                        <!-- Tam Yedek Al -->
+                        <MudItem xs="12" sm="6">
+                            <MudButton FullWidth Variant="Variant.Outlined" Color="Color.Warning"
+                                       StartIcon="@Icons.Material.Filled.Archive"
+                                       Size="Size.Large"
+                                       Disabled="_backupBusy"
+                                       OnClick="CreateFullBackupAsync">
+                                Tam Yedek Al
+                            </MudButton>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-1">
+                                Veritabanı + yüklemeler → Masaüstü'ne ZIP
+                            </MudText>
+                        </MudItem>
+
+                        <!-- Tam Yedekten Geri Yükle -->
+                        <MudItem xs="12" sm="6">
+                            <MudButton FullWidth Variant="Variant.Outlined" Color="Color.Error"
+                                       StartIcon="@Icons.Material.Filled.RestorePage"
+                                       Size="Size.Large"
+                                       Disabled="_backupBusy"
+                                       OnClick="RestoreFullBackupAsync">
+                                Tam Yedekten Geri Yükle
+                            </MudButton>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-1">
+                                ZIP seç → mevcut verinin üzerine yaz
+                            </MudText>
+                        </MudItem>
+
+                        <!-- Veri Klasörünü Aç -->
+                        <MudItem xs="12">
+                            <MudButton Variant="Variant.Text" Color="Color.Default"
+                                       StartIcon="@Icons.Material.Filled.FolderOpen"
+                                       OnClick="OpenDataFolder">
+                                Veri Klasörünü Aç
+                            </MudButton>
+                        </MudItem>
+
+                        <!-- Eski Database'den Kurtarma -->
+                        <MudItem xs="12">
+                            <MudDivider Class="my-1" />
+                            <MudButton FullWidth Variant="Variant.Outlined" Color="Color.Warning"
+                                       StartIcon="@Icons.Material.Filled.Restore"
+                                       Size="Size.Large"
+                                       Disabled="_backupBusy"
+                                       OnClick="OpenRecoveryDialogAsync">
+                                Eski Database'den Mağaza / Fiyat Kurtar
+                            </MudButton>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-1">
+                                Eski hakedis.db dosyasını tarayarak mağaza ve fiyat kalemlerini geri yükler
+                            </MudText>
+                        </MudItem>
+                    </MudGrid>
+
+                    @if (_backupBusy)
+                    {
+                        <MudProgressLinear Indeterminate Color="Color.Primary" Class="mt-3" />
+                        <MudText Typo="Typo.caption" Class="mt-1">@_backupStatus</MudText>
+                    }
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+
+        <!-- ─── Dosya Arşivi ─────────────────────────────────────── -->
+        <MudItem xs="12">
+            <MudCard>
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6">Dosya Arşivi</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">
+                            Silinen ve eski export dosyaları arşiv klasörüne taşınır.
+                            Belirtilen süreden eski arşiv dosyaları otomatik temizlenir.
+                        </MudText>
+                    </CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent>
+                    <MudGrid>
+                        <!-- Arşiv saklama süresi -->
+                        <MudItem xs="12" sm="6">
+                            <MudSelect T="string" Label="Arşiv Saklama Süresi"
+                                       @bind-Value="_archiveRetentionValue"
+                                       Variant="Variant.Outlined"
+                                       HelperText="0 = Süresiz sakla">
+                                <MudSelectItem Value="@("7")">7 gün</MudSelectItem>
+                                <MudSelectItem Value="@("15")">15 gün</MudSelectItem>
+                                <MudSelectItem Value="@("30")">30 gün (önerilen)</MudSelectItem>
+                                <MudSelectItem Value="@("60")">60 gün</MudSelectItem>
+                                <MudSelectItem Value="@("90")">90 gün</MudSelectItem>
+                                <MudSelectItem Value="@("0")">Süresiz</MudSelectItem>
+                            </MudSelect>
+                        </MudItem>
+                        <MudItem xs="12" sm="6" Class="d-flex align-center">
+                            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                                       StartIcon="@Icons.Material.Filled.Save"
+                                       OnClick="SaveArchiveRetentionAsync">
+                                Kaydet
+                            </MudButton>
+                        </MudItem>
+
+                        <!-- Arşivi Temizle -->
+                        <MudItem xs="12" sm="6">
+                            <MudButton FullWidth Variant="Variant.Outlined" Color="Color.Warning"
+                                       StartIcon="@Icons.Material.Filled.CleaningServices"
+                                       Size="Size.Large"
+                                       Disabled="_archiveBusy"
+                                       OnClick="CleanArchiveAsync">
+                                Arşivi Şimdi Temizle
+                            </MudButton>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-1">
+                                Ayarlanan süreden eski arşiv dosyalarını siler
+                            </MudText>
+                        </MudItem>
+
+                        <!-- Arşiv Klasörünü Aç -->
+                        <MudItem xs="12" sm="6">
+                            <MudButton Variant="Variant.Text" Color="Color.Default"
+                                       StartIcon="@Icons.Material.Filled.FolderOpen"
+                                       OnClick="OpenArchiveFolderAsync">
+                                Arşiv Klasörünü Aç
+                            </MudButton>
+                        </MudItem>
+                    </MudGrid>
+
+                    @if (_archiveBusy)
+                    {
+                        <MudProgressLinear Indeterminate Color="Color.Warning" Class="mt-3" />
+                        <MudText Typo="Typo.caption" Class="mt-1">@_archiveStatus</MudText>
+                    }
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+
+        <!-- ─── Aktif Disiplin Klasörleri ─────────────────────────── -->
+        <MudItem xs="12">
+            <MudCard Elevation="2" Style="@($"border-left:4px solid {_activeProfile?.ThemeColor ?? "#B3261E"}")">
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudStack Row AlignItems="AlignItems.Center" Spacing="1">
+                            <MudIcon Icon="@Icons.Material.Filled.LocalFireDepartment" Style="@($"color:{_activeProfile?.ThemeColor ?? "#B3261E"}")" />
+                            <MudText Typo="Typo.h6">@(_activeProfile?.DisplayName ?? "Yangın") Disiplin Klasörleri</MudText>
+                        </MudStack>
+                    </CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+                        Desktop\SERVİS OTOMASYONU DATABASE\Disciplines\@(_activeProfile?.DataFolderName ?? "Yangin") altındaki
+                        klasörleri açar. Referans tablolar gerçekten buradan okunur.
+                        Servis formu/fatura/export dosyaları hem eski konumda hem burada (yansı kopya) tutulur.
+                    </MudText>
+                    <MudStack Row Spacing="2" Wrap="Wrap.Wrap">
+                        <MudButton StartIcon="@Icons.Material.Filled.FolderOpen" Variant="Variant.Outlined" Color="Color.Default"
+                                   OnClick="OpenMasterDataFolder">
+                            @(_activeProfile?.DisplayName) MasterData Klasörünü Aç
+                        </MudButton>
+                        @if (CurrentDiscipline.CurrentDiscipline == MechanicalDiscipline.Fire)
+                        {
+                            <MudButton StartIcon="@Icons.Material.Filled.Tag" Variant="Variant.Outlined" Color="Color.Default"
+                                       OnClick="OpenPosFileOrFolder">
+                                @(_activeProfile?.DisplayName) POS Tablosunu Aç
+                            </MudButton>
+                        }
+                        <MudButton StartIcon="@Icons.Material.Filled.MenuBook" Variant="Variant.Outlined" Color="Color.Default"
+                                   OnClick="OpenReferenceTablesFolder">
+                            @(_activeProfile?.DisplayName) Referans Tablolarını Aç
+                        </MudButton>
+                        <MudButton StartIcon="@Icons.Material.Filled.Description" Variant="Variant.Outlined" Color="Color.Default"
+                                   OnClick="OpenServiceFormsFolder">
+                            @(_activeProfile?.DisplayName) Servis Formları Klasörünü Aç
+                        </MudButton>
+                        <MudButton StartIcon="@Icons.Material.Filled.Receipt" Variant="Variant.Outlined" Color="Color.Default"
+                                   OnClick="OpenInvoicesFolder">
+                            @(_activeProfile?.DisplayName) Fatura Klasörünü Aç
+                        </MudButton>
+                        <MudButton StartIcon="@Icons.Material.Filled.Folder" Variant="Variant.Outlined" Color="Color.Default"
+                                   OnClick="OpenExportsFolder">
+                            @(_activeProfile?.DisplayName) Export Klasörünü Aç
+                        </MudButton>
+                    </MudStack>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    private bool _posRefreshing = false;
+    private bool _loading = true;
+    private decimal _serviceFee;
+    private decimal _markupRate;
+    private string _companyName = string.Empty;
+    private string _companyAddress = string.Empty;
+    private string _companyPhone = string.Empty;
+    private string _excelOutputPath = string.Empty;
+
+    private bool _backupBusy;
+    private string _backupStatus = string.Empty;
+    private bool _folderChangeBusy;
+    private string _folderChangeStatus = string.Empty;
+    private Dictionary<string, string>? _folderSizes;
+
+    // ─── Arşiv ──────────────────────────────────────────────────────────
+    private string _archiveRetentionValue = "30";
+    private bool _archiveBusy;
+    private string _archiveStatus = string.Empty;
+
+    // ─── Excel Görsel Kalitesi ────────────────────────────────────────────
+    private string _excelImageQuality = "standard";
+
+    // ─── Disiplin (Yangın) ────────────────────────────────────────────────
+    private HakedisOtomasyon.Domain.Models.DisciplineProfile? _activeProfile;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _activeProfile = DisciplineProfileService.GetAll()
+            .FirstOrDefault(p => p.Discipline == CurrentDiscipline.CurrentDiscipline);
+
+        _serviceFee = await SettingsService.GetDecimalAsync(SettingKeys.DefaultServiceFee, 4550m);
+        _markupRate = await SettingsService.GetDecimalAsync(SettingKeys.InvoiceMarkupRate, 0.10m);
+        // Eski varsayılan değer "Şirket Adı" gerçek veri değil; boş kabul et
+        var rawCompany = await SettingsService.GetAsync(SettingKeys.CompanyName);
+        _companyName = rawCompany == "Şirket Adı" ? string.Empty : rawCompany;
+        _companyAddress = await SettingsService.GetAsync(SettingKeys.CompanyAddress);
+        _companyPhone = await SettingsService.GetAsync(SettingKeys.CompanyPhone);
+        _excelOutputPath = await SettingsService.GetAsync(SettingKeys.ExcelOutputPath);
+        _archiveRetentionValue = await SettingsService.GetAsync(SettingKeys.ArchiveRetentionDays, "30");
+        _excelImageQuality = await SettingsService.GetAsync(SettingKeys.ExcelImageQuality, "standard");
+        _loading = false;
+        await RefreshFolderSizesAsync();
+    }
+
+    private async Task SaveAsync()
+    {
+        try
+        {
+            await SettingsService.SetAsync(SettingKeys.DefaultServiceFee,
+                _serviceFee.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            await SettingsService.SetAsync(SettingKeys.InvoiceMarkupRate,
+                _markupRate.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            await SettingsService.SetAsync(SettingKeys.CompanyName, _companyName);
+            await SettingsService.SetAsync(SettingKeys.CompanyAddress, _companyAddress);
+            await SettingsService.SetAsync(SettingKeys.CompanyPhone, _companyPhone);
+            await SettingsService.SetAsync(SettingKeys.ExcelOutputPath, _excelOutputPath);
+            await SettingsService.SetAsync(SettingKeys.ExcelImageQuality, _excelImageQuality);
+            Snackbar.Add("Ayarlar kaydedildi.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Hata: {ex.Message}", Severity.Error);
+        }
+    }
+
+    // ─── Veri Yönetimi ────────────────────────────────────────────────────
+
+    private async Task ExportMasterDataAsync()
+    {
+        _backupBusy = true;
+        _backupStatus = "Dışa aktarılıyor...";
+        try
+        {
+            var path = await DataBackupService.ExportMasterDataAsync();
+            Snackbar.Add($"Ana veri başarıyla dışa aktarıldı. → {System.IO.Path.GetFileName(path)}", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Dışa aktarma hatası: {ex.Message}", Severity.Error);
+        }
+        finally { _backupBusy = false; _backupStatus = string.Empty; }
+    }
+
+    private async Task ImportMasterDataAsync()
+    {
+        var files = await FilePicker.PickFilesAsync("Ana veri paketi|*.zip", multiselect: false);
+        if (files.Count == 0) return;
+
+        _backupBusy = true;
+        _backupStatus = "Önizleme hazırlanıyor...";
+        try
+        {
+            var preview = await DataBackupService.PreviewImportAsync(files[0]);
+
+            var parameters = new DialogParameters<ImportPreviewDialog>
+            {
+                { x => x.Preview, preview }
+            };
+            var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true };
+            var dialog = await DialogService.ShowAsync<ImportPreviewDialog>("İçe Aktarma Önizlemesi", parameters, options);
+            var result = await dialog.Result;
+
+            if (result is null || result.Canceled) return;
+
+            var mode = (ImportMode)result.Data!;
+            _backupStatus = "İçe aktarılıyor...";
+
+            var importResult = await DataBackupService.ApplyImportAsync(preview, mode);
+            Snackbar.Add(importResult.Summary, Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"İçe aktarma hatası: {ex.Message}", Severity.Error);
+        }
+        finally { _backupBusy = false; _backupStatus = string.Empty; }
+    }
+
+    private async Task CreateFullBackupAsync()
+    {
+        _backupBusy = true;
+        _backupStatus = "Tam yedek oluşturuluyor... (büyük dosyalar zaman alabilir)";
+        try
+        {
+            var path = await DataBackupService.CreateFullBackupAsync();
+            Snackbar.Add($"Tam yedek başarıyla alındı. → {System.IO.Path.GetFileName(path)}", Severity.Success);
+        }
+        catch (PartialBackupException pex)
+        {
+            Snackbar.Add(
+                $"Yedek alındı ancak açık olan bazı dosyalar kopyalanamadı. Lütfen açık Excel/görselleri kapatıp tekrar deneyin. → {System.IO.Path.GetFileName(pex.BackupPath)}",
+                Severity.Warning,
+                cfg => { cfg.VisibleStateDuration = 8000; });
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Yedekleme hatası: {ex.Message}", Severity.Error);
+        }
+        finally { _backupBusy = false; _backupStatus = string.Empty; }
+    }
+
+    private async Task RestoreFullBackupAsync()
+    {
+        var confirm = await DialogService.ShowMessageBox(
+            "Tam Yedekten Geri Yükle",
+            "Geri yükleme için uygulama yeniden başlatılacaktır. Mevcut veriler yedekteki verilerle değiştirilecek. Devam etmek istiyor musunuz?",
+            yesText: "Evet, Geri Yükle ve Yeniden Başlat",
+            cancelText: "İptal");
+
+        if (confirm != true) return;
+
+        var files = await FilePicker.PickFilesAsync("Tam yedek|*.zip", multiselect: false);
+        if (files.Count == 0) return;
+
+        _backupBusy = true;
+        _backupStatus = "Geri yükleme planlanıyor...";
+        try
+        {
+            DataBackupService.ScheduleFullRestore(files[0]);
+
+            await DialogService.ShowMessageBox(
+                "Uygulama Kapanıyor",
+                "Veritabanı kullanımda olduğu için geri yükleme uygulama yeniden başlatılarak tamamlanacaktır. Uygulama şimdi kapanacak. Lütfen uygulamayı tekrar açın — açıldığında geri yükleme otomatik tamamlanacaktır.",
+                yesText: "Tamam");
+
+            // Uygulamayı kapat — pending-restore.json marker sayesinde
+            // bir sonraki açılışta DbContext başlamadan önce geri yükleme yapılır.
+            System.Windows.Application.Current.Shutdown();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Geri yükleme planlanamadı: {ex.Message}", Severity.Error);
+        }
+        finally { _backupBusy = false; _backupStatus = string.Empty; }
+    }
+
+    private void OpenDataFolder()
+    {
+        try { DataBackupService.OpenDataFolder(); }
+        catch (Exception ex) { Snackbar.Add($"Klasör açılamadı: {ex.Message}", Severity.Error); }
+    }
+
+    // ─── Kurtarma ─────────────────────────────────────────────────────────
+
+    private async Task OpenRecoveryDialogAsync()
+    {
+        _backupBusy = true;
+        _backupStatus = "Eski veritabanları taranıyor...";
+        StateHasChanged();
+        DataRecoveryScanResult? scanResult = null;
+        try
+        {
+            scanResult = await DataRecoveryService.ScanForRecoverySourcesAsync();
+        }
+        catch { }
+        finally { _backupBusy = false; _backupStatus = string.Empty; }
+
+        var parameters = new DialogParameters<DataRecoveryDialog>
+        {
+            { x => x.ScanResult, scanResult }
+        };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true };
+        await DialogService.ShowAsync<DataRecoveryDialog>("Veri Kurtarma", parameters, options);
+    }
+
+    // ─── Veri Klasörü ─────────────────────────────────────────────────────
+
+    private Task RefreshFolderSizesAsync()
+    {
+        try
+        {
+            long total = GetDirSize(AppPath.DataRootPath);
+
+            long serviceFormsTotal = 0, invoicesTotal = 0, excelTotal = 0;
+            if (System.IO.Directory.Exists(AppPath.HakedislerPath))
+            {
+                foreach (var yearDir in System.IO.Directory.EnumerateDirectories(AppPath.HakedislerPath))
+                    foreach (var monthDir in System.IO.Directory.EnumerateDirectories(yearDir))
+                    {
+                        serviceFormsTotal += GetDirSize(System.IO.Path.Combine(monthDir, "Servis Formları"));
+                        invoicesTotal += GetDirSize(System.IO.Path.Combine(monthDir, "Faturalar"));
+                        excelTotal += GetDirSize(System.IO.Path.Combine(monthDir, "Excel Çıktıları"));
+                    }
+            }
+
+            _folderSizes = new Dictionary<string, string>
+            {
+                ["Toplam"] = FormatBytes(total),
+                ["Servis Formları"] = FormatBytes(serviceFormsTotal),
+                ["Faturalar"] = FormatBytes(invoicesTotal),
+                ["Excel Çıktıları"] = FormatBytes(excelTotal),
+            };
+        }
+        catch
+        {
+            _folderSizes = null;
+        }
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private static long GetDirSize(string path)
+    {
+        if (!System.IO.Directory.Exists(path)) return 0;
+        return new System.IO.DirectoryInfo(path)
+            .EnumerateFiles("*", System.IO.SearchOption.AllDirectories)
+            .Sum(f => f.Length);
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+        if (bytes < 1024L * 1024 * 1024) return $"{bytes / 1024.0 / 1024.0:F1} MB";
+        return $"{bytes / 1024.0 / 1024.0 / 1024.0:F2} GB";
+    }
+
+    private async Task ChangeDataFolderAsync()
+    {
+        var selected = await FilePicker.PickFolderAsync("Yeni HAKEDİŞ DATABASE klasörünü seçin");
+        if (string.IsNullOrWhiteSpace(selected)) return;
+
+        // Taşıma mı yoksa sadece bağlama mı?
+        var moveResult = await DialogService.ShowMessageBox(
+            "Veri Klasörü Değiştir",
+            $"Seçilen klasör:\n{selected}\n\nMevcut veriler yeni klasöre taşınsın mı?",
+            yesText: "Evet, Verileri Taşı",
+            noText: "Hayır, Sadece Bağla",
+            cancelText: "İptal");
+
+        if (moveResult is null) return; // İptal
+
+        bool move = moveResult == true;
+
+        _folderChangeBusy = true;
+        _folderChangeStatus = move ? "Veriler taşınıyor, lütfen bekleyin..." : "Yeni klasöre bağlanılıyor...";
+        StateHasChanged();
+        try
+        {
+            await AppPath.ChangeDataRootAsync(selected, moveExistingData: move);
+            Snackbar.Add(
+                "Veri klasörü değiştirildi. Değişikliklerin tam olarak geçerli olması için uygulamayı yeniden başlatın.",
+                Severity.Warning,
+                cfg => cfg.VisibleStateDuration = 8000);
+            await RefreshFolderSizesAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Klasör değiştirme hatası: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _folderChangeBusy = false;
+            _folderChangeStatus = string.Empty;
+            StateHasChanged();
+        }
+    }
+
+    // ─── Arşiv yönetimi ─────────────────────────────────────────────────
+
+    private async Task SaveArchiveRetentionAsync()
+    {
+        await SettingsService.SetAsync(SettingKeys.ArchiveRetentionDays, _archiveRetentionValue);
+        Snackbar.Add("Arşiv saklama süresi kaydedildi.", Severity.Success);
+    }
+
+    private async Task CleanArchiveAsync()
+    {
+        var retentionStr = _archiveRetentionValue;
+        if (!int.TryParse(retentionStr, out var days) || days <= 0)
+        {
+            Snackbar.Add("Süresiz seçiliyken temizleme yapılmaz.", Severity.Info);
+            return;
+        }
+
+        var confirm = await DialogService.ShowMessageBox(
+            "Arşivi Temizle",
+            $"{days} günden eski arşiv dosyaları kalıcı olarak silinecek. Devam edilsin mi?",
+            "Evet, Temizle", cancelText: "İptal");
+        if (confirm != true) return;
+
+        _archiveBusy = true;
+        _archiveStatus = "Arşiv temizleniyor...";
+        StateHasChanged();
+        try
+        {
+            var deleted = await CleanupService.CleanupArchiveOlderThanAsync(days);
+            Snackbar.Add($"Arşiv temizlendi: {deleted} dosya silindi.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Temizleme hatası: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _archiveBusy = false;
+            _archiveStatus = string.Empty;
+            StateHasChanged();
+        }
+    }
+
+    // --- POS Tablosu ---
+    private void OpenPosFileAsync()
+    {
+        try { DesktopFiles.OpenFile(PosMapping.PosFilePath); }
+        catch { Snackbar.Add("POS dosyası açılamadı.", Severity.Error); }
+    }
+
+    private async Task ReloadPosMapAsync()
+    {
+        _posRefreshing = true; StateHasChanged(); await Task.Delay(50);
+        try { PosMapping.Reload(); Snackbar.Add("POS tablosu yenilendi.", Severity.Success); }
+        catch (Exception ex) { Snackbar.Add($"POS yenileme hatası: {ex.Message}", Severity.Error); }
+        finally { _posRefreshing = false; StateHasChanged(); }
+    }
+
+    private void OpenArchiveFolderAsync()
+    {
+        var now = DateTime.Now;
+        var archivePath = AppPath.GetArchiveFolder(now.Year, now.Month);
+        // En üst arşiv dizinini aç (Hakedişler altındaki Arşiv klasörlerini göster)
+        var hakedislerPath = AppPath.HakedislerPath;
+        if (System.IO.Directory.Exists(hakedislerPath))
+        {
+            try { System.Diagnostics.Process.Start("explorer.exe", hakedislerPath); }
+            catch { Snackbar.Add("Klasör açılamadı.", Severity.Error); }
+        }
+        else
+        {
+            Snackbar.Add("Hakedişler klasörü bulunamadı.", Severity.Warning);
+        }
+    }
+
+    // ─── Aktif Disiplin Klasörleri ──────────────────────────────────────
+    // Yangın içindeyken Yangın klasörlerini, Klima içindeyken Klima klasörlerini açar.
+
+    private void OpenMasterDataFolder() =>
+        TryOpenFolder(DisciplineProfileService.GetMasterDataPath(CurrentDiscipline.CurrentDiscipline));
+
+    private void OpenExportsFolder() =>
+        TryOpenFolder(DisciplineProfileService.GetExportsPath(CurrentDiscipline.CurrentDiscipline));
+
+    private void OpenReferenceTablesFolder() =>
+        TryOpenFolder(DisciplineProfileService.GetReferenceTablesPath(CurrentDiscipline.CurrentDiscipline));
+
+    private void OpenServiceFormsFolder() =>
+        TryOpenFolder(DisciplineProfileService.GetServiceFormsPath(CurrentDiscipline.CurrentDiscipline));
+
+    private void OpenInvoicesFolder() =>
+        TryOpenFolder(DisciplineProfileService.GetInvoicesPath(CurrentDiscipline.CurrentDiscipline));
+
+    private void OpenPosFileOrFolder()
+    {
+        // POS dosyası aktif disiplinin MasterData klasöründe — dosyayı direkt aç,
+        // yoksa (henüz oluşturulmadıysa) en azından klasörü aç.
+        try
+        {
+            if (System.IO.File.Exists(PosMapping.PosFilePath))
+                DesktopFiles.OpenFile(PosMapping.PosFilePath);
+            else
+                TryOpenFolder(DisciplineProfileService.GetMasterDataPath(CurrentDiscipline.CurrentDiscipline));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"POS dosyası açılamadı: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private void TryOpenFolder(string path)
+    {
+        try
+        {
+            System.IO.Directory.CreateDirectory(path);
+            DesktopFiles.OpenFolder(path);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Klasör açılamadı: {ex.Message}", Severity.Error);
+        }
+    }
+}

@@ -1,0 +1,22 @@
+@namespace HakedisOtomasyon.Web.Components
+@using System.Globalization
+
+<MudCard Elevation="2" Class="pa-2">
+    <MudStack Row AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-1">
+        <MudText Typo="Typo.subtitle2" Style="font-weight:700">@(Title ?? "İstatistik")</MudText>
+        <MudIcon Icon="@Icon" Color="@Color" Size="Size.Medium" />
+    </MudStack>
+    <MudText Typo="Typo.h4" Style="font-weight:700">@Value</MudText>
+    @if (!string.IsNullOrEmpty(Subtitle))
+    {
+        <MudText Typo="Typo.caption" Color="Color.Secondary">@Subtitle</MudText>
+    }
+</MudCard>
+
+@code {
+    [Parameter] public string Icon { get; set; } = Icons.Material.Filled.Info;
+    [Parameter] public string Title { get; set; } = string.Empty;
+    [Parameter] public string Value { get; set; } = "0";
+    [Parameter] public string? Subtitle { get; set; }
+    [Parameter] public Color Color { get; set; } = Color.Primary;
+}

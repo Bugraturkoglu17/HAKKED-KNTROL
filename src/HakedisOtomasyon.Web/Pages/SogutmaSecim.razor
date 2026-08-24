@@ -1,0 +1,91 @@
+@page "/discipline/sogutma"
+@layout HakedisOtomasyon.Web.Layout.EmptyLayout
+@using HakedisOtomasyon.Infrastructure.Services
+@inject CurrentDisciplineService CurrentDiscipline
+@inject NavigationManager Nav
+
+<PageTitle>Soğutma — Modül Seçimi</PageTitle>
+
+<div class="sogutma-secim-wrap">
+    <MudStack AlignItems="AlignItems.Center" Class="mb-2" Spacing="1">
+        <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.ArrowBack" Href="/" Class="align-self-start">
+            Disiplin Seçimine Dön
+        </MudButton>
+        <MudText Typo="Typo.h4" Style="font-weight:700">Soğutma</MudText>
+        <MudText Typo="Typo.body1" Color="Color.Secondary">Devam etmek istediğiniz işlemi seçin</MudText>
+    </MudStack>
+
+    <MudGrid Justify="Justify.Center" Spacing="4" Class="mt-4">
+        <MudItem xs="12" sm="6" md="5">
+            <div class="module-card" style="--card-color:#1565C0" @onclick="GoToKontrol">
+                <div class="module-card-icon">
+                    <MudIcon Icon="@Icons.Material.Filled.FactCheck" Size="Size.Large" />
+                </div>
+                <MudText Typo="Typo.h5" Style="font-weight:700">Hakediş Kontrolü</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-2">
+                    Firma hakedişini onaylı birim fiyat listesiyle karşılaştırın
+                </MudText>
+            </div>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="5">
+            <div class="module-card" style="--card-color:#2E7D32" @onclick="GoToOlusturma">
+                <div class="module-card-icon">
+                    <MudIcon Icon="@Icons.Material.Filled.NoteAdd" Size="Size.Large" />
+                </div>
+                <MudText Typo="Typo.h5" Style="font-weight:700">Hakediş Oluşturma</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-2">
+                    Yeni aylık hakediş hazırlayın ve dışa aktarın
+                </MudText>
+            </div>
+        </MudItem>
+    </MudGrid>
+</div>
+
+<style>
+    .sogutma-secim-wrap {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: calc(100vh - 80px);
+        padding: 24px;
+    }
+
+    .module-card {
+        --card-color: #1976D2;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        height: 240px;
+        border-radius: 16px;
+        cursor: pointer;
+        background: linear-gradient(160deg, color-mix(in srgb, var(--card-color) 18%, white) 0%, color-mix(in srgb, var(--card-color) 6%, white) 100%);
+        border: 2px solid color-mix(in srgb, var(--card-color) 35%, transparent);
+        transition: transform .18s ease, box-shadow .18s ease;
+        text-align: center;
+        padding: 24px;
+        color: var(--card-color);
+    }
+
+    .module-card-icon {
+        font-size: 48px;
+        color: var(--card-color);
+    }
+
+    .module-card:hover {
+        transform: translateY(-6px);
+        box-shadow: 0 10px 24px color-mix(in srgb, var(--card-color) 35%, transparent);
+    }
+</style>
+
+@code {
+    protected override void OnInitialized()
+    {
+        CurrentDiscipline.CurrentDiscipline = HakedisOtomasyon.Domain.Enums.MechanicalDiscipline.Cooling;
+    }
+
+    private void GoToKontrol() => Nav.NavigateTo("/discipline/sogutma/kontrol");
+    private void GoToOlusturma() => Nav.NavigateTo("/discipline/sogutma/dashboard");
+}

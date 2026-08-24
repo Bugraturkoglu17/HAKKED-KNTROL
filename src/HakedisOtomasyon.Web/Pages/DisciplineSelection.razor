@@ -1,0 +1,121 @@
+@page "/"
+@layout HakedisOtomasyon.Web.Layout.EmptyLayout
+@using HakedisOtomasyon.Infrastructure.Services
+@inject IDisciplineProfileService DisciplineProfileService
+@inject CurrentDisciplineService CurrentDiscipline
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+
+<PageTitle>Servis Otomasyonu</PageTitle>
+
+<div class="discipline-selection-wrap">
+    <MudStack AlignItems="AlignItems.Center" Class="mb-6" Spacing="1">
+        <MudText Typo="Typo.h4" Style="font-weight:700">Servis Otomasyonu</MudText>
+        <MudText Typo="Typo.body1" Color="Color.Secondary">Çalışmak istediğiniz disiplini seçin</MudText>
+    </MudStack>
+
+    <MudGrid Justify="Justify.Center" Spacing="4">
+        @foreach (var profile in DisciplineProfileService.GetAll())
+        {
+            <MudItem xs="12" sm="6" md="3">
+                <div class="discipline-card @(profile.IsActive ? "active" : "inactive")"
+                     style="--card-color:@profile.ThemeColor"
+                     @onclick="@(() => OnCardClick(profile))">
+                    <div class="discipline-card-icon">
+                        <MudIcon Icon="@GetIcon(profile.RouteName)" Size="Size.Large" />
+                    </div>
+                    <MudText Typo="Typo.h5" Style="font-weight:700">@profile.DisplayName</MudText>
+                    @if (profile.IsActive)
+                    {
+                        <MudChip T="string" Color="Color.Success" Size="Size.Small" Class="mt-2">Aktif</MudChip>
+                    }
+                    else
+                    {
+                        <MudChip T="string" Color="Color.Default" Size="Size.Small" Class="mt-2">Yakında</MudChip>
+                    }
+                </div>
+            </MudItem>
+        }
+    </MudGrid>
+</div>
+
+<style>
+    .discipline-selection-wrap {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: calc(100vh - 140px);
+        padding: 24px;
+    }
+
+    .discipline-card {
+        --card-color: #1976D2;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        height: 220px;
+        border-radius: 16px;
+        cursor: pointer;
+        background: linear-gradient(160deg, color-mix(in srgb, var(--card-color) 18%, white) 0%, color-mix(in srgb, var(--card-color) 6%, white) 100%);
+        border: 2px solid color-mix(in srgb, var(--card-color) 35%, transparent);
+        transition: transform .18s ease, box-shadow .18s ease;
+        text-align: center;
+        padding: 16px;
+    }
+
+    .discipline-card.active {
+        color: var(--card-color);
+    }
+
+    .discipline-card.active .discipline-card-icon {
+        color: var(--card-color);
+    }
+
+    .discipline-card.active:hover {
+        transform: translateY(-6px);
+        box-shadow: 0 10px 24px color-mix(in srgb, var(--card-color) 35%, transparent);
+    }
+
+    .discipline-card.inactive {
+        opacity: .55;
+        filter: grayscale(35%);
+    }
+
+    .discipline-card.inactive:hover {
+        opacity: .75;
+        transform: translateY(-2px);
+    }
+
+    .discipline-card-icon {
+        font-size: 48px;
+    }
+</style>
+
+@code {
+    private void OnCardClick(DisciplineProfile profile)
+    {
+        if (profile.IsActive)
+        {
+            CurrentDiscipline.CurrentDiscipline = profile.Discipline;
+            Nav.NavigateTo(profile.RouteName == "sogutma"
+                ? "/discipline/sogutma"
+                : $"/discipline/{profile.RouteName}/dashboard");
+        }
+        else
+        {
+            Snackbar.Add("Bu modül henüz aktif değildir.", Severity.Info);
+        }
+    }
+
+    private static string GetIcon(string routeName) => routeName switch
+    {
+        "yangin"  => Icons.Material.Filled.LocalFireDepartment,
+        "klima"   => Icons.Material.Filled.AcUnit,
+        "asansor" => Icons.Material.Filled.Elevator,
+        "sogutma" => Icons.Material.Filled.Thermostat,
+        _         => Icons.Material.Filled.Build
+    };
+}

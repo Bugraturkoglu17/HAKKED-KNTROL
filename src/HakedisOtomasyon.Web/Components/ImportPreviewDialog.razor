@@ -1,0 +1,109 @@
+@using HakedisOtomasyon.Application.DTOs
+@inject MudBlazor.IDialogService DialogService
+
+<MudDialog>
+    <TitleContent>
+        <MudStack Row AlignItems="AlignItems.Center" Spacing="1">
+            <MudIcon Icon="@Icons.Material.Filled.Preview" Color="Color.Primary" />
+            <MudText Typo="Typo.h6">İçe Aktarma Önizlemesi</MudText>
+        </MudStack>
+    </TitleContent>
+    <DialogContent>
+        @if (Preview is not null)
+        {
+            @if (Preview.Metadata is not null)
+            {
+                <MudAlert Severity="Severity.Info" Class="mb-3" Dense>
+                    Yedek tarihi: <b>@Preview.Metadata.ExportDate.ToString("dd.MM.yyyy HH:mm")</b> —
+                    @Preview.Metadata.StoreCount mağaza, @Preview.Metadata.PriceItemCount fiyat kalemi
+                </MudAlert>
+            }
+
+            <MudSimpleTable Dense Bordered Striped Class="mb-4">
+                <thead>
+                    <tr>
+                        <th>Veri Türü</th>
+                        <th style="text-align:center;color:#2e7d32">Eklenecek</th>
+                        <th style="text-align:center;color:#1565c0">Güncellenecek</th>
+                        <th style="text-align:center;color:#757575">Atlanacak</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><MudIcon Icon="@Icons.Material.Filled.Store" Size="Size.Small" Class="mr-1" />Mağaza</td>
+                        <td style="text-align:center"><MudChip T="string" Size="Size.Small" Color="Color.Success">@Preview.StoresToAdd</MudChip></td>
+                        <td style="text-align:center"><MudChip T="string" Size="Size.Small" Color="Color.Info">@Preview.StoresToUpdate</MudChip></td>
+                        <td style="text-align:center"><MudChip T="string" Size="Size.Small" Color="Color.Default">@Preview.StoresToSkip</MudChip></td>
+                    </tr>
+                    <tr>
+                        <td><MudIcon Icon="@Icons.Material.Filled.PriceChange" Size="Size.Small" Class="mr-1" />Fiyat Kalemi</td>
+                        <td style="text-align:center"><MudChip T="string" Size="Size.Small" Color="Color.Success">@Preview.PriceItemsToAdd</MudChip></td>
+                        <td style="text-align:center"><MudChip T="string" Size="Size.Small" Color="Color.Info">@Preview.PriceItemsToUpdate</MudChip></td>
+                        <td style="text-align:center"><MudChip T="string" Size="Size.Small" Color="Color.Default">@Preview.PriceItemsToSkip</MudChip></td>
+                    </tr>
+                    <tr>
+                        <td><MudIcon Icon="@Icons.Material.Filled.Label" Size="Size.Small" Class="mr-1" />Alias</td>
+                        <td style="text-align:center"><MudChip T="string" Size="Size.Small" Color="Color.Success">@Preview.AliasesToAdd</MudChip></td>
+                        <td style="text-align:center"><MudChip T="string" Size="Size.Small" Color="Color.Info">@Preview.AliasesToUpdate</MudChip></td>
+                        <td style="text-align:center"><MudChip T="string" Size="Size.Small" Color="Color.Default">@Preview.AliasesToSkip</MudChip></td>
+                    </tr>
+                    <tr>
+                        <td><MudIcon Icon="@Icons.Material.Filled.Settings" Size="Size.Small" Class="mr-1" />Ayar</td>
+                        <td style="text-align:center">—</td>
+                        <td style="text-align:center"><MudChip T="string" Size="Size.Small" Color="Color.Info">@Preview.SettingsToUpdate</MudChip></td>
+                        <td style="text-align:center">—</td>
+                    </tr>
+                </tbody>
+            </MudSimpleTable>
+
+            <MudText Typo="Typo.subtitle2" Class="mb-2">İçe Aktarma Modu</MudText>
+            <MudRadioGroup T="ImportMode" @bind-Value="_mode">
+                <MudRadio T="ImportMode" Value="ImportMode.MergeAndUpdate" Color="Color.Primary">
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.body2"><b>Güncelle + Ekle</b> (Önerilen)</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Eşleşen kayıtları güncelle, eksikleri ekle</MudText>
+                    </MudStack>
+                </MudRadio>
+                <MudRadio T="ImportMode" Value="ImportMode.AddMissingOnly" Color="Color.Primary">
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.body2"><b>Sadece Eksikleri Ekle</b></MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Mevcut kayıtlara dokunma</MudText>
+                    </MudStack>
+                </MudRadio>
+                <MudRadio T="ImportMode" Value="ImportMode.ReplaceAll" Color="Color.Error">
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.body2" Color="Color.Error"><b>Tümünü Değiştir</b></MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Mevcut mağaza ve fiyatları sil, yedekten yükle</MudText>
+                    </MudStack>
+                </MudRadio>
+            </MudRadioGroup>
+
+            @if (_mode == ImportMode.ReplaceAll)
+            {
+                <MudAlert Severity="Severity.Warning" Dense Class="mt-3">
+                    Dikkat: Bu işlem mevcut tüm mağaza ve fiyat verilerini kalıcı olarak siler.
+                </MudAlert>
+            }
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Variant="Variant.Text">İptal</MudButton>
+        <MudButton OnClick="Confirm"
+                   Variant="Variant.Filled"
+                   Color="@(_mode == ImportMode.ReplaceAll ? Color.Error : Color.Primary)"
+                   Disabled="@(Preview is null || !Preview.HasChanges)">
+            İçeri Aktar
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter] public MasterDataPreviewDto? Preview { get; set; }
+
+    private ImportMode _mode = ImportMode.MergeAndUpdate;
+
+    private void Cancel()  => MudDialog.Cancel();
+    private void Confirm() => MudDialog.Close(DialogResult.Ok(_mode));
+}

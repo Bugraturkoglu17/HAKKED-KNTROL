@@ -1,0 +1,184 @@
+@page "/dashboard"
+@page "/discipline/yangin/dashboard"
+@page "/discipline/klima/dashboard"
+@page "/discipline/asansor/dashboard"
+@page "/discipline/sogutma/dashboard"
+@inject IDashboardService DashboardService
+@inject NavigationManager Nav
+
+<PageTitle>Panel — Hakediş Otomasyonu</PageTitle>
+
+<MudStack Row AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-4">
+    <div>
+        <MudText Typo="Typo.h5" Style="font-weight:700">Panel</MudText>
+        <MudText Typo="Typo.caption" Color="Color.Secondary">@_monthLabel özeti</MudText>
+    </div>
+    <MudStack Row Spacing="1">
+        <MudSelect T="int" @bind-Value="_selectedMonth" Label="Ay" Dense Variant="Variant.Outlined"
+                   Style="width:100px" @bind-Value:after="@(async () => await LoadAsync(0))">
+            @for (int m = 1; m <= 12; m++)
+            {
+                var monthNum = m;
+                <MudSelectItem Value="@monthNum">@System.Globalization.CultureInfo.GetCultureInfo("tr-TR").DateTimeFormat.GetMonthName(monthNum)</MudSelectItem>
+            }
+        </MudSelect>
+        <MudSelect T="int" @bind-Value="_selectedYear" Label="Yıl" Dense Variant="Variant.Outlined"
+                   Style="width:100px" @bind-Value:after="@(async () => await LoadAsync(0))">
+            @for (int y = DateTime.Now.Year; y >= DateTime.Now.Year - 3; y--)
+            {
+                var yr = y;
+                <MudSelectItem Value="@yr">@yr</MudSelectItem>
+            }
+        </MudSelect>
+    </MudStack>
+</MudStack>
+
+@if (_loading)
+{
+    <MudGrid>
+        @for (int i = 0; i < 6; i++)
+        {
+            <MudItem xs="12" sm="6" md="4">
+                <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="120px" />
+            </MudItem>
+        }
+    </MudGrid>
+}
+else if (_summary is not null)
+{
+    <MudGrid Spacing="3">
+        <MudItem xs="12" sm="6" md="4" lg="2">
+            <StatCard Icon="@Icons.Material.Filled.UploadFile"
+                      Title="Yüklenen Form"
+                      Value="@_summary.TotalForms.ToString()"
+                      Color="Color.Primary" />
+        </MudItem>
+        <MudItem xs="12" sm="6" md="4" lg="2">
+            <StatCard Icon="@Icons.Material.Filled.TaskAlt"
+                      Title="İşlenen Form"
+                      Value="@_summary.ProcessedForms.ToString()"
+                      Color="Color.Success" />
+        </MudItem>
+        <MudItem xs="12" sm="6" md="4" lg="2">
+            <StatCard Icon="@Icons.Material.Filled.Warning"
+                      Title="Tamamlanmamış"
+                      Value="@_summary.IncompleteForms.ToString()"
+                      Color="Color.Warning" />
+        </MudItem>
+        <MudItem xs="12" sm="6" md="4" lg="2">
+            <StatCard Icon="@Icons.Material.Filled.AccountBalance"
+                      Title="Toplam Hakediş"
+                      Value="@($"{_summary.TotalClaimAmount:N0} ₺")"
+                      Color="Color.Tertiary" />
+        </MudItem>
+        <MudItem xs="12" sm="6" md="4" lg="2">
+            <StatCard Icon="@Icons.Material.Filled.Receipt"
+                      Title="Fatura Kalemi"
+                      Value="@_summary.InvoiceItemCount.ToString()"
+                      Color="Color.Info" />
+        </MudItem>
+        <MudItem xs="12" sm="6" md="4" lg="2">
+            <StatCard Icon="@Icons.Material.Filled.Assignment"
+                      Title="Aktif Hakediş"
+                      Value="@_summary.ActiveClaimsCount.ToString()"
+                      Color="Color.Secondary" />
+        </MudItem>
+    </MudGrid>
+
+    <MudGrid Spacing="3" Class="mt-4">
+        <MudItem xs="12" md="6">
+            <MudCard Elevation="2">
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudStack Row AlignItems="AlignItems.Center" Spacing="1">
+                            <MudIcon Icon="@Icons.Material.Filled.DownloadForOffline" Color="Color.Primary" />
+                            <MudText Typo="Typo.h6">Son Dışa Aktarımlar</MudText>
+                        </MudStack>
+                    </CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent Class="pa-0">
+                    @if (!_summary.RecentExports.Any())
+                    {
+                        <MudAlert Severity="Severity.Info" Class="ma-3">Henüz dışa aktarım yapılmamış.</MudAlert>
+                    }
+                    else
+                    {
+                        <MudList T="string" Dense>
+                            @foreach (var exp in _summary.RecentExports)
+                            {
+                                <MudListItem Icon="@Icons.Material.Filled.InsertDriveFile"
+                                             IconColor="Color.Success">
+                                    <MudStack Spacing="0">
+                                        <MudText Typo="Typo.body2" Style="font-weight:500">@exp.ClaimName</MudText>
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                            @exp.ExportTypeLabel — @exp.ExportedAt.ToString("dd.MM.yyyy HH:mm")
+                                        </MudText>
+                                    </MudStack>
+                                </MudListItem>
+                            }
+                        </MudList>
+                    }
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+
+        <MudItem xs="12" md="6">
+            <MudCard Elevation="2">
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6">Hızlı Erişim</MudText>
+                    </CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent>
+                    <MudGrid Spacing="2">
+                        <MudItem xs="6">
+                            <MudButton FullWidth Variant="Variant.Filled" Color="Color.Primary"
+                                       StartIcon="@Icons.Material.Filled.Add"
+                                       Href="/new-claim">
+                                Yeni Hakediş
+                            </MudButton>
+                        </MudItem>
+                        <MudItem xs="6">
+                            <MudButton FullWidth Variant="Variant.Outlined" Color="Color.Primary"
+                                       StartIcon="@Icons.Material.Filled.History"
+                                       Href="/history">
+                                Geçmiş
+                            </MudButton>
+                        </MudItem>
+                        <MudItem xs="6">
+                            <MudButton FullWidth Variant="Variant.Outlined" Color="Color.Secondary"
+                                       StartIcon="@Icons.Material.Filled.Store"
+                                       Href="/stores">
+                                Mağazalar
+                            </MudButton>
+                        </MudItem>
+                        <MudItem xs="6">
+                            <MudButton FullWidth Variant="Variant.Outlined" Color="Color.Secondary"
+                                       StartIcon="@Icons.Material.Filled.PriceChange"
+                                       Href="/price-list">
+                                Fiyat Listesi
+                            </MudButton>
+                        </MudItem>
+                    </MudGrid>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    private DashboardSummaryDto? _summary;
+    private bool _loading = true;
+    private int _selectedYear = DateTime.Now.Year;
+    private int _selectedMonth = DateTime.Now.Month;
+    private string _monthLabel => $"{_selectedYear} / {System.Globalization.CultureInfo.GetCultureInfo("tr-TR").DateTimeFormat.GetMonthName(_selectedMonth)}";
+
+    protected override async Task OnInitializedAsync() => await LoadAsync(_selectedMonth);
+
+    private async Task LoadAsync(int _)
+    {
+        _loading = true;
+        try { _summary = await DashboardService.GetSummaryAsync(_selectedYear, _selectedMonth, Nav.ToBaseRelativePath(Nav.Uri)); }
+        finally { _loading = false; }
+    }
+}

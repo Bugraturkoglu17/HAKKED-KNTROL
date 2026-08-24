@@ -1,5 +1,21 @@
-bin/
-obj/
-*.user
-.vs/
-*.suo
+# .NET build çıktıları
+src/**/bin/
+src/**/obj/
+
+# Log dosyaları
+*.log
+logs/
+
+# SQLite journal dosyaları (uygulama çalışırken oluşur)
+*.db-shm
+*.db-wal
+
+# WebView2 kullanıcı verileri (makineye özel)
+WebViewData/
+
+# VS Code
+.vscode/
+
+# Windows
+Thumbs.db
+Desktop.ini

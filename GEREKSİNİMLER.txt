@@ -1,0 +1,106 @@
+====================================================
+  Servis Hakediş ve İcmal Otomasyon — Gereksinimler
+====================================================
+
+Bu belge, projeyi farklı bir bilgisayarda derlemek ve çalıştırmak için
+gereken tüm yazılım ve bağımlılıkları açıklar.
+
+
+------------------------------------------------------
+1. ZORUNLU YAZILIMLAR
+------------------------------------------------------
+
+a) .NET 8 SDK (Derleme için)
+   İndirme: https://dotnet.microsoft.com/download/dotnet/8.0
+   Sürüm   : 8.0 veya üzeri
+   Not     : "SDK" indirin, sadece "Runtime" yetmez.
+
+b) Microsoft WebView2 Runtime (Çalıştırma için)
+   İndirme: https://developer.microsoft.com/tr-tr/microsoft-edge/webview2/
+   Not     : Zaten yüklü olabilir (Windows 11 ile birlikte gelir).
+             Uygulama açılmıyorsa bu paketi kurun.
+
+c) Python 3.10 veya üzeri (İcmal Kontrol.py için — isteğe bağlı)
+   İndirme: https://www.python.org/downloads/
+   Not     : Sadece "İcmal Kontrol.py" scriptini kullanmak isteyenler içindir.
+             Python kurulurken "Add Python to PATH" seçeneğini işaretleyin.
+
+
+------------------------------------------------------
+2. NuGet PAKET BAĞIMLILIKLARI (otomatik indirilir)
+------------------------------------------------------
+
+HakedisOtomasyon.Web:
+  - Microsoft.AspNetCore.Components.WebView.Wpf  8.0.*
+  - Microsoft.Extensions.DependencyInjection      8.0.*
+  - MudBlazor                                     7.15.0
+  - Microsoft.EntityFrameworkCore.Design          8.0.11
+
+HakedisOtomasyon.Infrastructure:
+  - Microsoft.EntityFrameworkCore                 8.0.11
+  - Microsoft.EntityFrameworkCore.Sqlite          8.0.11
+  - Microsoft.EntityFrameworkCore.SqlServer       8.0.11
+  - Microsoft.EntityFrameworkCore.Tools           8.0.11
+  - ClosedXML                                     0.102.3
+  - QuestPDF                                      2024.10.4
+  - PDFtoImage                                    4.0.1
+  - SkiaSharp.NativeAssets.Win32                  2.88.9
+  - Serilog.AspNetCore                            8.0.3
+  - Serilog.Sinks.File                            5.0.0
+
+
+------------------------------------------------------
+3. KURULUM VE ÇALIŞTIRMA ADIMLARI
+------------------------------------------------------
+
+Adım 1 — Depoyu klonlayın:
+  git clone https://github.com/bugraturkoglu17-spec/Projeler.git
+  cd Projeler
+
+Adım 2 — Projeyi derleyin:
+  cd HakedisOtomasyon
+  dotnet build
+
+Adım 3 — Uygulamayı çalıştırın:
+  dotnet run --project src/HakedisOtomasyon.Web
+
+  veya Windows'ta yayın (publish) oluşturup .exe olarak kullanın:
+  dotnet publish src/HakedisOtomasyon.Web -c Release -r win-x64 --self-contained false -o ./ServisHakedis
+  ServisHakedis\HakedisOtomasyon.Web.exe
+
+
+------------------------------------------------------
+4. İCMAL KONTROL SCRİPTİ (İcmal Kontrol.py)
+------------------------------------------------------
+
+Bu script uygulamayı başlatmak için yardımcı bir araçtır.
+Çalıştırmak için:
+
+  python "İcmal Kontrol.py"
+
+  veya çift tıklayın (Python PATH'e eklenmiş olmalı).
+
+Script otomatik olarak şu kontrolleri yapar:
+  - WebView2 Runtime kurulu mu?
+  - HakedisOtomasyon.Web.exe dosyası mevcut mu?
+
+
+------------------------------------------------------
+5. VERİTABANI
+------------------------------------------------------
+
+Uygulama SQLite kullanır. Veritabanı dosyası (hakedis.db)
+ilk çalıştırmada otomatik olarak oluşturulur.
+Mevcut verilerinizi taşımak istiyorsanız:
+  ServisHakedis/hakedis.db  dosyasını yeni bilgisayara kopyalayın.
+
+
+------------------------------------------------------
+6. İŞLETİM SİSTEMİ
+------------------------------------------------------
+
+  - Yalnızca Windows 10 veya Windows 11 (64-bit) desteklenir.
+  - WPF + WebView2 kullandığı için macOS/Linux'ta çalışmaz.
+
+
+====================================================

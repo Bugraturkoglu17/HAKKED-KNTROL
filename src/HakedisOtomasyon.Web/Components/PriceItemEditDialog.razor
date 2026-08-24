@@ -1,0 +1,129 @@
+@namespace HakedisOtomasyon.Web.Components
+
+<MudDialog Style="min-width:600px">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(Item.Id == 0 ? "Yeni Fiyat Kalemi" : "Fiyat Kalemi Düzenle")</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudGrid Spacing="2">
+            <MudItem xs="12" md="6">
+                <MudTextField @bind-Value="Item.MainCategory" Label="Ana Grup *"
+                              Variant="Variant.Outlined" MaxLength="300" />
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudTextField @bind-Value="Item.PozNo" Label="Arama Anahtarı"
+                              Variant="Variant.Outlined" MaxLength="300"
+                              HelperText="DN100, Ø50, sprinkler vb." />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="Item.Description" Label="Açıklama *"
+                              Variant="Variant.Outlined" Required MaxLength="500" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="Item.InvoiceDescription" Label="İcmal Açıklaması"
+                              Variant="Variant.Outlined" MaxLength="500"
+                              HelperText="Servis formuna kopyalanacak açıklama. Boşsa Açıklama kullanılır." />
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudTextField @bind-Value="Item.Unit" Label="Birim *"
+                              Variant="Variant.Outlined" MaxLength="50"
+                              HelperText="Ad, m, m², kg, takım..." />
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudSelect T="PriceType" @bind-Value="Item.PriceType"
+                           Label="Fiyat Tipi" Variant="Variant.Outlined">
+                    <MudSelectItem T="PriceType" Value="PriceType.FixedPrice">Sabit</MudSelectItem>
+                    <MudSelectItem T="PriceType" Value="PriceType.LaborOnly">Sadece İşçilik</MudSelectItem>
+                    <MudSelectItem T="PriceType" Value="PriceType.MaterialOnly">Sadece Malzeme</MudSelectItem>
+                    <MudSelectItem T="PriceType" Value="PriceType.VariablePrice">Değişken</MudSelectItem>
+                    <MudSelectItem T="PriceType" Value="PriceType.PercentageBased">Yüzdesel</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudNumericField T="decimal" @bind-Value="Item.MaterialPrice"
+                                 Label="Malzeme (TL)" Variant="Variant.Outlined"
+                                 Min="0" Format="N2"
+                                 Disabled="@(Item.PriceType == PriceType.VariablePrice || Item.PriceType == PriceType.LaborOnly)" />
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudNumericField T="decimal" @bind-Value="Item.LaborPrice"
+                                 Label="İşçilik (TL)" Variant="Variant.Outlined"
+                                 Min="0" Format="N2"
+                                 Disabled="@(Item.PriceType == PriceType.VariablePrice || Item.PriceType == PriceType.MaterialOnly)" />
+            </MudItem>
+            @if (Item.PriceType != PriceType.VariablePrice)
+            {
+                <MudItem xs="12" md="3">
+                    <MudTextField Value="@((Item.MaterialPrice + Item.LaborPrice).ToString("N2"))"
+                                  Label="Birim Fiyat (TL)" Variant="Variant.Outlined" ReadOnly Disabled />
+                </MudItem>
+            }
+            <MudItem xs="12">
+                <MudSwitch T="bool" @bind-Value="Item.IsActive" Color="Color.Success" Label="Aktif" />
+            </MudItem>
+            @if (Item.PriceType == PriceType.VariablePrice)
+            {
+                <MudItem xs="12">
+                    <MudAlert Severity="Severity.Info" Dense>
+                        Değişken fiyatlı kalemde servis formunda kullanıcı manuel fiyat girer.
+                    </MudAlert>
+                </MudItem>
+            }
+            @if (Item.IsCurrencyBased)
+            {
+                <MudItem xs="12">
+                    <MudDivider Class="mt-2 mb-2" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudAlert Severity="Severity.Warning" Dense Icon="@Icons.Material.Filled.CurrencyExchange">
+                        Döviz bazlı ürün — BVN %<b>@((Item.DiscountRate ?? 20).ToString("N0"))</b> iskontolu. Birim Fiyat (TL) kur hesabında belirlenir.
+                    </MudAlert>
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudNumericField T="decimal?" @bind-Value="Item.ListPriceUsd"
+                                     Label="BVN Liste USD" Variant="Variant.Outlined"
+                                     Min="0" Format="N2" HideSpinButtons="true" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudNumericField T="decimal?" @bind-Value="Item.DiscountRate"
+                                     Label="İskonto (%)" Variant="Variant.Outlined"
+                                     Min="0" Max="100" Format="N1" HideSpinButtons="true"
+                                     HelperText="Örn: 20 = %20" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudTextField Value="@(DiscountedUsdDisplay)"
+                                  Label="İskontolu USD" Variant="Variant.Outlined" ReadOnly />
+                </MudItem>
+            }
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">İptal</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled"
+                   OnClick="Submit"
+                   Disabled="@(string.IsNullOrWhiteSpace(Item.Description) || string.IsNullOrWhiteSpace(Item.Unit))">
+            Kaydet
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public PriceItemDto Item { get; set; } = new();
+
+    private string DiscountedUsdDisplay =>
+        ((Item.ListPriceUsd ?? 0m) * (1m - (Item.DiscountRate ?? 20m) / 100m)).ToString("N2") + " USD";
+
+    private void Submit()
+    {
+        Item.Description = Item.Description.Trim();
+        Item.Unit = Item.Unit.Trim();
+        // LaborOnly/MaterialOnly → diğer fiyatı sıfırla
+        if (Item.PriceType == PriceType.LaborOnly) Item.MaterialPrice = 0;
+        if (Item.PriceType == PriceType.MaterialOnly) Item.LaborPrice = 0;
+        MudDialog.Close(DialogResult.Ok(Item));
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}
+

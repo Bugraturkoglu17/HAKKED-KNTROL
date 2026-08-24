@@ -1,0 +1,153 @@
+@page "/service-forms"
+@inject IProgressClaimService ClaimService
+@inject IServiceFormService FormService
+@inject ISnackbar Snackbar
+@inject NavigationManager Nav
+
+<PageTitle>Servis Formları — Hakediş Otomasyonu</PageTitle>
+
+<MudText Typo="Typo.h5" Style="font-weight:700" Class="mb-4">Servis Formları</MudText>
+
+<MudPaper Elevation="2">
+    <MudTable Items="@_forms" Dense Hover Loading="@_loading"
+              Filter="new Func<ServiceFormDto, bool>(FilterFunc)"
+              RowsPerPage="20">
+        <ToolBarContent>
+            <MudGrid Spacing="1" AlignItems="AlignItems.Center">
+                <MudItem xs="12" md="5">
+                    <MudTextField @bind-Value="_search" Placeholder="Mağaza kodu veya dosya adı ara..."
+                                  Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                                  Immediate Dense Clearable Variant="Variant.Outlined" Class="mt-0" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudSelect T="ServiceFormStatus?" @bind-Value="_statusFilter"
+                               Label="Durum Filtresi" Variant="Variant.Outlined" Dense Clearable>
+                        <MudSelectItem T="ServiceFormStatus?" Value="null">Tümü</MudSelectItem>
+                        <MudSelectItem T="ServiceFormStatus?" Value="ServiceFormStatus.Bekliyor">Bekliyor</MudSelectItem>
+                        <MudSelectItem T="ServiceFormStatus?" Value="ServiceFormStatus.Isleniyor">İşleniyor</MudSelectItem>
+                        <MudSelectItem T="ServiceFormStatus?" Value="ServiceFormStatus.EksikBilgi">Eksik Bilgi</MudSelectItem>
+                        <MudSelectItem T="ServiceFormStatus?" Value="ServiceFormStatus.Tamamlandi">Tamamlandı</MudSelectItem>
+                        <MudSelectItem T="ServiceFormStatus?" Value="ServiceFormStatus.DisaAktarildi">Dışa Aktarıldı</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" md="3">
+                    <MudSelect T="int?" @bind-Value="_claimFilter"
+                               Label="Hakediş Filtresi" Variant="Variant.Outlined" Dense Clearable>
+                        <MudSelectItem T="int?" Value="null">Tüm Hakedişler</MudSelectItem>
+                        @foreach (var c in _claims)
+                        {
+                            <MudSelectItem T="int?" Value="@((int?)c.Id)">@c.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+            </MudGrid>
+        </ToolBarContent>
+        <HeaderContent>
+            <MudTh>Hakediş</MudTh>
+            <MudTh><MudTableSortLabel SortBy="new Func<ServiceFormDto,object>(x => x.StoreCode ?? string.Empty)">Mağaza Kodu</MudTableSortLabel></MudTh>
+            <MudTh>Dosya Adı</MudTh>
+            <MudTh>Durum</MudTh>
+            <MudTh><MudTableSortLabel SortBy="new Func<ServiceFormDto,object>(x => x.UploadedAt)">Yükleme Tarihi</MudTableSortLabel></MudTh>
+            <MudTh>Toplam</MudTh>
+            <MudTh>Notlar</MudTh>
+            <MudTh>İşlem</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Hakediş">
+                <MudText Typo="Typo.body2">@GetClaimName(context.ProgressClaimId)</MudText>
+            </MudTd>
+            <MudTd DataLabel="Mağaza Kodu">
+                <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined">
+                    @(context.StoreCode ?? "—")
+                </MudChip>
+            </MudTd>
+            <MudTd DataLabel="Dosya Adı">
+                @if (!string.IsNullOrEmpty(context.FileUrl))
+                {
+                    <a href="@context.FileUrl" target="_blank" style="color:#1565C0">
+                        @context.OriginalFileName
+                    </a>
+                }
+                else
+                {
+                    @context.OriginalFileName
+                }
+            </MudTd>
+            <MudTd DataLabel="Durum">
+                <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">
+                    @context.StatusLabel
+                </MudChip>
+            </MudTd>
+            <MudTd DataLabel="Yükleme Tarihi">@context.UploadedAt.ToString("dd.MM.yyyy HH:mm")</MudTd>
+            <MudTd DataLabel="Toplam" Style="font-weight:600">
+                @context.TotalAmount.ToString("N0") ₺
+            </MudTd>
+            <MudTd DataLabel="Notlar">
+                <MudTooltip Text="@context.Notes">
+                    <MudText Typo="Typo.caption" Style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block">
+                        @context.Notes
+                    </MudText>
+                </MudTooltip>
+            </MudTd>
+            <MudTd>
+                <MudTooltip Text="Hakedişe Git">
+                    <MudIconButton Icon="@Icons.Material.Filled.OpenInNew" Size="Size.Small"
+                                   Color="Color.Primary"
+                                   OnClick="@(() => Nav.NavigateTo($"/new-claim/{context.ProgressClaimId}"))" />
+                </MudTooltip>
+            </MudTd>
+        </RowTemplate>
+        <PagerContent><MudTablePager /></PagerContent>
+        <NoRecordsContent><MudAlert Severity="Severity.Info" Dense>Servis formu bulunamadı.</MudAlert></NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private List<ServiceFormDto> _forms = new();
+    private List<ProgressClaimDto> _claims = new();
+    private bool _loading = true;
+    private string _search = string.Empty;
+    private ServiceFormStatus? _statusFilter;
+    private int? _claimFilter;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _loading = true;
+        try
+        {
+            _claims = await ClaimService.GetAllAsync();
+            var allForms = new List<ServiceFormDto>();
+            foreach (var claim in _claims)
+                allForms.AddRange(await FormService.GetByClaimIdAsync(claim.Id));
+            _forms = allForms;
+        }
+        finally { _loading = false; }
+    }
+
+    private bool FilterFunc(ServiceFormDto f)
+    {
+        if (_statusFilter.HasValue && f.Status != _statusFilter.Value) return false;
+        if (_claimFilter.HasValue && f.ProgressClaimId != _claimFilter.Value) return false;
+        if (!string.IsNullOrEmpty(_search))
+        {
+            var q = _search.Trim();
+            if (!string.IsNullOrEmpty(f.StoreCode) && f.StoreCode.Contains(q, StringComparison.OrdinalIgnoreCase)) return true;
+            if (!string.IsNullOrEmpty(f.StoreName) && f.StoreName.Contains(q, StringComparison.OrdinalIgnoreCase)) return true;
+            if (f.OriginalFileName.Contains(q, StringComparison.OrdinalIgnoreCase)) return true;
+            return false;
+        }
+        return true;
+    }
+
+    private string GetClaimName(int claimId) =>
+        _claims.FirstOrDefault(c => c.Id == claimId)?.Name ?? claimId.ToString();
+
+    private Color GetStatusColor(ServiceFormStatus s) => s switch
+    {
+        ServiceFormStatus.Tamamlandi => Color.Success,
+        ServiceFormStatus.Isleniyor => Color.Info,
+        ServiceFormStatus.EksikBilgi => Color.Warning,
+        ServiceFormStatus.DisaAktarildi => Color.Tertiary,
+        _ => Color.Default
+    };
+}

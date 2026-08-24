@@ -1,0 +1,148 @@
+@namespace HakedisOtomasyon.Web.Layout
+@using HakedisOtomasyon.Infrastructure.Services
+@implements IDisposable
+@inject NavigationManager Nav
+@inject IDisciplineProfileService DisciplineProfileService
+@inject CurrentDisciplineService CurrentDiscipline
+
+<MudNavMenu>
+    @if (IsInSogutmaKontrol)
+    {
+        <MudNavLink Href="/"
+                    Icon="@Icons.Material.Filled.Apps"
+                    Match="NavLinkMatch.All"
+                    ActiveClass="nav-active">
+            Disiplin Seçimi
+        </MudNavLink>
+
+        <MudNavLink Href="/discipline/sogutma"
+                    Icon="@Icons.Material.Filled.ArrowBack"
+                    ActiveClass="nav-active">
+            Soğutma Modülüne Dön
+        </MudNavLink>
+
+        <MudDivider Class="my-1" />
+
+        <MudNavLink Href="/discipline/sogutma/kontrol"
+                    Icon="@Icons.Material.Filled.FactCheck"
+                    Match="NavLinkMatch.All"
+                    ActiveClass="nav-active">
+            Hakediş Kontrolü
+        </MudNavLink>
+
+        <MudNavLink Href="/discipline/sogutma/kontrol/fiyat-listesi"
+                    Icon="@Icons.Material.Outlined.PriceChange"
+                    ActiveClass="nav-active">
+            Kontrol Fiyat Listesi
+        </MudNavLink>
+
+        <MudNavLink Href="/discipline/sogutma/kontrol/gecmis-kontroller"
+                    Icon="@Icons.Material.Outlined.History"
+                    ActiveClass="nav-active">
+            Kontrol Geçmişi
+        </MudNavLink>
+    }
+    else
+    {
+        <MudNavLink Href="/"
+                    Icon="@Icons.Material.Filled.Apps"
+                    Match="NavLinkMatch.All"
+                    ActiveClass="nav-active">
+            Disiplin Seçimi
+        </MudNavLink>
+
+        <MudNavLink Href="@R("dashboard")"
+                    Icon="@Icons.Material.Filled.Dashboard"
+                    ActiveClass="nav-active">
+            Panel
+        </MudNavLink>
+
+        <MudDivider Class="my-1" />
+
+        <MudNavLink Href="@R("progress-claims/new")"
+                    Icon="@Icons.Material.Filled.AddCircleOutline"
+                    ActiveClass="nav-active">
+            Yeni Hakediş
+        </MudNavLink>
+
+        <MudNavLink Href="/service-forms"
+                    Icon="@Icons.Material.Outlined.Description"
+                    ActiveClass="nav-active">
+            Servis Formları
+        </MudNavLink>
+
+        <MudDivider Class="my-1" />
+
+        <MudNavLink Href="@R("stores")"
+                    Icon="@Icons.Material.Outlined.Store"
+                    ActiveClass="nav-active">
+            Mağazalar
+        </MudNavLink>
+
+        <MudNavLink Href="@R("price-list")"
+                    Icon="@Icons.Material.Outlined.PriceChange"
+                    ActiveClass="nav-active">
+            Fiyat Listesi
+        </MudNavLink>
+
+        <MudDivider Class="my-1" />
+
+        <MudNavLink Href="@R("progress-claims")"
+                    Icon="@Icons.Material.Outlined.History"
+                    ActiveClass="nav-active">
+            Hakediş Geçmişi
+        </MudNavLink>
+
+        <MudDivider Class="my-1" />
+
+        <MudNavLink Href="@R("settings")"
+                    Icon="@Icons.Material.Outlined.Settings"
+                    ActiveClass="nav-active">
+            Ayarlar
+        </MudNavLink>
+
+        @if (CurrentDiscipline.CurrentDiscipline == MechanicalDiscipline.Cooling)
+        {
+            <MudDivider Class="my-1" />
+
+            <MudNavLink Href="/discipline/sogutma/kontrol"
+                        Icon="@Icons.Material.Filled.FactCheck"
+                        ActiveClass="nav-active">
+                Hakediş Kontrolü
+            </MudNavLink>
+        }
+    }
+</MudNavMenu>
+
+@code {
+    private bool IsInSogutmaKontrol;
+
+    protected override void OnInitialized()
+    {
+        UpdateState();
+        Nav.LocationChanged += OnLocationChanged;
+    }
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        UpdateState();
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void UpdateState()
+    {
+        var relative = Nav.ToBaseRelativePath(Nav.Uri);
+        IsInSogutmaKontrol = relative.StartsWith("discipline/sogutma/kontrol", StringComparison.OrdinalIgnoreCase);
+    }
+
+    public void Dispose() => Nav.LocationChanged -= OnLocationChanged;
+
+    /// <summary>Aktif disipline göre "/discipline/{route}/{sayfa}" linki üretir.</summary>
+    private string R(string page)
+    {
+        var profile = DisciplineProfileService.GetAll()
+            .FirstOrDefault(p => p.Discipline == CurrentDiscipline.CurrentDiscipline);
+        var routeName = profile?.RouteName ?? "yangin";
+        return $"/discipline/{routeName}/{page}";
+    }
+}

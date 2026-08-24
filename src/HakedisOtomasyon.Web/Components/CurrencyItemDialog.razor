@@ -1,0 +1,366 @@
+@namespace HakedisOtomasyon.Web.Components
+@using System.Globalization
+@using HakedisOtomasyon.Application.DTOs
+@using HakedisOtomasyon.Application.Interfaces
+@using HakedisOtomasyon.Domain.Enums
+@using MudBlazor
+@inject IExchangeRateService ExchangeRateService
+
+<MudDialog Style="min-width:520px; max-width:640px">
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.CurrencyExchange" Class="mr-1" Style="vertical-align:middle" />
+            Döviz Bazlı Ürün Hesapla
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudGrid Spacing="2">
+
+            <!-- Ürün adı -->
+            <MudItem xs="12">
+                <MudTextField Value="@_productName"
+                              Label="Ürün"
+                              Variant="Variant.Outlined"
+                              ReadOnly="true" />
+            </MudItem>
+
+            <!-- BVN Liste USD / iskonto / iskontolu USD -->
+            <MudItem xs="12" md="4">
+                <MudNumericField T="decimal"
+                                 Value="@_listPriceUsd"
+                                 ValueChanged="@OnListPriceChanged"
+                                 Label="BVN Liste USD"
+                                 Variant="Variant.Outlined"
+                                 Min="0"
+                                 Format="N2"
+                                 HideSpinButtons="true"
+                                 Immediate="true" />
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudNumericField T="decimal"
+                                 Value="@_discountRate"
+                                 ValueChanged="@OnDiscountChanged"
+                                 Label="İskonto %"
+                                 Variant="Variant.Outlined"
+                                 Min="0"
+                                 Max="100"
+                                 Format="N1"
+                                 HideSpinButtons="true"
+                                 Immediate="true" />
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudTextField Value="@_discountedUsd.ToString("N2", TrCulture)"
+                              Label="İskontolu USD"
+                              Variant="Variant.Outlined"
+                              ReadOnly="true"
+                              Adornment="Adornment.End"
+                              AdornmentText="$" />
+            </MudItem>
+
+            <!-- Kur tarihi ve kur tipi -->
+            <MudItem xs="12" md="6">
+                <MudDatePicker Date="@_kurTarihi"
+                               DateChanged="@OnKurTarihiChanged"
+                               Label="Kur Tarihi"
+                               Variant="Variant.Outlined"
+                               DateFormat="dd.MM.yyyy"
+                               MaxDate="@DateTime.Today"
+                               Editable="true" />
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudSelect T="ExchangeRateType"
+                           @bind-Value="_kurTipi"
+                           Label="Kur Tipi"
+                           Variant="Variant.Outlined">
+                    <MudSelectItem Value="ExchangeRateType.ForexSelling">Döviz Satış</MudSelectItem>
+                    <MudSelectItem Value="ExchangeRateType.ForexBuying">Döviz Alış</MudSelectItem>
+                    <MudSelectItem Value="ExchangeRateType.Manual">Manuel</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+
+            <!-- USD kuru -->
+            <MudItem xs="12" md="7">
+                @if (_manualMode)
+                {
+                    <MudNumericField T="decimal"
+                                     @bind-Value="_usdKuru"
+                                     Label="USD Kuru (Manuel ₺)"
+                                     Variant="Variant.Outlined"
+                                     Min="0.01m"
+                                     Format="N4"
+                                     HideSpinButtons="true"
+                                     Immediate="true" />
+                }
+                else
+                {
+                    <MudTextField Value="@_usdKuru.ToString("N4", TrCulture)"
+                                  Label="USD Kuru (₺)"
+                                  Variant="Variant.Outlined"
+                                  ReadOnly="true"
+                                  Adornment="Adornment.End"
+                                  AdornmentText="₺" />
+                }
+            </MudItem>
+            <MudItem xs="12" md="5" Class="d-flex align-end gap-2">
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.Download"
+                           OnClick="@FetchRate"
+                           Disabled="@(_fetching || _kurTarihi is null)"
+                           FullWidth="true">
+                    @if (_fetching)
+                    {
+                        <MudProgressCircular Size="Size.Small" Class="mr-1" Indeterminate="true" />
+                    }
+                    Kuru Getir
+                </MudButton>
+                <MudTooltip Text="Manuel kur girişine geç">
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit"
+                                   Variant="Variant.Outlined"
+                                   OnClick="@EnableManual"
+                                   Color="Color.Default" />
+                </MudTooltip>
+            </MudItem>
+
+            <!-- Durum mesajı -->
+            @if (!string.IsNullOrEmpty(_rateMessage))
+            {
+                <MudItem xs="12">
+                    <MudAlert Severity="@_rateSeverity" Dense="true">@_rateMessage</MudAlert>
+                </MudItem>
+            }
+
+            <!-- İşçilik ve miktar -->
+            <MudItem xs="12" md="6">
+                <MudNumericField T="decimal"
+                                 @bind-Value="_laborPrice"
+                                 Label="İşçilik (₺)"
+                                 Variant="Variant.Outlined"
+                                 Min="0"
+                                 Format="N2"
+                                 HideSpinButtons="true"
+                                 Immediate="true" />
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudNumericField T="decimal"
+                                 @bind-Value="_quantity"
+                                 Label="Miktar"
+                                 Variant="Variant.Outlined"
+                                 Min="0.001m"
+                                 Format="N3"
+                                 HideSpinButtons="false"
+                                 Immediate="true" />
+            </MudItem>
+
+            <MudItem xs="12">
+                <MudDivider />
+            </MudItem>
+
+            <!-- Hesaplanan değerler -->
+            <MudItem xs="12" md="4">
+                <MudTextField Value="@MalzemeTl.ToString("N2", TrCulture)"
+                              Label="Malzeme (₺)"
+                              Variant="Variant.Outlined"
+                              ReadOnly="true" />
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudTextField Value="@BirimFiyat.ToString("N2", TrCulture)"
+                              Label="Birim Fiyat (₺)"
+                              Variant="Variant.Outlined"
+                              ReadOnly="true" />
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudTextField Value="@ToplamFiyat.ToString("N2", TrCulture)"
+                              Label="Toplam Fiyat (₺)"
+                              Variant="Variant.Outlined"
+                              ReadOnly="true" />
+            </MudItem>
+
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Variant="Variant.Text">İptal</MudButton>
+        <MudButton Color="Color.Primary"
+                   Variant="Variant.Filled"
+                   OnClick="Submit"
+                   Disabled="@(!IsValid)">
+            Kalemi Ekle
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public PriceItemDto PriceItem { get; set; } = null!;
+
+    private static readonly CultureInfo TrCulture = new("tr-TR");
+
+    private string _productName = "";
+    private decimal _listPriceUsd;
+    private decimal _discountRate = 20m;
+    private decimal _discountedUsd;
+    private DateTime? _kurTarihi = DateTime.Today;
+    private ExchangeRateType _kurTipi = ExchangeRateType.ForexSelling;
+    private decimal _usdKuru;
+    private decimal _laborPrice;
+    private decimal _quantity = 1;
+    private bool _fetching;
+    private bool _manualMode;
+    private string _rateMessage = "";
+    private Severity _rateSeverity = Severity.Info;
+    private DateTime? _actualRateDate;
+    private string _rateSource = "TCMB";
+
+    private decimal MalzemeTl   => _discountedUsd * _usdKuru;
+    private decimal BirimFiyat  => MalzemeTl + _laborPrice;
+    private decimal ToplamFiyat => BirimFiyat * _quantity;
+
+    private bool IsValid => _listPriceUsd > 0 && _usdKuru > 0 && _quantity > 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (PriceItem is not null)
+        {
+            _productName  = PriceItem.GetDisplayName();
+            // ListPriceUsd varsa onu kullan; yoksa MaterialPrice'a düş (geriye uyumluluk)
+            _listPriceUsd = (PriceItem.ListPriceUsd ?? 0m) > 0m
+                ? PriceItem.ListPriceUsd!.Value
+                : PriceItem.MaterialPrice;
+            // İskonto oranı varsa onu kullan (ör. 20 → %20)
+            if ((PriceItem.DiscountRate ?? 0m) > 0m)
+                _discountRate = PriceItem.DiscountRate!.Value;
+            _laborPrice   = PriceItem.LaborPrice;
+        }
+        RecalcDiscounted();
+        await FetchRate();
+    }
+
+    private void OnListPriceChanged(decimal value)
+    {
+        _listPriceUsd = value;
+        RecalcDiscounted();
+    }
+
+    private void OnDiscountChanged(decimal value)
+    {
+        _discountRate = value;
+        RecalcDiscounted();
+    }
+
+    private async Task OnKurTarihiChanged(DateTime? date)
+    {
+        _kurTarihi = date;
+        if (!_manualMode && date.HasValue)
+            await FetchRate();
+    }
+
+    private void RecalcDiscounted()
+        => _discountedUsd = _listPriceUsd * (1m - _discountRate / 100m);
+
+    private async Task FetchRate()
+    {
+        if (_kurTarihi is null) return;
+        _fetching = true;
+        _rateMessage = "";
+        StateHasChanged();
+
+        try
+        {
+            var result = await ExchangeRateService.GetUsdRateAsync(_kurTarihi.Value, _kurTipi);
+            if (result.IsSuccess)
+            {
+                _usdKuru        = result.Rate;
+                _actualRateDate = result.ActualDate;
+                _rateSource     = result.Source;
+                _manualMode     = false;
+
+                if (result.IsFallbackDate)
+                {
+                    _rateMessage  = $"Seçilen tarihte kur bulunamadı. En yakın önceki bülten tarihi kullanıldı: {result.ActualDate:dd.MM.yyyy}";
+                    _rateSeverity = Severity.Warning;
+                }
+                else
+                {
+                    _rateMessage  = $"Kur alındı: {result.Rate:N4} ₺  |  {result.Source}  {result.ActualDate:dd.MM.yyyy}";
+                    _rateSeverity = Severity.Success;
+                }
+            }
+            else
+            {
+                _rateMessage  = result.Message ?? "Kur alınamadı. Manuel giriş yapabilirsiniz.";
+                _rateSeverity = Severity.Error;
+                _manualMode   = true;
+            }
+        }
+        catch
+        {
+            _rateMessage  = "TCMB kur bilgisi alınamadı. İnternet bağlantısını kontrol edin veya manuel girin.";
+            _rateSeverity = Severity.Error;
+            _manualMode   = true;
+        }
+        finally
+        {
+            _fetching = false;
+            StateHasChanged();
+        }
+    }
+
+    private void EnableManual()
+    {
+        _manualMode   = true;
+        _kurTipi      = ExchangeRateType.Manual;
+        _rateSource   = "Manuel";
+        _rateMessage  = "Manuel kur girişi aktif. USD kuru alanına değer girebilirsiniz.";
+        _rateSeverity = Severity.Info;
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private void Submit()
+    {
+        var dto = new ServiceItemDto
+        {
+            LocalId               = Guid.NewGuid(),
+            Description           = PriceItem.GetInvoiceDescription(),
+            ExportDescription     = BuildExportDescription(),
+            Unit                  = string.IsNullOrWhiteSpace(PriceItem.Unit) ? "Ad" : PriceItem.Unit,
+            MaterialPrice         = MalzemeTl,
+            LaborPrice            = _laborPrice,
+            Quantity              = _quantity,
+            IsCurrencyBased       = true,
+            CurrencyCode          = "USD",
+            ListPriceUsd          = _listPriceUsd,
+            DiscountRate          = _discountRate / 100m,
+            DiscountedUsdPrice    = _discountedUsd,
+            ExchangeRate          = _usdKuru,
+            ExchangeRateDate      = _kurTarihi,
+            ExchangeRateActualDate = _actualRateDate ?? _kurTarihi,
+            ExchangeRateSource    = _rateSource
+        };
+        dto.Recalculate();
+        MudDialog.Close(dto);
+    }
+
+    private string BuildExportDescription()
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.Append(PriceItem.GetInvoiceDescription());
+        sb.Append($" {_listPriceUsd.ToString("N2", TrCulture)} USD");
+        sb.Append($" x %{_discountRate.ToString("N0", TrCulture)} iskonto");
+        sb.Append($" = {_discountedUsd.ToString("N2", TrCulture)} USD");
+        sb.Append($" x {_usdKuru.ToString("N2", TrCulture)} TL");
+        sb.Append($" = {MalzemeTl.ToString("N2", TrCulture)} TL");
+
+        // Kur tarihi her zaman yazılsın
+        var displayDate = _actualRateDate?.Date != _kurTarihi?.Date
+            ? (_actualRateDate ?? _kurTarihi)
+            : _kurTarihi;
+        if (displayDate.HasValue)
+            sb.Append($" (Kur Tarihi: {displayDate.Value:dd.MM.yyyy})");
+
+        if (_rateSource == "Manuel")
+            sb.Append(" (Manuel Kur)");
+
+        return sb.ToString();
+    }
+}

@@ -9,7 +9,7 @@ namespace SogutmaHakedisKontrol.Infrastructure.DependencyInjection;
 
 public static class ServiceExtensions
 {
-    public static IServiceCollection AddApplicationServices(this IServiceCollection services)
+    public static IServiceCollection AddSogutmaHakedisKontrolServices(this IServiceCollection services)
     {
         var appPathService = new AppPathService();
         services.AddSingleton<IAppPathService>(appPathService);

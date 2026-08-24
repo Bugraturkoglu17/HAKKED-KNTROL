@@ -1,0 +1,58 @@
+@namespace HakedisOtomasyon.Web.Components
+@using System.Globalization
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.BarChart" Class="mr-1" />
+            @ClaimName — Mağaza Özeti
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudTable Items="@Summaries" Dense Hover>
+            <HeaderContent>
+                <MudTh>Kod</MudTh>
+                <MudTh>Mağaza</MudTh>
+                <MudTh>Form</MudTh>
+                <MudTh>Fatura</MudTh>
+                <MudTh>Servis Ücreti</MudTh>
+                <MudTh>Fiyat Listesi</MudTh>
+                <MudTh>Fatura Toplamı</MudTh>
+                <MudTh>Genel Toplam</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.StoreCode</MudTd>
+                <MudTd>@context.StoreName</MudTd>
+                <MudTd>@context.FormCount</MudTd>
+                <MudTd>@context.InvoiceCount</MudTd>
+                <MudTd>@context.ServiceFeeTotal.ToString("N0") ₺</MudTd>
+                <MudTd>@context.PriceListTotal.ToString("N0") ₺</MudTd>
+                <MudTd>@context.InvoiceTotal.ToString("N0") ₺</MudTd>
+                <MudTd Style="font-weight:700;color:#1565C0">@context.GrandTotal.ToString("N0") ₺</MudTd>
+            </RowTemplate>
+            <FooterContent>
+                <MudTd colspan="4"><b>GENEL TOPLAM</b></MudTd>
+                <MudTd><b>@Summaries.Sum(x => x.ServiceFeeTotal).ToString("N0") ₺</b></MudTd>
+                <MudTd><b>@Summaries.Sum(x => x.PriceListTotal).ToString("N0") ₺</b></MudTd>
+                <MudTd><b>@Summaries.Sum(x => x.InvoiceTotal).ToString("N0") ₺</b></MudTd>
+                <MudTd Style="font-weight:800;font-size:1.1em">
+                    @Summaries.Sum(x => x.GrandTotal).ToString("N0") ₺
+                </MudTd>
+            </FooterContent>
+            <NoRecordsContent>
+                <MudAlert Severity="Severity.Info" Dense>Veri bulunamadı.</MudAlert>
+            </NoRecordsContent>
+        </MudTable>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Color="Color.Primary" OnClick="Close">Kapat</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public string ClaimName { get; set; } = string.Empty;
+    [Parameter] public List<ClaimSummaryDto> Summaries { get; set; } = new();
+
+    private void Close() => MudDialog.Close();
+}

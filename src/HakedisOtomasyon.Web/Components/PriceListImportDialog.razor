@@ -1,0 +1,297 @@
+@namespace HakedisOtomasyon.Web.Components
+@inject IPriceListService PriceListService
+@inject ISnackbar Snackbar
+@inject IFilePickerService FilePicker
+@inject IAppPathService AppPathService
+@inject ISettingsService SettingsService
+@inject IDataBackupService DataBackupService
+
+<MudDialog Style="min-width:740px;max-width:920px">
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.UploadFile" Class="mr-2" Style="vertical-align:middle" />
+            Migros Birim Fiyat Listesi İçe Aktar
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (_state == State.SelectFile)
+        {
+            <MudAlert Severity="Severity.Info" Class="mb-3">
+                Excel dosyanızda <b>Ana Grup</b>, <b>Açıklama</b>, <b>Birim</b>, <b>Malzeme</b> ve <b>İşçilik</b>
+                kolonları bulunmalıdır. <b>Alt Grup kullanılmaz.</b>
+                <br />
+                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                    Kolon başlıkları büyük/küçük harf ve Türkçe karakter farkı gözetilmeksizin okunur.
+                    Aynı Ana Grup + Açıklama + Birim varsa güncellenir, yoksa eklenir.
+                </MudText>
+            </MudAlert>
+            <MudButton Variant="Variant.Outlined" Size="Size.Large" FullWidth
+                       StartIcon="@Icons.Material.Filled.FolderOpen"
+                       OnClick="SelectFile">
+                @(_filePath is null ? "Excel Dosyası Seç..." : Path.GetFileName(_filePath))
+            </MudButton>
+            @if (_filePath is not null)
+            {
+                <MudPaper Class="pa-3 mt-3" Elevation="0" Outlined>
+                    <MudSwitch T="bool" @bind-Value="_clearExisting" Color="Color.Warning"
+                               Label="Mevcut fiyat listesini temizle ve sıfırdan yükle (manuel eklenenler korunur)" />
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        Kapalıyken: mevcut kayıtlar güncellenir, yeni kayıtlar eklenir (önerilen)
+                    </MudText>
+                </MudPaper>
+            }
+        }
+        else if (_state == State.Analyzing)
+        {
+            <MudText Align="Align.Center" Class="mb-2">Excel dosyası analiz ediliyor...</MudText>
+            <MudProgressLinear Indeterminate Color="Color.Primary" />
+        }
+        else if (_state == State.Preview && _preview is not null)
+        {
+            <MudGrid Spacing="2" Class="mb-3">
+                <MudItem xs="6" md="4">
+                    <MudPaper Class="pa-2 text-center" Elevation="1">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Toplam Kalem</MudText>
+                        <MudText Typo="Typo.h5" Color="@(_preview.TotalItems > 0 ? Color.Primary : Color.Error)" Style="font-weight:700">@_preview.TotalItems</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="6" md="4">
+                    <MudPaper Class="pa-2 text-center" Elevation="1">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Sabit Fiyat</MudText>
+                        <MudText Typo="Typo.h5" Color="Color.Success">@_preview.FixedPriceCount</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="6" md="4">
+                    <MudPaper Class="pa-2 text-center" Elevation="1">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Değişken Fiyat</MudText>
+                        <MudText Typo="Typo.h5" Color="Color.Warning">@_preview.VariablePriceCount</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="6" md="4">
+                    <MudPaper Class="pa-2 text-center" Elevation="1">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Sadece İşçilik</MudText>
+                        <MudText Typo="Typo.h5">@_preview.LaborOnlyCount</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="6" md="4">
+                    <MudPaper Class="pa-2 text-center" Elevation="1">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Sadece Malzeme</MudText>
+                        <MudText Typo="Typo.h5">@_preview.MaterialOnlyCount</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="6" md="4">
+                    <MudPaper Class="pa-2 text-center" Elevation="1">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Birimi Eksik</MudText>
+                        <MudText Typo="Typo.h5" Color="@(_preview.MissingUnitCount > 0 ? Color.Error : Color.Default)">
+                            @_preview.MissingUnitCount
+                        </MudText>
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+
+            @if (_preview.TotalItems == 0)
+            {
+                <MudAlert Severity="Severity.Error" Class="mb-2">
+                    <MudText Typo="Typo.body2" Style="font-weight:600">Excel okundu ancak hiç fiyat kalemi bulunamadı.</MudText>
+                    @foreach (var err in _preview.Errors)
+                    {
+                        <MudText Typo="Typo.caption">@err</MudText>
+                    }
+                </MudAlert>
+                @if (_preview.DebugMessages.Count > 0)
+                {
+                    <MudAlert Severity="Severity.Warning" Dense Class="mb-2">
+                        <MudText Typo="Typo.caption" Style="font-weight:600">Tanı Bilgisi:</MudText>
+                        @foreach (var msg in _preview.DebugMessages.Take(10))
+                        {
+                            <br /><MudText Typo="Typo.caption">@msg</MudText>
+                        }
+                    </MudAlert>
+                }
+            }
+
+            @if (_preview.TotalItems > 0 && _preview.MissingUnitCount > 0)
+            {
+                <MudAlert Severity="Severity.Warning" Dense Class="mb-2">
+                    @_preview.MissingUnitCount kalemde birim bilgisi eksik.
+                    Bu kalemler pasif olarak aktarılacak; düzelttikten sonra aktif edebilirsiniz.
+                </MudAlert>
+            }
+            @if (_preview.TotalItems > 0 && _preview.ErrorCount > 0)
+            {
+                <MudAlert Severity="Severity.Error" Dense Class="mb-2">
+                    @_preview.ErrorCount satır okunamadı.
+                    @if (_preview.Errors.Count > 0)
+                    {
+                        <br /><MudText Typo="Typo.caption">@_preview.Errors.First()</MudText>
+                    }
+                </MudAlert>
+            }
+
+            <MudText Typo="Typo.subtitle2" Class="mb-1">
+                Önizleme (ilk @Math.Min(15, _preview.Items.Count(i => i.IsSelectable)) kalem):
+            </MudText>
+            <MudTable Dense Items="@_preview.Items.Where(i => i.IsSelectable).Take(15)"
+                      Elevation="0" Outlined Style="max-height:250px;overflow-y:auto">
+                <HeaderContent>
+                    <MudTh>Ana Grup</MudTh>
+                    <MudTh>Açıklama</MudTh>
+                    <MudTh>Birim</MudTh>
+                    <MudTh>Malzeme</MudTh>
+                    <MudTh>İşçilik</MudTh>
+                    <MudTh>Tip</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd><MudText Typo="Typo.caption">@context.MainCategory</MudText></MudTd>
+                    <MudTd><MudText Typo="Typo.body2">@context.Description</MudText></MudTd>
+                    <MudTd>
+                        @if (context.HasMissingUnit)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Error">Eksik</MudChip>
+                        }
+                        else
+                        {
+                            <MudChip T="string" Size="Size.Small">@context.Unit</MudChip>
+                        }
+                    </MudTd>
+                    <MudTd>@(context.PriceType == PriceType.VariablePrice ? "—" : context.MaterialPrice.ToString("N2"))</MudTd>
+                    <MudTd>@(context.PriceType == PriceType.VariablePrice ? "—" : context.LaborPrice.ToString("N2"))</MudTd>
+                    <MudTd>
+                        <MudChip T="string" Size="Size.Small" Color="@PriceTypeColor(context.PriceType)">
+                            @context.PriceTypeLabel
+                        </MudChip>
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+            @if (_preview.Items.Count(i => i.IsSelectable) > 15)
+            {
+                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-1">
+                    ... ve @(_preview.Items.Count(i => i.IsSelectable) - 15) kalem daha
+                </MudText>
+            }
+        }
+        else if (_state == State.Importing)
+        {
+            <MudText Align="Align.Center" Class="mb-2">Kalemler aktarılıyor...</MudText>
+            <MudProgressLinear Indeterminate Color="Color.Success" />
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Disabled="_state == State.Analyzing || _state == State.Importing">
+            İptal
+        </MudButton>
+        @if (_state == State.SelectFile && _filePath is not null)
+        {
+            <MudButton Color="Color.Primary" Variant="Variant.Filled"
+                       StartIcon="@Icons.Material.Filled.Analytics"
+                       OnClick="AnalyzeFile">
+                Analiz Et
+            </MudButton>
+        }
+        @if (_state == State.Preview && _preview is not null)
+        {
+            <MudButton OnClick="@(() => _state = State.SelectFile)">Geri</MudButton>
+            <MudButton Color="Color.Success" Variant="Variant.Filled"
+                       StartIcon="@Icons.Material.Filled.Download"
+                       Disabled="@(_preview.TotalItems == 0)"
+                       OnClick="ImportAsync">
+                İçeri Aktar (@_preview.TotalItems Kalem)
+            </MudButton>
+        }
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+
+    private enum State { SelectFile, Analyzing, Preview, Importing }
+    private State _state = State.SelectFile;
+    private string? _filePath;
+    private bool _clearExisting = false;
+    private PriceImportPreviewDto? _preview;
+
+    private async Task SelectFile()
+    {
+        _filePath = await FilePicker.PickExcelFileAsync();
+        _preview = null;
+        _state = State.SelectFile;
+    }
+
+    private async Task AnalyzeFile()
+    {
+        if (_filePath is null) return;
+        _state = State.Analyzing;
+        StateHasChanged();
+        try
+        {
+            await using var fs = new FileStream(_filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+            using var ms = new MemoryStream();
+            await fs.CopyToAsync(ms);
+            ms.Position = 0;
+            _preview = await PriceListService.ParseGenericExcelAsync(ms);
+            _state = State.Preview;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Analiz hatası: {ex.Message}", Severity.Error);
+            _state = State.SelectFile;
+        }
+    }
+
+    private async Task ImportAsync()
+    {
+        if (_preview is null) return;
+        _state = State.Importing;
+        StateHasChanged();
+        try
+        {
+            if (_clearExisting)
+            {
+                try { await DataBackupService.ExportMasterDataAsync(); }
+                catch { /* yedek hatası import'u engellemez */ }
+            }
+
+            var count = await PriceListService.ImportParsedItemsAsync(_preview.Items, _clearExisting);
+
+            // Excel dosyasını PriceCatalogImports klasörüne tarih damgasıyla kalıcı kaydet
+            if (_filePath is not null)
+                await SaveImportFileCopyAsync(_filePath);
+
+            Snackbar.Add($"{count} fiyat kalemi başarıyla aktarıldı.", Severity.Success);
+            MudDialog.Close(DialogResult.Ok(count));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Aktarma hatası: {ex.Message}", Severity.Error);
+            _state = State.Preview;
+        }
+    }
+
+    private async Task SaveImportFileCopyAsync(string sourcePath)
+    {
+        try
+        {
+            Directory.CreateDirectory(AppPathService.PriceCatalogImportsPath);
+            var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+            var fileName = $"{timestamp}_{Path.GetFileName(sourcePath)}";
+            var destPath = Path.Combine(AppPathService.PriceCatalogImportsPath, fileName);
+            File.Copy(sourcePath, destPath, overwrite: false);
+            await SettingsService.SetAsync(
+                SettingKeys.LastPriceCatalogImportDate,
+                DateTime.Now.ToString("dd.MM.yyyy HH:mm:ss"));
+        }
+        catch { /* kopyalama hatası import işlemini engellemez */ }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private static Color PriceTypeColor(PriceType pt) => pt switch
+    {
+        PriceType.VariablePrice => Color.Warning,
+        PriceType.LaborOnly => Color.Info,
+        PriceType.MaterialOnly => Color.Secondary,
+        PriceType.PercentageBased => Color.Tertiary,
+        _ => Color.Success
+    };
+}
+

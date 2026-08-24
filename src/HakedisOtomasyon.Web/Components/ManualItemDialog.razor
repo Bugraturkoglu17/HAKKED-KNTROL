@@ -1,0 +1,124 @@
+@namespace HakedisOtomasyon.Web.Components
+@using System.Globalization
+@using HakedisOtomasyon.Application.DTOs
+@using MudBlazor
+
+<MudDialog Style="min-width:480px">
+    <DialogContent>
+        <MudGrid Spacing="2">
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_desc"
+                              Label="Açıklama *"
+                              Variant="Variant.Outlined"
+                              MaxLength="500"
+                              HelperText="Kalem açıklamasını girin"
+                              Immediate="true" />
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudTextField @bind-Value="_unit"
+                              Label="Birim *"
+                              Variant="Variant.Outlined"
+                              MaxLength="50"
+                              HelperText="Ad, m, m², kg..."
+                              Immediate="true" />
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudNumericField T="decimal" @bind-Value="_materialPrice"
+                                 Label="Malzeme (₺)"
+                                 Variant="Variant.Outlined"
+                                 Min="0"
+                                 Format="N2"
+                                 HideSpinButtons="true" />
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudNumericField T="decimal" @bind-Value="_laborPrice"
+                                 Label="İşçilik (₺)"
+                                 Variant="Variant.Outlined"
+                                 Min="0"
+                                 Format="N2"
+                                 HideSpinButtons="true" />
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudNumericField T="decimal" @bind-Value="_quantity"
+                                 Label="Miktar *"
+                                 Variant="Variant.Outlined"
+                                 Min="0.01m"
+                                 Format="N2"
+                                 HideSpinButtons="false" />
+            </MudItem>
+            <MudItem xs="12" md="8">
+                <div class="d-flex flex-column justify-center" style="height:56px; padding-top:4px">
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">
+                        Birim Fiyat: <strong>@((_materialPrice + _laborPrice).ToString("N2", TrCulture)) ₺</strong>
+                        &nbsp;|&nbsp;
+                        Toplam: <strong>@(((_materialPrice + _laborPrice) * _quantity).ToString("N2", TrCulture)) ₺</strong>
+                    </MudText>
+                </div>
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Variant="Variant.Text">İptal</MudButton>
+        <MudButton Color="Color.Primary"
+                   Variant="Variant.Filled"
+                   OnClick="Submit"
+                   Disabled="@(!IsValid)">
+            Kaydet
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+
+    /// <summary>
+    /// When provided, dialog opens in edit mode pre-populated with existing values.
+    /// When null, dialog opens in add mode with defaults.
+    /// </summary>
+    [Parameter] public ServiceItemDto? Item { get; set; }
+
+    private static readonly CultureInfo TrCulture = new("tr-TR");
+
+    private string _desc = "";
+    private string _unit = "Ad";
+    private decimal _materialPrice;
+    private decimal _laborPrice;
+    private decimal _quantity = 1;
+
+    private bool IsValid =>
+        !string.IsNullOrWhiteSpace(_desc) &&
+        !string.IsNullOrWhiteSpace(_unit) &&
+        _quantity > 0;
+
+    protected override void OnInitialized()
+    {
+        if (Item is not null)
+        {
+            _desc = Item.Description;
+            _unit = Item.Unit;
+            _materialPrice = Item.MaterialPrice;
+            _laborPrice = Item.LaborPrice;
+            _quantity = Item.Quantity > 0 ? Item.Quantity : 1;
+        }
+    }
+
+    private void Submit()
+    {
+        if (_quantity <= 0) _quantity = 1;
+
+        var dto = new ServiceItemDto
+        {
+            Description = _desc.Trim(),
+            Unit = _unit.Trim(),
+            MaterialPrice = _materialPrice,
+            LaborPrice = _laborPrice,
+            Quantity = _quantity,
+            IsManualEntry = true
+        };
+        dto.Recalculate();
+
+        MudDialog.Close(DialogResult.Ok(dto));
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

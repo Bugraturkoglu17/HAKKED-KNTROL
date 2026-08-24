@@ -1,0 +1,285 @@
+﻿@page "/price-list"
+@page "/discipline/yangin/price-list"
+@page "/discipline/klima/price-list"
+@page "/discipline/asansor/price-list"
+@page "/discipline/sogutma/price-list"
+@inject IPriceListService PriceListService
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Fiyat Listesi</PageTitle>
+
+<MudStack Row AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-4">
+    <MudText Typo="Typo.h5" Style="font-weight:700">Fiyat Listesi</MudText>
+    <MudStack Row Spacing="1">
+        @if (_selected.Count > 0)
+        {
+            <MudButton Variant="Variant.Outlined" Color="Color.Error"
+                       StartIcon="@Icons.Material.Filled.DeleteSweep"
+                       OnClick="DeleteSelectedAsync">
+                Secilenleri Sil (@_selected.Count)
+            </MudButton>
+        }
+        <MudButton Variant="Variant.Outlined" Color="Color.Error"
+                   StartIcon="@Icons.Material.Filled.DeleteForever"
+                   OnClick="DeleteAllAsync">
+            Tumunu Sil
+        </MudButton>
+        <MudButton Variant="Variant.Outlined" Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.UploadFile"
+                   OnClick="OpenImportDialog">
+            Excel'den Ice Aktar
+        </MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.Add"
+                   OnClick="OpenCreateDialog">
+            Yeni Kalem
+        </MudButton>
+    </MudStack>
+</MudStack>
+
+<MudPaper Elevation="2">
+    <MudTable Items="@_items" Dense Hover Loading="@_loading"
+              MultiSelection="true" @bind-SelectedItems="_selected"
+              Filter="new Func<PriceItemDto, bool>(FilterFunc)"
+              RowsPerPage="25">
+        <ToolBarContent>
+            <MudGrid Spacing="1" AlignItems="AlignItems.Center">
+                <MudItem xs="12" md="4">
+                    <MudTextField @bind-Value="_searchText" Placeholder="Ana grup veya açıklama ara... Örn: DN100, boru, sprinkler, sac kapak"
+                                  Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                                  Immediate Dense Clearable Variant="Variant.Outlined" Class="mt-0" />
+                </MudItem>
+                <MudItem xs="6" md="2">
+                    <MudSelect T="string?" @bind-Value="_categoryFilter"
+                               Label="Ana Grup" Variant="Variant.Outlined" Dense Clearable>
+                        @foreach (var c in _categories)
+                        {
+                            <MudSelectItem T="string?" Value="@c">@c</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="6" md="2">
+                    <MudSelect T="PriceType?" @bind-Value="_priceTypeFilter"
+                               Label="Fiyat Tipi" Variant="Variant.Outlined" Dense Clearable>
+                        <MudSelectItem T="PriceType?" Value="PriceType.FixedPrice">Sabit</MudSelectItem>
+                        <MudSelectItem T="PriceType?" Value="PriceType.LaborOnly">Sadece Iscilk</MudSelectItem>
+                        <MudSelectItem T="PriceType?" Value="PriceType.MaterialOnly">Sadece Malzeme</MudSelectItem>
+                        <MudSelectItem T="PriceType?" Value="PriceType.VariablePrice">Degisken</MudSelectItem>
+                        <MudSelectItem T="PriceType?" Value="PriceType.PercentageBased">Yuzdesel</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="6" md="2">
+                    <MudSwitch T="bool" Value="_showInactive" Color="Color.Default"
+                               Label="Pasif" ValueChanged="@(async (bool v) => { _showInactive = v; await LoadAsync(); })" />
+                </MudItem>
+                <MudItem xs="6" md="2">
+                    <MudSwitch T="bool" @bind-Value="_missingUnitOnly" Color="Color.Warning"
+                               Label="Birimi Eksik" />
+                </MudItem>
+            </MudGrid>
+        </ToolBarContent>
+        <HeaderContent>
+            <MudTh><MudTableSortLabel SortBy="new Func<PriceItemDto,object>(x => x.MainCategory ?? string.Empty)">Ana Grup</MudTableSortLabel></MudTh>
+            <MudTh><MudTableSortLabel SortBy="new Func<PriceItemDto,object>(x => x.Description)">Aciklama</MudTableSortLabel></MudTh>
+            <MudTh>Birim</MudTh>
+            <MudTh><MudTableSortLabel SortBy="new Func<PriceItemDto,object>(x => x.MaterialPrice)">Malzeme</MudTableSortLabel></MudTh>
+            <MudTh><MudTableSortLabel SortBy="new Func<PriceItemDto,object>(x => x.LaborPrice)">Iscilik</MudTableSortLabel></MudTh>
+            <MudTh><MudTableSortLabel SortBy="new Func<PriceItemDto,object>(x => x.UnitPrice)">Birim Fiyat</MudTableSortLabel></MudTh>
+            <MudTh>Tip</MudTh>
+            <MudTh>Durum</MudTh>
+            <MudTh>Islemler</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Ana Grup">
+                <MudText Typo="Typo.caption" Style="color:#666">@context.MainCategory</MudText>
+            </MudTd>
+            <MudTd DataLabel="Aciklama">
+                <MudStack Row Spacing="1" AlignItems="AlignItems.Center">
+                    <MudText Typo="Typo.body2">@context.Description</MudText>
+                    @if (!string.IsNullOrWhiteSpace(context.Notes))
+                    {
+                        <MudTooltip Text="@context.Notes">
+                            <MudIcon Icon="@Icons.Material.Filled.WarningAmber" Color="Color.Warning" Size="Size.Small" />
+                        </MudTooltip>
+                    }
+                </MudStack>
+            </MudTd>
+            <MudTd DataLabel="Birim">
+                @if (context.HasMissingUnit)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Error">Eksik</MudChip>
+                }
+                else
+                {
+                    <MudChip T="string" Size="Size.Small">@context.Unit</MudChip>
+                }
+            </MudTd>
+            <MudTd DataLabel="Malzeme">
+                @(context.PriceType == PriceType.VariablePrice ? "—" : context.MaterialPrice.ToString("N2") + " TL")
+            </MudTd>
+            <MudTd DataLabel="Iscilik">
+                @(context.PriceType == PriceType.VariablePrice ? "—" : context.LaborPrice.ToString("N2") + " TL")
+            </MudTd>
+            <MudTd DataLabel="Birim Fiyat" Style="font-weight:600">
+                @(context.PriceType == PriceType.VariablePrice ? "Degisken" : context.UnitPrice.ToString("N2") + " TL")
+            </MudTd>
+            <MudTd>
+                <MudChip T="string" Size="Size.Small" Color="@PriceTypeColor(context.PriceType)">
+                    @context.PriceTypeLabel
+                </MudChip>
+            </MudTd>
+            <MudTd>
+                <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)">
+                    @(context.IsActive ? "Aktif" : "Pasif")
+                </MudChip>
+            </MudTd>
+            <MudTd>
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary"
+                               OnClick="@(() => OpenEditDialog(context))" />
+                <MudIconButton Icon="@(context.IsActive ? Icons.Material.Filled.ToggleOff : Icons.Material.Filled.ToggleOn)"
+                               Size="Size.Small"
+                               Color="@(context.IsActive ? Color.Warning : Color.Success)"
+                               OnClick="@(() => ToggleAsync(context))" />
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                               OnClick="@(() => DeleteAsync(context))" />
+            </MudTd>
+        </RowTemplate>
+        <PagerContent><MudTablePager /></PagerContent>
+        <NoRecordsContent><MudAlert Severity="Severity.Info" Dense>Kayit bulunamadi.</MudAlert></NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private List<PriceItemDto> _items = new();
+    private List<string> _categories = new();
+    private HashSet<PriceItemDto> _selected = new();
+    private bool _loading = true;
+    private bool _showInactive = false;
+    private bool _missingUnitOnly = false;
+    private string _searchText = string.Empty;
+    private string? _categoryFilter;
+    private PriceType? _priceTypeFilter;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _selected.Clear();
+        try
+        {
+            _items = await PriceListService.GetAllAsync(_showInactive);
+            _categories = await PriceListService.GetMainCategoriesAsync();
+        }
+        finally { _loading = false; }
+    }
+
+    private bool FilterFunc(PriceItemDto p)
+    {
+        if (_priceTypeFilter.HasValue && p.PriceType != _priceTypeFilter.Value) return false;
+        if (!string.IsNullOrEmpty(_categoryFilter) && p.MainCategory != _categoryFilter) return false;
+        if (_missingUnitOnly && !p.HasMissingUnit) return false;
+        if (!string.IsNullOrEmpty(_searchText))
+        {
+            var q = _searchText.Trim();
+            return (p.Description?.Contains(q, StringComparison.OrdinalIgnoreCase) == true)
+                || (p.MainCategory?.Contains(q, StringComparison.OrdinalIgnoreCase) == true)
+                || (p.InvoiceDescription?.Contains(q, StringComparison.OrdinalIgnoreCase) == true)
+                || (p.PozNo?.Contains(q, StringComparison.OrdinalIgnoreCase) == true);
+        }
+        return true;
+    }
+
+    private async Task OpenImportDialog()
+    {
+        var dialog = await DialogService.ShowAsync<PriceListImportDialog>("Fiyat Listesi Ice Aktar");
+        var result = await dialog.Result;
+        if (!result.Canceled) await LoadAsync();
+    }
+
+    private async Task OpenCreateDialog()
+    {
+        var dto = new PriceItemDto { IsActive = true, Unit = "Ad.", PriceType = PriceType.FixedPrice };
+        var parameters = new DialogParameters { ["Item"] = dto };
+        var dialog = await DialogService.ShowAsync<PriceItemEditDialog>("Yeni Fiyat Kalemi", parameters);
+        var result = await dialog.Result;
+        if (!result.Canceled)
+        {
+            await PriceListService.CreateAsync((PriceItemDto)result.Data!);
+            await LoadAsync();
+            Snackbar.Add("Fiyat kalemi eklendi.", Severity.Success);
+        }
+    }
+
+    private async Task OpenEditDialog(PriceItemDto item)
+    {
+        var clone = new PriceItemDto
+        {
+            Id = item.Id, MainCategory = item.MainCategory,
+            Description = item.Description, InvoiceDescription = item.InvoiceDescription,
+            Unit = item.Unit, PozNo = item.PozNo,
+            MaterialPrice = item.MaterialPrice, LaborPrice = item.LaborPrice,
+            PriceType = item.PriceType, IsActive = item.IsActive
+        };
+        var parameters = new DialogParameters { ["Item"] = clone };
+        var dialog = await DialogService.ShowAsync<PriceItemEditDialog>("Fiyat Kalemi Duzenle", parameters);
+        var result = await dialog.Result;
+        if (!result.Canceled)
+        {
+            await PriceListService.UpdateAsync((PriceItemDto)result.Data!);
+            await LoadAsync();
+            Snackbar.Add("Fiyat kalemi guncellendi.", Severity.Success);
+        }
+    }
+
+    private async Task ToggleAsync(PriceItemDto item)
+    {
+        await PriceListService.ToggleActiveAsync(item.Id);
+        await LoadAsync();
+    }
+
+    private async Task DeleteAsync(PriceItemDto item)
+    {
+        var result = await DialogService.ShowMessageBox("Sil",
+            $"'{item.Description}' silinecek. Onayliyor musunuz?", "Evet, Sil", cancelText: "Iptal");
+        if (result != true) return;
+        await PriceListService.DeleteAsync(item.Id);
+        await LoadAsync();
+        Snackbar.Add("Fiyat kalemi silindi.", Severity.Info);
+    }
+
+    private async Task DeleteSelectedAsync()
+    {
+        if (_selected.Count == 0) return;
+        var result = await DialogService.ShowMessageBox("Coklu Sil",
+            $"{_selected.Count} kalem silinecek. Onayliyor musunuz?", "Evet, Sil", cancelText: "Iptal");
+        if (result != true) return;
+        await PriceListService.DeleteManyAsync(_selected.Select(x => x.Id));
+        _selected.Clear();
+        await LoadAsync();
+        Snackbar.Add("Secili kalemler silindi.", Severity.Info);
+    }
+
+    private async Task DeleteAllAsync()
+    {
+        if (_items.Count == 0) return;
+        var result = await DialogService.ShowMessageBox("Tumunu Sil",
+            $"Listedeki tum {_items.Count} kalem silinecek. Bu islem geri alinamaz. Onayliyor musunuz?",
+            "Evet, Tumunu Sil", cancelText: "Iptal");
+        if (result != true) return;
+        await PriceListService.DeleteManyAsync(_items.Select(x => x.Id));
+        _selected.Clear();
+        await LoadAsync();
+        Snackbar.Add("Tum kalemler silindi.", Severity.Info);
+    }
+
+    private static Color PriceTypeColor(PriceType pt) => pt switch
+    {
+        PriceType.VariablePrice => Color.Warning,
+        PriceType.LaborOnly => Color.Info,
+        PriceType.MaterialOnly => Color.Secondary,
+        PriceType.PercentageBased => Color.Tertiary,
+        _ => Color.Success
+    };
+}

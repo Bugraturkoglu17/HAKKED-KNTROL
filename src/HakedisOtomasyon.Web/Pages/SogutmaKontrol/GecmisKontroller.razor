@@ -1,0 +1,68 @@
+@page "/discipline/sogutma/kontrol/gecmis-kontroller"
+@inject IProgressPaymentCheckService CheckService
+@inject NavigationManager Nav
+
+<PageTitle>Hakediş Kontrol Geçmişi</PageTitle>
+
+<MudStack Row AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-4">
+    <MudText Typo="Typo.h5" Style="font-weight:700">Kontrol Geçmişi</MudText>
+    <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.ArrowBack" Href="/discipline/sogutma/kontrol">Kontrol Merkezine Dön</MudButton>
+</MudStack>
+
+<MudPaper Elevation="2">
+    <MudTable Items="@_checks" Dense Hover Loading="@_loading" RowsPerPage="20"
+              T="ProgressPaymentCheckDto" OnRowClick="@(e => Nav.NavigateTo($"/discipline/sogutma/kontrol/{e.Item!.Id}"))"
+              Style="cursor:pointer">
+        <HeaderContent>
+            <MudTh>Dönem</MudTh>
+            <MudTh>Firma</MudTh>
+            <MudTh>Bölge</MudTh>
+            <MudTh>Hakediş Türü</MudTh>
+            <MudTh>Kullanılan Kur</MudTh>
+            <MudTh>Firma Toplamı</MudTh>
+            <MudTh>Kontrol Toplamı</MudTh>
+            <MudTh>Fark</MudTh>
+            <MudTh>Durum</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Dönem">@context.PeriodLabel</MudTd>
+            <MudTd DataLabel="Firma">@context.CompanyName</MudTd>
+            <MudTd DataLabel="Bölge">@context.Region</MudTd>
+            <MudTd DataLabel="Hakediş Türü">@context.ClaimTypeName</MudTd>
+            <MudTd DataLabel="Kullanılan Kur">@(context.ExchangeRateEur?.ToString("N4") ?? "—")</MudTd>
+            <MudTd DataLabel="Firma Toplamı">@context.CompanyTotal.ToString("N2") TL</MudTd>
+            <MudTd DataLabel="Kontrol Toplamı">@context.CalculatedTotal.ToString("N2") TL</MudTd>
+            <MudTd DataLabel="Fark" Style="@(FarkStyle(context.Difference))">@context.Difference.ToString("N2") TL</MudTd>
+            <MudTd DataLabel="Durum">
+                <MudChip T="string" Size="Size.Small" Color="@StatusColor(context.Status)">@context.StatusLabel</MudChip>
+            </MudTd>
+        </RowTemplate>
+        <PagerContent><MudTablePager /></PagerContent>
+        <NoRecordsContent><MudAlert Severity="Severity.Info" Dense>Henüz kontrol kaydı yok.</MudAlert></NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private List<ProgressPaymentCheckDto> _checks = new();
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _checks = await CheckService.GetHistoryAsync();
+        _loading = false;
+    }
+
+    private static string FarkStyle(decimal diff) => diff switch
+    {
+        > 0 => "color:var(--mud-palette-error);font-weight:600",
+        < 0 => "color:var(--mud-palette-warning);font-weight:600",
+        _ => "font-weight:600"
+    };
+
+    private static Color StatusColor(SogutmaHakedisKontrol.Domain.Enums.ProgressPaymentCheckStatus s) => s switch
+    {
+        SogutmaHakedisKontrol.Domain.Enums.ProgressPaymentCheckStatus.Tamamlandi => Color.Success,
+        SogutmaHakedisKontrol.Domain.Enums.ProgressPaymentCheckStatus.EslesmeBekliyor => Color.Warning,
+        _ => Color.Default
+    };
+}

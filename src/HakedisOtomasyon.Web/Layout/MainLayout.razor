@@ -1,0 +1,252 @@
+@namespace HakedisOtomasyon.Web.Layout
+@using HakedisOtomasyon.Infrastructure.Services
+@using HakedisOtomasyon.Web.Components
+@using Microsoft.AspNetCore.Components.Routing
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject RecoveryStateService RecoveryState
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject NavigationManager Nav
+@inject CurrentDisciplineService CurrentDiscipline
+@inject IDisciplineProfileService DisciplineProfileService
+
+<MudThemeProvider @ref="_themeProvider" @bind-IsDarkMode="_isDarkMode" Theme="_theme" />
+<MudPopoverProvider />
+<MudDialogProvider MaxWidth="MaxWidth.Large" FullWidth="true" />
+<MudSnackbarProvider />
+
+<MudLayout>
+    <MudAppBar Elevation="2" Dense="false">
+        <MudIconButton Icon="@Icons.Material.Filled.Menu"
+                       Color="Color.Inherit"
+                       Edge="Edge.Start"
+                       OnClick="@ToggleDrawer"
+                       Title="Menüyü aç/kapat" />
+        <MudStack Row AlignItems="AlignItems.Center" Spacing="1" Class="ml-2" Style="cursor:pointer" @onclick="@(() => Nav.NavigateTo("/"))">
+            <MudIcon Icon="@Icons.Material.Filled.Assignment" Color="Color.Inherit" />
+            <MudText Typo="Typo.h6" Style="font-weight:600;letter-spacing:.5px">
+                Servis Otomasyonu
+            </MudText>
+            @if (_activeProfile is not null)
+            {
+                <MudChip T="string" Size="Size.Small"
+                         Style="@($"background:{_activeProfile.ThemeColor};color:#fff;font-weight:600;margin-left:8px")">
+                    @_activeProfile.DisplayName
+                </MudChip>
+            }
+        </MudStack>
+        <MudSpacer />
+        <MudTooltip Text="@(_isDarkMode ? "Açık temaya geç" : "Koyu temaya geç")">
+            <MudIconButton Icon="@(_isDarkMode ? Icons.Material.Filled.LightMode : Icons.Material.Filled.DarkMode)"
+                           Color="Color.Inherit"
+                           OnClick="@ToggleTheme" />
+        </MudTooltip>
+    </MudAppBar>
+
+    <MudDrawer @bind-Open="_drawerOpen"
+               Elevation="1"
+               Variant="DrawerVariant.Mini"
+               OpenMiniOnHover="true"
+               ClipMode="DrawerClipMode.Always">
+        <MudDrawerHeader>
+            <MudText Typo="Typo.subtitle2" Style="font-weight:600">Navigasyon</MudText>
+        </MudDrawerHeader>
+        <NavMenu />
+    </MudDrawer>
+
+    <MudMainContent>
+        <MudContainer MaxWidth="MaxWidth.ExtraExtraLarge" Class="pa-4 pb-8">
+            @Body
+        </MudContainer>
+    </MudMainContent>
+</MudLayout>
+
+@code {
+    private MudThemeProvider _themeProvider = null!;
+    private bool _drawerOpen = true;
+    private bool _isDarkMode = false;
+    private HakedisOtomasyon.Domain.Models.DisciplineProfile? _activeProfile;
+
+    private MudTheme _theme = null!;
+
+    protected override void OnInitialized()
+    {
+        // Aktif disiplin SADECE DisciplineSelection kartına tıklamaya bağlı kalmasın —
+        // URL'deki /discipline/{route}/... segmentine göre her zaman senkron tutulur.
+        // Bu, NavMenu linki, doğrudan URL, geri/ileri tuşu gibi her giriş yolunu kapsar.
+        SyncDisciplineFromRoute(Nav.Uri);
+        Nav.LocationChanged += OnLocationChanged;
+        RefreshProfileAndTheme();
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        SyncDisciplineFromRoute(e.Location);
+        RefreshProfileAndTheme();
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void SyncDisciplineFromRoute(string uri)
+    {
+        var relative = Nav.ToBaseRelativePath(uri);
+        var parts = relative.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length >= 2 && parts[0].Equals("discipline", StringComparison.OrdinalIgnoreCase))
+        {
+            var profile = DisciplineProfileService.GetByRoute(parts[1]);
+            if (profile is not null)
+                CurrentDiscipline.CurrentDiscipline = profile.Discipline;
+        }
+    }
+
+    private void RefreshProfileAndTheme()
+    {
+        _activeProfile = DisciplineProfileService.GetAll()
+            .FirstOrDefault(p => p.Discipline == CurrentDiscipline.CurrentDiscipline);
+        _theme = BuildTheme(_activeProfile?.ThemeColor ?? "#1565C0");
+    }
+
+    public void Dispose() => Nav.LocationChanged -= OnLocationChanged;
+
+    /// <summary>
+    /// Aktif disiplinin rengine göre tema üretir. Yangın (#B3261E) aktifken
+    /// AppBar arka planı, aktif menü vurgusu ve birincil buton rengi bu renge döner.
+    /// </summary>
+    private static MudTheme BuildTheme(string primaryHex) => new()
+    {
+        PaletteLight = new PaletteLight
+        {
+            Primary = primaryHex,
+            PrimaryDarken = ColorShade(primaryHex, -0.18),
+            PrimaryLighten = ColorShade(primaryHex, 0.18),
+            Secondary = "#00838F",
+            AppbarBackground = primaryHex,
+            AppbarText = "#FFFFFF",
+            DrawerBackground = "#FAFAFA",
+            DrawerText = "#37474F",
+            Surface = "#FFFFFF",
+            Background = "#F5F7FA",
+            TextPrimary = "#263238",
+            TextSecondary = "#546E7A"
+        },
+        PaletteDark = new PaletteDark
+        {
+            // ── Birincil / ikincil aksanlar ───────────────────────────────
+            Primary        = ColorShade(primaryHex, 0.12),
+            PrimaryDarken  = primaryHex,
+            PrimaryLighten = ColorShade(primaryHex, 0.30),
+            Secondary      = "#38bdf8",
+
+            // ── Durum renkleri ────────────────────────────────────────────
+            Info    = "#38bdf8",
+            Success = "#22c55e",
+            Warning = "#f59e0b",
+            Error   = "#ef4444",
+
+            // ── Arka planlar ──────────────────────────────────────────────
+            Background = "#0f172a",   // Uygulama zemini (slate-900)
+            Surface    = "#1e293b",   // Kart / panel zemini (slate-800)
+
+            // ── AppBar / Drawer ───────────────────────────────────────────
+            AppbarBackground = ColorShade(primaryHex, -0.35),
+            AppbarText       = "#f8fafc",
+            DrawerBackground = "#0b1120",
+            DrawerText       = "#cbd5e1",
+            DrawerIcon       = "#94a3b8",
+
+            // ── Metin ─────────────────────────────────────────────────────
+            TextPrimary   = "#f1f5f9",   // Neredeyse beyaz
+            TextSecondary = "#94a3b8",   // Soluk mavi-gri
+            TextDisabled  = "#475569",   // Koyu gri
+
+            // ── Aksiyonlar ────────────────────────────────────────────────
+            ActionDefault              = "#94a3b8",
+            ActionDisabled             = "#475569",
+            ActionDisabledBackground   = "rgba(255,255,255,0.04)",
+
+            // ── Çizgiler / ayırıcılar ────────────────────────────────────
+            Divider      = "#334155",
+            DividerLight = "rgba(255,255,255,0.06)",
+            LinesDefault = "#334155",
+            LinesInputs  = "#475569",
+
+            // ── Tablo ─────────────────────────────────────────────────────
+            TableLines   = "#334155",
+            TableStriped = "rgba(255,255,255,0.03)",
+            TableHover   = "rgba(59,130,246,0.10)",
+
+            // ── Katmanlar ─────────────────────────────────────────────────
+            OverlayDark  = "rgba(0,0,0,0.55)",
+            OverlayLight = "rgba(255,255,255,0.05)",
+        },
+        Typography = new Typography
+        {
+            Default = new Default { FontFamily = ["Roboto", "sans-serif"] }
+        }
+    };
+
+    /// <summary>Bir hex rengi pozitif yüzdeyle aydınlatır, negatif yüzdeyle koyulaştırır.</summary>
+    private static string ColorShade(string hex, double percent)
+    {
+        hex = hex.TrimStart('#');
+        int r = Convert.ToInt32(hex.Substring(0, 2), 16);
+        int g = Convert.ToInt32(hex.Substring(2, 2), 16);
+        int b = Convert.ToInt32(hex.Substring(4, 2), 16);
+
+        int Shift(int c) => percent >= 0
+            ? c + (int)((255 - c) * percent)
+            : c + (int)(c * percent);
+
+        r = Math.Clamp(Shift(r), 0, 255);
+        g = Math.Clamp(Shift(g), 0, 255);
+        b = Math.Clamp(Shift(b), 0, 255);
+
+        return $"#{r:X2}{g:X2}{b:X2}";
+    }
+
+    private void ToggleDrawer() => _drawerOpen = !_drawerOpen;
+    private void ToggleTheme() => _isDarkMode = !_isDarkMode;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        // Otomatik kurtarma yapıldıysa bildirim göster
+        if (RecoveryState.AutoRestoreResult is { } autoResult)
+        {
+            RecoveryState.AutoRestoreResult = null;
+            Snackbar.Add(
+                $"Veriler otomatik geri yüklendi. {autoResult.Summary}",
+                Severity.Success,
+                cfg => { cfg.VisibleStateDuration = 7000; });
+        }
+
+        // Tam yedekten geri yükleme tamamlandıysa bildirim göster
+        if (RecoveryState.RestoredFromPendingBackup)
+        {
+            RecoveryState.RestoredFromPendingBackup = false;
+            Snackbar.Add(
+                "Tam yedekten geri yükleme başarıyla tamamlandı. Tüm verileriniz geri yüklendi.",
+                Severity.Success,
+                cfg => { cfg.VisibleStateDuration = 8000; });
+        }
+
+        // Manuel kurtarma gerekiyorsa dialog aç
+        if (RecoveryState.RecoveryNeeded)
+        {
+            RecoveryState.RecoveryNeeded = false;
+            var parameters = new DialogParameters<DataRecoveryDialog>
+            {
+                { x => x.ScanResult, RecoveryState.ScanResult }
+            };
+            var options = new DialogOptions
+            {
+                MaxWidth      = MaxWidth.Small,
+                FullWidth     = true,
+                CloseButton   = false,
+                CloseOnEscapeKey = false,
+            };
+            await DialogService.ShowAsync<DataRecoveryDialog>("Veri Kurtarma", parameters, options);
+        }
+    }
+}

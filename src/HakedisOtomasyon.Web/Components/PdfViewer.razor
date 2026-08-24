@@ -1,0 +1,72 @@
+@namespace HakedisOtomasyon.Web.Components
+@inject IDialogService DialogService
+
+<div class="pdf-viewer-container">
+    <div class="pdf-viewer-toolbar">
+        <MudIcon Icon="@Icons.Material.Filled.InsertDriveFile" Size="Size.Small" Style="color:#90CAF9" />
+        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@FileName</span>
+        @if (!string.IsNullOrEmpty(FileUrl))
+        {
+            <MudIconButton Icon="@Icons.Material.Filled.Fullscreen"
+                           Size="Size.Small"
+                           Style="color:#90CAF9"
+                           Title="Tam Ekran"
+                           OnClick="OpenFullScreenAsync" />
+        }
+    </div>
+
+    @if (string.IsNullOrEmpty(FileUrl))
+    {
+        <div style="height:680px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;color:#BDBDBD">
+            <MudIcon Icon="@Icons.Material.Outlined.InsertDriveFile" Size="Size.Large" />
+            <MudText Typo="Typo.body2">Görüntülenecek dosya seçilmedi.</MudText>
+        </div>
+    }
+    else if (IsPdf)
+    {
+        <object data="@FileUrl" type="application/pdf" class="pdf-viewer-frame">
+            <div style="padding:24px;color:white;text-align:center">
+                <p>Tarayıcı PDF görüntülemeyi desteklemiyor.</p>
+                <a href="@FileUrl" target="_blank" style="color:#90CAF9">Dosyayı İndir</a>
+            </div>
+        </object>
+    }
+    else
+    {
+        <div style="height:680px;overflow:auto;display:flex;align-items:flex-start;justify-content:center;padding:8px;background:#525659">
+            <img src="@FileUrl" alt="@FileName"
+                 style="max-width:100%;height:auto;border-radius:4px;box-shadow:0 4px 12px rgba(0,0,0,0.5)" />
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string FileUrl { get; set; } = string.Empty;
+    [Parameter] public string FileName { get; set; } = string.Empty;
+    [Parameter] public string FilePath { get; set; } = string.Empty;
+
+    private bool IsPdf => !string.IsNullOrEmpty(FilePath) &&
+        Path.GetExtension(FilePath).Equals(".pdf", StringComparison.OrdinalIgnoreCase);
+
+    private async Task OpenFullScreenAsync()
+    {
+        var parameters = new DialogParameters
+        {
+            ["FileUrl"]  = FileUrl,
+            ["FileName"] = FileName,
+            ["FilePath"] = FilePath,
+        };
+
+        var options = new DialogOptions
+        {
+            FullScreen  = true,
+            CloseButton = true,
+            MaxWidth    = MaxWidth.False,
+        };
+
+        await DialogService.ShowAsync<ServiceFormPreviewDialog>(
+            FileName,
+            parameters,
+            options);
+    }
+}

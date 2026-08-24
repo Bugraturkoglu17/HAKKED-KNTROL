@@ -1,0 +1,222 @@
+@using HakedisOtomasyon.Application.DTOs
+@using HakedisOtomasyon.Application.Interfaces
+@using System.IO
+@inject IDataRecoveryService RecoveryService
+@inject IFilePickerService FilePicker
+@inject IAppPathService PathService
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudStack Row AlignItems="AlignItems.Center" Spacing="1">
+            <MudIcon Icon="@Icons.Material.Filled.Warning" Color="Color.Warning" />
+            <MudText Typo="Typo.h6">Veri Kurtarma</MudText>
+        </MudStack>
+    </TitleContent>
+    <DialogContent>
+        @if (_working)
+        {
+            <MudProgressLinear Indeterminate Color="Color.Primary" Class="mb-2" />
+            <MudText Typo="Typo.body2" Color="Color.Secondary">@_status</MudText>
+        }
+        else if (_result is not null)
+        {
+            <!-- Kurtarma sonucu -->
+            <MudAlert Severity="@(_result.Errors.Count == 0 ? Severity.Success : Severity.Warning)" Class="mb-3">
+                <MudText><b>Kurtarma tamamlandı.</b></MudText>
+                <MudText>@_result.Summary</MudText>
+                @if (_result.Errors.Count > 0)
+                {
+                    <MudText Color="Color.Error" Typo="Typo.caption">@string.Join(", ", _result.Errors)</MudText>
+                }
+            </MudAlert>
+            @if (_result.NeedsRestart)
+            {
+                <MudAlert Severity="Severity.Warning" Class="mb-2">
+                    Veritabanı değişikliğinin aktif olması için uygulamayı yeniden başlatmanız gerekiyor.
+                </MudAlert>
+                <MudButton Color="Color.Warning" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.RestartAlt"
+                           OnClick="RestartApp">
+                    Uygulamayı Yeniden Başlat
+                </MudButton>
+            }
+            else
+            {
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    Sayfayı yenileyerek kurtarılan verileri görüntüleyebilirsiniz.
+                </MudText>
+            }
+        }
+        else
+        {
+            <MudText Typo="Typo.body1" Class="mb-3">
+                Veritabanı boş görünüyor. Aşağıdaki kaynaklardan verilerinizi geri yükleyebilirsiniz.
+            </MudText>
+
+            <!-- Korunan yedek -->
+            @if (ScanResult?.HasProtectedData == true)
+            {
+                <MudPaper Elevation="2" Class="pa-3 mb-3" Style="border-left: 4px solid var(--mud-palette-success);">
+                    <MudStack Row AlignItems="AlignItems.Center" Spacing="2">
+                        <MudIcon Icon="@Icons.Material.Filled.Shield" Color="Color.Success" />
+                        <MudStack Spacing="0">
+                            <MudText Typo="Typo.subtitle1"><b>Korunan Yedek</b></MudText>
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                                @ScanResult.ProtectedStoreCount mağaza,
+                                @ScanResult.ProtectedPriceItemCount fiyat kalemi
+                                @if (ScanResult.ProtectedDataDate.HasValue)
+                                {
+                                    @($" — {ScanResult.ProtectedDataDate.Value:dd MMM yyyy HH:mm}")
+                                }
+                            </MudText>
+                        </MudStack>
+                        <MudSpacer />
+                        <MudButton Variant="Variant.Filled" Color="Color.Success" Size="Size.Small"
+                                   OnClick="() => RestoreProtectedAsync()">
+                            Geri Yükle
+                        </MudButton>
+                    </MudStack>
+                </MudPaper>
+            }
+
+            <!-- Bulunan eski veritabanları -->
+            @if (ScanResult?.FoundDatabases.Count > 0)
+            {
+                <MudText Typo="Typo.subtitle2" Class="mb-2">Bulunan Eski Veritabanları</MudText>
+                @foreach (var db in ScanResult.FoundDatabases)
+                {
+                    <MudPaper Elevation="1" Class="pa-2 mb-2">
+                        <MudStack Row AlignItems="AlignItems.Center" Spacing="2">
+                            <MudIcon Icon="@Icons.Material.Filled.Storage" Color="Color.Primary" Size="Size.Small" />
+                            <MudStack Spacing="0" Style="min-width:0; flex:1;">
+                                <MudText Typo="Typo.body2"><b>@db.Label</b></MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary" Style="word-break:break-all;">@db.Path</MudText>
+                                <MudText Typo="Typo.caption">
+                                    @db.StoreCount mağaza · @db.PriceItemCount fiyat kalemi · @db.LastModified.ToString("dd.MM.yyyy HH:mm")
+                                </MudText>
+                            </MudStack>
+                            <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small"
+                                   OnClick="() => InstallDirectAsync(db.Path)">
+                                Kur
+                            </MudButton>
+                        </MudStack>
+                    </MudPaper>
+                }
+            }
+
+            <!-- Manuel seçim -->
+            <MudDivider Class="my-3" />
+            <MudButton StartIcon="@Icons.Material.Filled.FolderOpen"
+                       Variant="Variant.Outlined" Color="Color.Default" Size="Size.Small"
+                       OnClick="BrowseAndRestoreAsync">
+                Başka Bir hakedis.db Dosyası Seç…
+            </MudButton>
+        }
+    </DialogContent>
+    <DialogActions>
+        @if (_result is null && !_working)
+        {
+            <MudButton OnClick="Cancel" Color="Color.Default">Kapat</MudButton>
+        }
+        else if (_result is not null)
+        {
+            <MudButton OnClick="Close" Color="Color.Primary" Variant="Variant.Filled">Tamam</MudButton>
+        }
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public DataRecoveryScanResult? ScanResult { get; set; }
+
+    private bool _working;
+    private string _status = "";
+    private DataRecoveryResult? _result;
+
+    private async Task RestoreProtectedAsync()
+    {
+        _working = true;
+        _status = "Korunan yedekten geri yükleniyor…";
+        StateHasChanged();
+        try
+        {
+            _result = await RecoveryService.RestoreFromProtectedDataAsync(true, true, true);
+        }
+        catch (Exception ex) { _result = new DataRecoveryResult { Errors = [ex.Message] }; }
+        finally { _working = false; StateHasChanged(); }
+    }
+
+    private async Task RestoreFromDbAsync(string dbPath)
+    {
+        _working = true;
+        _status = "Veritabanından geri yükleniyor…";
+        StateHasChanged();
+        try
+        {
+            _result = await RecoveryService.RestoreFromDatabaseAsync(dbPath, true, true, true);
+        }
+        catch (Exception ex) { _result = new DataRecoveryResult { Errors = [ex.Message] }; }
+        finally { _working = false; StateHasChanged(); }
+    }
+
+    private async Task InstallDirectAsync(string sourceDbPath)
+    {
+        if (!File.Exists(sourceDbPath))
+        {
+            Snackbar.Add("Seçilen veritabanı dosyası bulunamadı.", Severity.Error);
+            return;
+        }
+
+        _working = true;
+        _status = "Veritabanı kopyalanıyor…";
+        StateHasChanged();
+        try
+        {
+            var targetDbPath = PathService.DatabasePath;
+            Directory.CreateDirectory(Path.GetDirectoryName(targetDbPath)!);
+
+            // Mevcut DB'yi yedekle
+            if (File.Exists(targetDbPath))
+            {
+                var backupPath = targetDbPath + ".bak-" + DateTime.Now.ToString("yyyyMMddHHmmss");
+                File.Copy(targetDbPath, backupPath, true);
+            }
+
+            // Kaynak DB'yi aktif konuma kopyala
+            await Task.Run(() => File.Copy(sourceDbPath, targetDbPath, true));
+
+            _result = new DataRecoveryResult
+            {
+                CustomMessage = "Veritabanı başarıyla kuruldu. Değişikliklerin aktif olması için uygulamayı yeniden başlatın.",
+                NeedsRestart  = true
+            };
+        }
+        catch (Exception ex)
+        {
+            _result = new DataRecoveryResult { Errors = [ex.Message] };
+        }
+        finally
+        {
+            _working = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task BrowseAndRestoreAsync()
+    {
+        var files = await FilePicker.PickFilesAsync("SQLite Veritabanı|*.db", multiselect: false);
+        if (files.Count == 0) return;
+        await RestoreFromDbAsync(files[0]);
+    }
+
+    private static void RestartApp()
+    {
+        var exe = Environment.ProcessPath;
+        if (!string.IsNullOrEmpty(exe))
+            System.Diagnostics.Process.Start(exe);
+        System.Windows.Application.Current.Shutdown();
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+    private void Close()  => MudDialog.Close(DialogResult.Ok(true));
+}

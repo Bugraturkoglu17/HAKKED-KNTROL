@@ -1,0 +1,186 @@
+@page "/history"
+@page "/discipline/yangin/progress-claims"
+@page "/discipline/klima/progress-claims"
+@page "/discipline/asansor/progress-claims"
+@page "/discipline/sogutma/progress-claims"
+@inject IProgressClaimService ClaimService
+@inject IExcelExportService ExcelExportService
+@inject IDesktopFileService DesktopFileService
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject NavigationManager Nav
+
+<PageTitle>Hakediş Geçmişi — Hakediş Otomasyonu</PageTitle>
+
+<MudStack Row AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-4">
+    <MudText Typo="Typo.h5" Style="font-weight:700">Hakediş Geçmişi</MudText>
+    <MudButton Variant="Variant.Filled" Color="Color.Primary"
+               StartIcon="@Icons.Material.Filled.Add"
+               Href="/new-claim">
+        Yeni Hakediş
+    </MudButton>
+</MudStack>
+
+<MudPaper Elevation="2">
+    <MudTable Items="@_claims" Dense Hover Loading="@_loading"
+              Filter="new Func<ProgressClaimDto, bool>(FilterFunc)"
+              RowsPerPage="15">
+        <ToolBarContent>
+            <MudTextField @bind-Value="_search" Placeholder="Hakediş veya firma adı ara..."
+                          Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                          Immediate Dense Clearable Variant="Variant.Outlined" Class="mt-0" />
+        </ToolBarContent>
+        <HeaderContent>
+            <MudTh><MudTableSortLabel SortBy="new Func<ProgressClaimDto,object>(x => x.Name)">Hakediş Adı</MudTableSortLabel></MudTh>
+            <MudTh>Firma</MudTh>
+            <MudTh><MudTableSortLabel SortBy="new Func<ProgressClaimDto,object>(x => x.Year * 100 + x.Month)">Dönem</MudTableSortLabel></MudTh>
+            <MudTh><MudTableSortLabel SortBy="new Func<ProgressClaimDto,object>(x => (int)x.ClaimType)">Tür</MudTableSortLabel></MudTh>
+            <MudTh>Formlar</MudTh>
+            <MudTh>Toplam</MudTh>
+            <MudTh>Durum</MudTh>
+            <MudTh><MudTableSortLabel SortBy="new Func<ProgressClaimDto,object>(x => x.CreatedAt)">Oluşturulma</MudTableSortLabel></MudTh>
+            <MudTh>İşlemler</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Hakediş Adı" Style="font-weight:500">@context.Name</MudTd>
+            <MudTd DataLabel="Firma">@context.CompanyName</MudTd>
+            <MudTd DataLabel="Dönem">@context.Month.ToString("D2")/@context.Year</MudTd>
+            <MudTd DataLabel="Formlar">
+                <MudText Typo="Typo.body2">@context.CompletedFormCount / @context.FormCount</MudText>
+            </MudTd>
+            <MudTd DataLabel="Toplam" Style="font-weight:600">@context.TotalAmount.ToString("N0") ₺</MudTd>
+            <MudTd DataLabel="Tür">
+                <MudChip T="string" Size="Size.Small" Color="@GetClaimTypeColor(context.ClaimType)">@context.ClaimTypeLabel</MudChip>
+            </MudTd>
+            <MudTd DataLabel="Durum">
+                <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">@context.StatusLabel</MudChip>
+            </MudTd>
+            <MudTd DataLabel="Oluşturulma">@context.CreatedAt.ToString("dd.MM.yyyy")</MudTd>
+            <MudTd>
+                <MudTooltip Text="@(context.Status == ProgressClaimStatus.DisaAktarildi ? "Düzenle" : "Devam Et")">
+                    <MudIconButton Icon="@(context.Status == ProgressClaimStatus.DisaAktarildi ? Icons.Material.Filled.Edit : Icons.Material.Filled.PlayArrow)"
+                                   Size="Size.Small"
+                                   Color="Color.Primary"
+                                   Href="@($"/new-claim/{context.Id}")" />
+                </MudTooltip>
+                <MudTooltip Text="Excel Oluştur">
+                    <MudIconButton Icon="@Icons.Material.Filled.TableChart" Size="Size.Small"
+                                   Color="Color.Success" OnClick="@(() => ExportAsync(context))" />
+                </MudTooltip>
+                <MudTooltip Text="Özet Görüntüle">
+                    <MudIconButton Icon="@Icons.Material.Filled.BarChart" Size="Size.Small"
+                                   Color="Color.Info" OnClick="@(() => ShowSummaryAsync(context))" />
+                </MudTooltip>
+                <MudTooltip Text="Sil">
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small"
+                                   Color="Color.Error" OnClick="@(() => DeleteAsync(context))" />
+                </MudTooltip>
+            </MudTd>
+        </RowTemplate>
+        <PagerContent><MudTablePager /></PagerContent>
+        <NoRecordsContent><MudAlert Severity="Severity.Info" Dense>Kayıtlı hakediş bulunamadı.</MudAlert></NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private List<ProgressClaimDto> _claims = new();
+    private bool _loading = true;
+    private string _search = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _loading = true;
+        try { _claims = await ClaimService.GetAllAsync(); }
+        finally { _loading = false; }
+    }
+
+    private bool FilterFunc(ProgressClaimDto c) =>
+        string.IsNullOrEmpty(_search) ||
+        c.Name.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
+        c.CompanyName.Contains(_search, StringComparison.OrdinalIgnoreCase);
+
+    private async Task ExportAsync(ProgressClaimDto claim)
+    {
+        try
+        {
+            Snackbar.Add("Excel oluşturuluyor...", Severity.Info);
+            string? filePath = await ExcelExportService.ExportClaimAsync(claim.Id);
+
+            if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath) || new FileInfo(filePath).Length == 0)
+            {
+                Snackbar.Add("Excel dosyası oluşturulamadı.", Severity.Error);
+                return;
+            }
+
+            // Export başarılı
+            _claims = await ClaimService.GetAllAsync();
+
+            var captured = filePath;
+            Snackbar.Add("Excel dosyası oluşturuldu.", Severity.Success, cfg =>
+            {
+                cfg.Action = "Klasörde Göster";
+                cfg.ActionColor = Color.Primary;
+                cfg.Onclick = _ =>
+                {
+                    DesktopFileService.ShowFileInExplorer(captured);
+                    return Task.CompletedTask;
+                };
+            });
+
+            try
+            {
+                DesktopFileService.OpenFile(filePath);
+            }
+            catch (Exception)
+            {
+                Snackbar.Add("Excel dosyası oluşturuldu ancak otomatik açılamadı. Klasörden açabilirsiniz.", Severity.Warning);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Excel oluşturulurken hata: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            StateHasChanged();
+        }
+    }
+
+    private async Task ShowSummaryAsync(ProgressClaimDto claim)
+    {
+        var summaries = await ClaimService.GetStoreSummariesAsync(claim.Id);
+        var parameters = new DialogParameters
+        {
+            ["ClaimName"] = claim.Name,
+            ["Summaries"] = summaries
+        };
+        await DialogService.ShowAsync<ClaimSummaryDialog>("Hakediş Özeti", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
+    }
+
+    private async Task DeleteAsync(ProgressClaimDto claim)
+    {
+        var result = await DialogService.ShowMessageBox("Sil",
+            $"'{claim.Name}' hakedişi ve tüm form verileri silinecek. Onaylıyor musunuz?",
+            "Evet, Sil", cancelText: "İptal");
+        if (result != true) return;
+        await ClaimService.DeleteAsync(claim.Id);
+        _claims.Remove(claim);
+        Snackbar.Add("Hakediş silindi.", Severity.Info);
+    }
+
+    private Color GetStatusColor(ProgressClaimStatus s) => s switch
+    {
+        ProgressClaimStatus.Tamamlandi => Color.Success,
+        ProgressClaimStatus.Isleniyor => Color.Info,
+        ProgressClaimStatus.DisaAktarildi => Color.Tertiary,
+        _ => Color.Default
+    };
+
+    private static Color GetClaimTypeColor(ProgressClaimType t) => t switch
+    {
+        ProgressClaimType.NewConstruction => Color.Success,
+        ProgressClaimType.Renovation      => Color.Warning,
+        _                                 => Color.Primary
+    };
+}

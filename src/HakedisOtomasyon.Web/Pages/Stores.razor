@@ -1,0 +1,249 @@
+@page "/stores"
+@page "/discipline/yangin/stores"
+@page "/discipline/klima/stores"
+@page "/discipline/asansor/stores"
+@page "/discipline/sogutma/stores"
+@inject IStoreService StoreService
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject IAppPathService AppPath
+@inject HakedisOtomasyon.Infrastructure.Services.CurrentDisciplineService CurrentDiscipline
+@inject NavigationManager Nav
+@using Microsoft.Extensions.Logging
+@inject ILogger<Stores> Logger
+
+<PageTitle>Mağazalar — Hakediş Otomasyonu</PageTitle>
+
+<MudStack Row AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-4">
+    <MudText Typo="Typo.h5" Style="font-weight:700">Mağazalar</MudText>
+    <MudStack Row Spacing="1">
+        @if (_selected.Count > 0)
+        {
+            <MudButton Variant="Variant.Outlined" Color="Color.Error"
+                       StartIcon="@Icons.Material.Filled.DeleteSweep"
+                       OnClick="DeleteSelectedAsync">
+                Seçilenleri Pasife Al (@_selected.Count)
+            </MudButton>
+        }
+        <MudButton Variant="Variant.Outlined" Color="Color.Error"
+                   StartIcon="@Icons.Material.Filled.DeleteForever"
+                   OnClick="DeleteAllAsync">
+            Tümünü Pasife Al
+        </MudButton>
+        <MudButton Variant="Variant.Outlined" Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.UploadFile"
+                   OnClick="OpenImportDialog">
+            Excel'den İçe Aktar
+        </MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.Add"
+                   OnClick="OpenCreateDialog">
+            Yeni Mağaza
+        </MudButton>
+    </MudStack>
+</MudStack>
+
+<MudPaper Elevation="2">
+    <MudTable Items="@_stores" Dense Hover Loading="@_loading"
+              MultiSelection="true" @bind-SelectedItems="_selected"
+              Filter="new Func<StoreDto, bool>(FilterFunc)"
+              RowsPerPage="20">
+        <ToolBarContent>
+            <MudTextField @bind-Value="_searchText" Placeholder="Kod veya isim ara..."
+                          Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                          Immediate Dense Clearable Variant="Variant.Outlined"
+                          Class="mt-0" />
+            <MudSpacer />
+            <MudSwitch T="bool" Value="_showInactive" Color="Color.Default"
+                       Label="Pasif kayıtları göster"
+                       ValueChanged="@(async (bool v) => { _showInactive = v; await LoadAsync(); })" />
+        </ToolBarContent>
+        <HeaderContent>
+            <MudTh><MudTableSortLabel SortBy="new Func<StoreDto, object>(x => x.Code)">Kod</MudTableSortLabel></MudTh>
+            <MudTh><MudTableSortLabel SortBy="new Func<StoreDto, object>(x => x.Name)">Mağaza Adı</MudTableSortLabel></MudTh>
+            <MudTh>Durum</MudTh>
+            <MudTh>İşlemler</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Kod"><MudChip T="string" Size="Size.Small" Color="Color.Primary">@context.Code</MudChip></MudTd>
+            <MudTd DataLabel="Mağaza Adı">@context.Name</MudTd>
+            <MudTd DataLabel="Durum">
+                <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)">
+                    @(context.IsActive ? "Aktif" : "Pasif")
+                </MudChip>
+            </MudTd>
+            <MudTd>
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                               Color="Color.Primary" OnClick="@(() => OpenEditDialog(context))" Title="Düzenle" />
+                <MudIconButton Icon="@(context.IsActive ? Icons.Material.Filled.ToggleOff : Icons.Material.Filled.ToggleOn)"
+                               Size="Size.Small"
+                               Color="@(context.IsActive ? Color.Warning : Color.Success)"
+                               OnClick="@(() => ToggleActiveAsync(context))"
+                               Title="@(context.IsActive ? "Pasife Al" : "Aktif Et")" />
+            </MudTd>
+        </RowTemplate>
+        <PagerContent>
+            <MudTablePager />
+        </PagerContent>
+        <NoRecordsContent>
+            <MudAlert Severity="Severity.Info" Dense>Kayıt bulunamadı.</MudAlert>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private List<StoreDto> _stores = new();
+    private HashSet<StoreDto> _selected = new();
+    private bool _loading = true;
+    private bool _showInactive = false;
+    private string _searchText = string.Empty;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try { _stores = await StoreService.GetAllAsync(_showInactive); }
+        finally { _loading = false; }
+    }
+
+    private bool FilterFunc(StoreDto s) =>
+        string.IsNullOrEmpty(_searchText) ||
+        s.Code.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ||
+        s.Name.Contains(_searchText, StringComparison.OrdinalIgnoreCase);
+
+    private async Task OpenImportDialog()
+    {
+        var dialog = await DialogService.ShowAsync<StoreImportDialog>("Excel'den Mağaza Aktar");
+        var result = await dialog.Result;
+        if (!result.Canceled)
+        {
+            await LoadAsync();
+            Snackbar.Add($"Mağazalar içe aktarıldı.", Severity.Success);
+        }
+    }
+
+    private bool _savingStore;
+
+    private async Task OpenCreateDialog()
+    {
+        var dto = new StoreDto { IsActive = true };
+        var parameters = new DialogParameters { ["Store"] = dto };
+        var dialog = await DialogService.ShowAsync<StoreEditDialog>("Yeni Mağaza", parameters);
+        var result = await dialog.Result;
+        if (result.Canceled) return;
+
+        var saved = (StoreDto)result.Data!;
+        try
+        {
+            _savingStore = true;
+            await StoreService.CreateAsync(saved);
+            await LoadAsync();
+            Snackbar.Add("Mağaza eklendi.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            LogStoreSaveError(ex, saved);
+            Snackbar.Add(
+                ex is InvalidOperationException ? ex.Message : "Mağaza kaydedilemedi. Detaylar hata kayıt dosyasına yazıldı.",
+                Severity.Error);
+        }
+        finally
+        {
+            _savingStore = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task OpenEditDialog(StoreDto store)
+    {
+        var clone = new StoreDto { Id = store.Id, Code = store.Code, Name = store.Name, IsActive = store.IsActive };
+        var parameters = new DialogParameters { ["Store"] = clone };
+        var dialog = await DialogService.ShowAsync<StoreEditDialog>("Mağaza Düzenle", parameters);
+        var result = await dialog.Result;
+        if (result.Canceled) return;
+
+        var saved = (StoreDto)result.Data!;
+        try
+        {
+            _savingStore = true;
+            await StoreService.UpdateAsync(saved);
+            await LoadAsync();
+            Snackbar.Add("Mağaza güncellendi.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            LogStoreSaveError(ex, saved);
+            Snackbar.Add(
+                ex is InvalidOperationException ? ex.Message : "Mağaza kaydedilemedi. Detaylar hata kayıt dosyasına yazıldı.",
+                Severity.Error);
+        }
+        finally
+        {
+            _savingStore = false;
+            StateHasChanged();
+        }
+    }
+
+    /// <summary>Mağaza kaydetme hatasını Desktop\HAKEDİŞ DATABASE\Logs\store-save-error-log.txt'e yazar.</summary>
+    private void LogStoreSaveError(Exception ex, StoreDto store)
+    {
+        Logger.LogError(ex, "Mağaza kaydedilirken hata oluştu. Discipline: {Discipline}, Kod: {Code}",
+            CurrentDiscipline.CurrentDiscipline, store.Code);
+        try
+        {
+            Directory.CreateDirectory(AppPath.LogsPath);
+            var logFile = Path.Combine(AppPath.LogsPath, "store-save-error-log.txt");
+            var lines = new[]
+            {
+                $"=== {DateTime.Now:yyyy-MM-dd HH:mm:ss} ===",
+                $"Aktif Disiplin: {CurrentDiscipline.CurrentDiscipline}",
+                $"Route: {Nav.ToBaseRelativePath(Nav.Uri)}",
+                $"Mağaza Kodu: {store.Code}",
+                $"Mağaza Adı: {store.Name}",
+                $"Hata Mesajı: {ex.Message}",
+                "Stack Trace:",
+                ex.StackTrace ?? "(yok)",
+                string.Empty
+            };
+            File.AppendAllLines(logFile, lines);
+        }
+        catch
+        {
+            // Log yazılamazsa sessizce atla — kullanıcı akışını engellemez
+        }
+    }
+
+    private async Task ToggleActiveAsync(StoreDto store)
+    {
+        store.IsActive = !store.IsActive;
+        await StoreService.UpdateAsync(store);
+        await LoadAsync();
+        Snackbar.Add(store.IsActive ? "Mağaza aktif edildi." : "Mağaza pasife alındı.", Severity.Info);
+    }
+
+    private async Task DeleteSelectedAsync()
+    {
+        if (_selected.Count == 0) return;
+        var result = await DialogService.ShowMessageBox("Çoklu Pasife Al",
+            $"{_selected.Count} mağaza pasife alınacak. Onaylıyor musunuz?", "Evet", cancelText: "İptal");
+        if (result != true) return;
+        await StoreService.DeleteManyAsync(_selected.Select(x => x.Id));
+        _selected.Clear();
+        await LoadAsync();
+        Snackbar.Add("Seçili mağazalar pasife alındı.", Severity.Info);
+    }
+
+    private async Task DeleteAllAsync()
+    {
+        if (_stores.Count == 0) return;
+        var result = await DialogService.ShowMessageBox("Tümünü Pasife Al",
+            $"Görünen tüm {_stores.Count} mağaza pasife alınacak. Onaylıyor musunuz?",
+            "Evet", cancelText: "İptal");
+        if (result != true) return;
+        await StoreService.DeleteManyAsync(_stores.Select(x => x.Id));
+        _selected.Clear();
+        await LoadAsync();
+        Snackbar.Add("Tüm mağazalar pasife alındı.", Severity.Info);
+    }
+}
