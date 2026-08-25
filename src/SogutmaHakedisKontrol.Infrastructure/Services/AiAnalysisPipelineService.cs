@@ -25,7 +25,6 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
     private readonly AppDbContext _db;
     private readonly IAiVisionClient _visionClient;
     private readonly IPdfPageRasterizer _rasterizer;
-    private readonly IStoreMatchingService _storeMatching;
     private readonly IManHoursCalculator _manHours;
     private readonly IAiUsageTracker _usageTracker;
     private readonly IAppPathService _appPath;
@@ -38,7 +37,6 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
         AppDbContext db,
         IAiVisionClient visionClient,
         IPdfPageRasterizer rasterizer,
-        IStoreMatchingService storeMatching,
         IManHoursCalculator manHours,
         IAiUsageTracker usageTracker,
         IAppPathService appPath,
@@ -48,7 +46,6 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
         _db = db;
         _visionClient = visionClient;
         _rasterizer = rasterizer;
-        _storeMatching = storeMatching;
         _manHours = manHours;
         _usageTracker = usageTracker;
         _appPath = appPath;
@@ -152,13 +149,8 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
         await AnalyzePagesAsync(job, pageEntities.Where(p => p.SourceKind == AiDocumentSource.PeriodicMaintenance).ToList(),
             maintenanceImageByPageId, "Periyodik bakım formları", progress, cancellationToken, categoryProfile.AiInstructionSupplement);
 
-        // ── Mağaza eşleştirme ────────────────────────────────────────────
-        job.Status = AiJobStatus.Matching;
-        Report(progress, AiJobStatus.Matching, "Mağazalar eşleştiriliyor...");
-        await _db.SaveChangesAsync(cancellationToken);
-        await MatchStoresAsync(job, check, cancellationToken);
-
         // ── Deterministic iş kuralları (adam-saat, periyodik bakım çakışması) ──
+        job.Status = AiJobStatus.Matching;
         Report(progress, AiJobStatus.Matching, "Adam-saat hesapları yapılıyor...");
         await ApplyBusinessRulesAsync(job, cancellationToken);
 
@@ -304,6 +296,7 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
             _ => AiDocumentType.Unknown,
         };
         page.FormNumber = x.FormNumber;
+        page.FormNumberConfidence = x.FormNumberConfidence;
         page.StoreCodeRaw = x.Store?.CodeRaw;
         page.StoreNameRaw = x.Store?.NameRaw;
         page.StoreConfidence = x.Store?.Confidence;
@@ -344,11 +337,13 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
             });
         }
 
-        page.Status = (page.DocumentType == AiDocumentType.Unknown || x.RequiresManualReview)
-            ? AiPageStatus.ManualReview
-            : AiPageStatus.Succeeded;
-        if (page.DocumentType == AiDocumentType.Unknown && string.IsNullOrEmpty(page.ManualReviewReason))
-            page.ManualReviewReason = "Belge türü sınıflandırılamadı.";
+        if (page.DocumentType == AiDocumentType.Unknown)
+        {
+            page.RequiresManualReview = true;
+            if (string.IsNullOrEmpty(page.ManualReviewReason))
+                page.ManualReviewReason = "Belge türü sınıflandırılamadı.";
+        }
+        page.Status = page.RequiresManualReview ? AiPageStatus.ManualReview : AiPageStatus.Succeeded;
     }
 
     private static DateTime? TryParseDate(string? raw) =>
@@ -357,43 +352,6 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
     private static TimeSpan? TryParseTime(string? raw) =>
         !string.IsNullOrWhiteSpace(raw) && TimeSpan.TryParse(raw.Replace('.', ':'), CultureInfo.InvariantCulture, out var t) ? t : null;
 
-    // ------------------------------------------------------------------ //
-    //  MAĞAZA EŞLEŞTİRME
-    // ------------------------------------------------------------------ //
-    private async Task MatchStoresAsync(AiAnalysisJob job, ProgressPaymentCheck check, CancellationToken cancellationToken)
-    {
-        var pages = await _db.AiDocumentPages
-            .Where(p => p.JobId == job.Id && p.Status != AiPageStatus.Failed)
-            .Include(p => p.Employees).Include(p => p.Materials)
-            .ToListAsync(cancellationToken);
-
-        foreach (var page in pages)
-        {
-            var match = await _storeMatching.MatchAsync(check.CompanyName, check.Region, page.StoreCodeRaw, page.StoreNameRaw);
-            page.MatchedStoreId = match.StoreId;
-            page.StoreMatchMethod = match.Method;
-            if (match.RequiresManualReview)
-            {
-                page.RequiresManualReview = true;
-                page.ManualReviewReason = string.IsNullOrEmpty(page.ManualReviewReason)
-                    ? "Mağaza kesinleştirilemedi."
-                    : page.ManualReviewReason + " Mağaza kesinleştirilemedi.";
-                if (page.Status == AiPageStatus.Succeeded) page.Status = AiPageStatus.ManualReview;
-            }
-        }
-        await _db.SaveChangesAsync(cancellationToken);
-
-        // Mevcut hakediş satırlarını da aynı mağaza ana listesine eşle (karşılaştırma için gerekli).
-        var checkItems = await _db.ProgressPaymentCheckItems
-            .Where(i => i.ProgressPaymentCheckId == job.ProgressPaymentCheckId && i.MatchedStoreId == null)
-            .ToListAsync(cancellationToken);
-        foreach (var item in checkItems)
-        {
-            var m = await _storeMatching.MatchAsync(check.CompanyName, check.Region, item.StoreCode, item.StoreName);
-            item.MatchedStoreId = m.StoreId;
-        }
-        await _db.SaveChangesAsync(cancellationToken);
-    }
 
     // ------------------------------------------------------------------ //
     //  DETERMİNİSTİK İŞ KURALLARI
@@ -417,21 +375,34 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
         }
 
         // Periyodik bakım çakışması: aynı mağaza + aynı tarihte bakım varsa şehiriçi/şehirdışı servis ücreti reddedilir.
+        // Mağaza kimliği artık dış mağaza ana listesine değil, formdan okunan ham mağaza koduna/adına dayanır
+        // (bu iş akışında ayrı mağaza listesi kullanılmaz — bkz. form numarası bazlı eşleştirme).
         var maintenanceDates = pages
-            .Where(p => p.DocumentType == AiDocumentType.PeriodicMaintenanceForm && p.MatchedStoreId.HasValue && p.MaintenanceDate.HasValue)
-            .Select(p => (StoreId: p.MatchedStoreId!.Value, Date: p.MaintenanceDate!.Value.Date))
+            .Where(p => p.DocumentType == AiDocumentType.PeriodicMaintenanceForm && p.MaintenanceDate.HasValue)
+            .Select(p => (Store: RawStoreKey(p), Date: p.MaintenanceDate!.Value.Date))
+            .Where(x => !string.IsNullOrEmpty(x.Store))
             .ToHashSet();
 
         foreach (var page in pages.Where(p => p.DocumentType == AiDocumentType.ServiceForm))
         {
-            if (page.MatchedStoreId.HasValue && page.ServiceDate.HasValue &&
-                maintenanceDates.Contains((page.MatchedStoreId.Value, page.ServiceDate.Value.Date)))
+            var storeKey = RawStoreKey(page);
+            if (!string.IsNullOrEmpty(storeKey) && page.ServiceDate.HasValue &&
+                maintenanceDates.Contains((storeKey, page.ServiceDate.Value.Date)))
             {
                 page.ServiceFeeRejectedDueToMaintenance = true;
             }
         }
 
         await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>Dış mağaza ana listesi kullanılmadığı için sayfadaki ham mağaza kodu/adını normalize ederek
+    /// mağaza kimliği olarak kullanır — kod varsa öncelikli, yoksa ada düşer.</summary>
+    private static string RawStoreKey(AiDocumentPage p)
+    {
+        var code = TextNormalizationHelper.NormalizeCode(p.StoreCodeRaw ?? string.Empty);
+        if (!string.IsNullOrEmpty(code)) return code;
+        return TextNormalizationHelper.NormalizeName(p.StoreNameRaw ?? string.Empty);
     }
 
     // ------------------------------------------------------------------ //
@@ -533,6 +504,7 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
             MatchedStoreLabel = p.MatchedStoreId.HasValue && stores.TryGetValue(p.MatchedStoreId.Value, out var s) ? $"{s.Code} — {s.Name}" : null,
             StoreMatchMethod = p.StoreMatchMethod.ToString(),
             FormNumber = p.FormNumber,
+            FormNumberConfidence = p.FormNumberConfidence,
             ServiceDate = p.ServiceDate,
             MaintenanceDate = p.MaintenanceDate,
             DescriptionRaw = p.DescriptionRaw,
@@ -577,6 +549,7 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
         {
             var page = pages.FirstOrDefault(p => p.Id == r.SourcePageId);
             if (page is null) return null;
+            if (!string.IsNullOrWhiteSpace(page.FormNumber)) return page.FormNumber; // eşleştirmenin ana anahtarı — önce bu gösterilir
             var fileName = page.SourceKind == AiDocumentSource.ServiceForm
                 ? serviceSourceDocs.FirstOrDefault(d => page.PageNumber > d.PageOffset && page.PageNumber <= d.PageOffset + d.PageCount)?.FileName
                 : job?.MaintenanceFormsFileName;
@@ -686,7 +659,6 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
 
         if (check != null)
         {
-            await MatchStoresAsync(job, check, cancellationToken);
             await ApplyBusinessRulesAsync(job, cancellationToken);
             await _comparisonStrategies.Get(check.Category).BuildAsync(job, cancellationToken);
         }

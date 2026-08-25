@@ -187,6 +187,7 @@ public class AppDbContext : DbContext
             e.Property(p => p.StoreNameRaw).HasMaxLength(300);
             e.Property(p => p.StoreConfidence).HasColumnType("decimal(5,4)");
             e.Property(p => p.FormNumber).HasMaxLength(100);
+            e.Property(p => p.FormNumberConfidence).HasColumnType("decimal(5,4)");
             e.Property(p => p.DescriptionRaw).HasMaxLength(2000);
             e.Property(p => p.WorkPerformedRaw).HasMaxLength(2000);
             e.Property(p => p.FormTotalHoursRaw).HasColumnType("decimal(9,2)");

@@ -31,10 +31,113 @@ internal static class ComparisonResultFactory
 }
 
 /// <summary>
+/// Servis formunu daha önce yüklenmiş hakediş Excel satırlarıyla eşleştirir. Form numarası ANA eşleştirme
+/// anahtarıdır — ayrı bir mağaza listesi kullanılmaz; mağaza doğrulaması, form numarasıyla bulunan hakediş
+/// satırının kendi mağaza kodu/adı ile servis formundan okunan mağaza bilgisi karşılaştırılarak yapılır.
+/// Sıra kesinlikle: 1) form no oku, 2) Excel'de ara, 3) mağazayı doğrula, 4) tarihi doğrula — bu dört adım
+/// geçilmeden kategoriye özel kontrol asla çalıştırılmaz.
+/// </summary>
+internal static class FormNumberMatcher
+{
+    private const decimal MinFormNumberConfidence = 0.4m;
+    private const double MinStoreNameSimilarity = 0.75;
+
+    public static (List<ProgressPaymentCheckItem>? Matched, AiComparisonResult? Error) Match(
+        int jobId, AiDocumentPage page, List<ProgressPaymentCheckItem> checkItems)
+    {
+        var label = StoreLabelFallback(page);
+
+        // 1) Form numarası okunabildi mi? Düşük güvenle rastgele eşleştirme YAPILMAZ.
+        var formNo = TextNormalizationHelper.NormalizeCode(page.FormNumber ?? string.Empty);
+        var lowConfidence = page.FormNumberConfidence.HasValue && page.FormNumberConfidence.Value < MinFormNumberConfidence;
+        if (string.IsNullOrEmpty(formNo) || lowConfidence)
+        {
+            return (null, ComparisonResultFactory.New(jobId, page, label, AiComparisonItemType.Material,
+                "Form Numarası Okunamadı", page.FormNumber, null, AiComparisonStatus.ManuelKontrol,
+                "Servis formu numarası okunamadığı için hakediş Excelindeki ilgili kayıt güvenilir şekilde tespit edilemedi."));
+        }
+
+        // 2) Form numarasını hakediş Excelinde ara (MaintenanceFormNo — import sırasında Excel'den okunmuştu).
+        var candidates = checkItems
+            .Where(i => !string.IsNullOrWhiteSpace(i.MaintenanceFormNo)
+                        && TextNormalizationHelper.NormalizeCode(i.MaintenanceFormNo) == formNo)
+            .ToList();
+
+        if (candidates.Count == 0)
+        {
+            return (null, ComparisonResultFactory.New(jobId, page, label, AiComparisonItemType.Material,
+                "Form Hakedişte Bulunamadı", page.FormNumber, "—", AiComparisonStatus.Eksik,
+                $"\"{page.FormNumber}\" numaralı servis formunun yüklenen hakediş Excelinde karşılığı bulunamadı."));
+        }
+
+        // Aynı form numarasına ait satırlar farklı mağaza/tarihe dağılıyorsa mükerrer numaralandırma var demektir.
+        var visitGroups = candidates
+            .GroupBy(i => (Store: TextNormalizationHelper.NormalizeCode(i.StoreCode ?? i.StoreName ?? string.Empty), Date: i.VisitDate?.Date))
+            .ToList();
+        if (visitGroups.Count > 1)
+        {
+            return (null, ComparisonResultFactory.New(jobId, page, label, AiComparisonItemType.Material,
+                "Mükerrer Form Numarası", page.FormNumber, null, AiComparisonStatus.ManuelKontrol,
+                $"\"{page.FormNumber}\" numaralı form hakedişte birden fazla farklı mağaza/tarihe ait kayıtla eşleşiyor — manuel kontrol edilmelidir."));
+        }
+
+        var group = visitGroups[0].ToList();
+        var first = group[0];
+        var hakedisStoreLabel = first.StoreName ?? first.StoreCode ?? "Bilinmeyen Mağaza";
+
+        // 3) Mağaza doğrulama — kod varsa öncelikli/kesin kriter, yoksa isim benzerliğine (sınırlı) düşülür.
+        var storeCheck = CompareStore(page, first);
+        if (storeCheck == StoreCheck.Mismatch)
+        {
+            return (null, ComparisonResultFactory.New(jobId, page, hakedisStoreLabel, AiComparisonItemType.Material,
+                "Mağaza Uyuşmazlığı", page.StoreCodeRaw ?? page.StoreNameRaw, hakedisStoreLabel, AiComparisonStatus.UygunDegil,
+                $"\"{page.FormNumber}\" numaralı form üzerindeki mağaza {(page.StoreCodeRaw ?? page.StoreNameRaw)} olarak okunmuştur " +
+                $"ancak hakediş Excelindeki aynı form numarası farklı mağazaya ({hakedisStoreLabel}) aittir.", first.Id));
+        }
+        if (storeCheck == StoreCheck.Inconclusive)
+        {
+            return (null, ComparisonResultFactory.New(jobId, page, hakedisStoreLabel, AiComparisonItemType.Material,
+                "Mağaza Doğrulanamadı", page.StoreCodeRaw ?? page.StoreNameRaw, hakedisStoreLabel, AiComparisonStatus.ManuelKontrol,
+                $"\"{page.FormNumber}\" numaralı formdaki mağaza bilgisi hakediş kaydıyla yeterli güvenle karşılaştırılamadı — manuel kontrol edilmelidir.", first.Id));
+        }
+
+        // 4) Tarih doğrulama — ikisi de doluyken farklıysa hata; biri boşsa (yetersiz veri) engelleme.
+        if (page.ServiceDate.HasValue && first.VisitDate.HasValue && page.ServiceDate.Value.Date != first.VisitDate.Value.Date)
+        {
+            return (null, ComparisonResultFactory.New(jobId, page, hakedisStoreLabel, AiComparisonItemType.Material,
+                "Tarih Uyuşmazlığı", page.ServiceDate.Value.ToString("dd.MM.yyyy"), first.VisitDate.Value.ToString("dd.MM.yyyy"),
+                AiComparisonStatus.UygunDegil,
+                $"Servis formu tarihi {page.ServiceDate:dd.MM.yyyy}, hakediş Excelindeki tarih {first.VisitDate:dd.MM.yyyy} olarak görülmektedir.", first.Id));
+        }
+
+        return (group, null);
+    }
+
+    private enum StoreCheck { Matched, Mismatch, Inconclusive }
+
+    private static StoreCheck CompareStore(AiDocumentPage page, ProgressPaymentCheckItem item)
+    {
+        var formCode = TextNormalizationHelper.NormalizeCode(page.StoreCodeRaw ?? string.Empty);
+        var itemCode = TextNormalizationHelper.NormalizeCode(item.StoreCode ?? string.Empty);
+        if (!string.IsNullOrEmpty(formCode) && !string.IsNullOrEmpty(itemCode))
+            return formCode == itemCode ? StoreCheck.Matched : StoreCheck.Mismatch;
+
+        var formName = TextNormalizationHelper.NormalizeName(page.StoreNameRaw ?? string.Empty);
+        var itemName = TextNormalizationHelper.NormalizeName(item.StoreName ?? string.Empty);
+        if (string.IsNullOrEmpty(formName) || string.IsNullOrEmpty(itemName)) return StoreCheck.Inconclusive;
+
+        return TextNormalizationHelper.SimilarityRatio(formName, itemName) >= MinStoreNameSimilarity
+            ? StoreCheck.Matched : StoreCheck.Mismatch;
+    }
+
+    private static string StoreLabelFallback(AiDocumentPage page) => page.StoreNameRaw ?? page.StoreCodeRaw ?? "Bilinmeyen Mağaza";
+}
+
+/// <summary>
 /// Genel/kategori-bağımsız karşılaştırma — malzeme fuzzy eşleşmesi, adam-saat ve servis ücreti
 /// kontrolü. Kategori bazlı özel strateji tanımlanmamış her hakediş türü bunu kullanır
 /// (Kompresör, Glikol, Evap, Kısmi Tadilat, İzleme, Periyodik Bakım, İlave İşler, kategori seçilmemiş eski kayıtlar).
-/// Bu mantık, önceki tek-parça AiAnalysisPipelineService.BuildComparisonAsync'ten aynen taşınmıştır.
+/// Eşleştirme FormNumberMatcher ile form numarası üzerinden yapılır (bkz. sınıf üstü açıklama).
 /// </summary>
 public class DefaultCategoryComparisonStrategy : ICategoryComparisonStrategy
 {
@@ -52,12 +155,9 @@ public class DefaultCategoryComparisonStrategy : ICategoryComparisonStrategy
         _db.AiComparisonResults.RemoveRange(existing);
 
         var pages = await _db.AiDocumentPages
-            .Where(p => p.JobId == job.Id && p.DocumentType == AiDocumentType.ServiceForm && p.MatchedStoreId.HasValue)
+            .Where(p => p.JobId == job.Id && p.DocumentType == AiDocumentType.ServiceForm)
             .Include(p => p.Materials)
             .ToListAsync(cancellationToken);
-
-        var storeIds = pages.Where(p => p.MatchedStoreId.HasValue).Select(p => p.MatchedStoreId!.Value).Distinct().ToList();
-        var stores = await _db.Stores.Where(s => storeIds.Contains(s.Id)).ToDictionaryAsync(s => s.Id, cancellationToken);
 
         var checkItems = await _db.ProgressPaymentCheckItems
             .Where(i => i.ProgressPaymentCheckId == job.ProgressPaymentCheckId)
@@ -67,13 +167,11 @@ public class DefaultCategoryComparisonStrategy : ICategoryComparisonStrategy
 
         foreach (var page in pages)
         {
-            var storeLabel = page.MatchedStoreId.HasValue && stores.TryGetValue(page.MatchedStoreId.Value, out var s)
-                ? $"{s.Code} — {s.Name}" : (page.StoreNameRaw ?? page.StoreCodeRaw ?? "Bilinmeyen Mağaza");
+            var (sameVisit, error) = FormNumberMatcher.Match(job.Id, page, checkItems);
+            if (error != null) { results.Add(error); continue; }
 
-            var sameVisit = checkItems.Where(i =>
-                i.MatchedStoreId == page.MatchedStoreId &&
-                page.ServiceDate.HasValue && i.VisitDate.HasValue && i.VisitDate.Value.Date == page.ServiceDate.Value.Date)
-                .ToList();
+            var first = sameVisit![0];
+            var storeLabel = first.StoreName ?? first.StoreCode ?? "Bilinmeyen Mağaza";
 
             // ── Malzeme: form → hakediş (eşleşme / uygun değil / eksik) ──
             var matchedHakedisMaterialIds = new HashSet<int>();
@@ -152,6 +250,13 @@ public class DefaultCategoryComparisonStrategy : ICategoryComparisonStrategy
                         $"Kural gereği 4 saat düşülerek en fazla {page.PayableManHours:0.##} adam-saat ödenebilir."));
                 }
             }
+            else if (page.DocumentType == AiDocumentType.ServiceForm && sameVisit.Any(i => i.IsServiceItem &&
+                     TextNormalizationHelper.NormalizeName(i.OriginalMaterialName).Contains("adamsaat")))
+            {
+                results.Add(ComparisonResultFactory.New(job.Id, page, storeLabel, AiComparisonItemType.ManHours, "Adam-Saat",
+                    "Okunamadı", null, AiComparisonStatus.ManuelKontrol,
+                    "Hakedişte adam-saat kalemi var ancak servis formunda personel/çalışma saati bilgisi bulunamadı — tahmin edilmedi."));
+            }
 
             // ── Servis ücreti (şehiriçi/şehirdışı) ───────────────────────
             var serviceFeeItems = sameVisit.Where(i => i.IsServiceItem &&
@@ -188,6 +293,7 @@ public class DefaultCategoryComparisonStrategy : ICategoryComparisonStrategy
 /// GAZ KULLANIM HAKEDİŞİ için özel karşılaştırma: hakedişteki gaz kg'ı servis formundan çıkarılan
 /// gaz kg'ı ile karşılaştırılır. Kaçak yeri/tespiti/onarımı gibi bilgiler (varsa) manuel kontrol
 /// notuna eklenir — bu alanlar için henüz sayısal bir kural yok (iskelet aşaması).
+/// Eşleştirme FormNumberMatcher ile form numarası üzerinden yapılır.
 /// </summary>
 public class GasUsageComparisonStrategy : ICategoryComparisonStrategy
 {
@@ -206,12 +312,9 @@ public class GasUsageComparisonStrategy : ICategoryComparisonStrategy
         _db.AiComparisonResults.RemoveRange(existing);
 
         var pages = await _db.AiDocumentPages
-            .Where(p => p.JobId == job.Id && p.DocumentType == AiDocumentType.ServiceForm && p.MatchedStoreId.HasValue)
+            .Where(p => p.JobId == job.Id && p.DocumentType == AiDocumentType.ServiceForm)
             .Include(p => p.Materials)
             .ToListAsync(cancellationToken);
-
-        var storeIds = pages.Where(p => p.MatchedStoreId.HasValue).Select(p => p.MatchedStoreId!.Value).Distinct().ToList();
-        var stores = await _db.Stores.Where(s => storeIds.Contains(s.Id)).ToDictionaryAsync(s => s.Id, cancellationToken);
 
         var checkItems = await _db.ProgressPaymentCheckItems
             .Where(i => i.ProgressPaymentCheckId == job.ProgressPaymentCheckId)
@@ -221,13 +324,11 @@ public class GasUsageComparisonStrategy : ICategoryComparisonStrategy
 
         foreach (var page in pages)
         {
-            var storeLabel = page.MatchedStoreId.HasValue && stores.TryGetValue(page.MatchedStoreId.Value, out var s)
-                ? $"{s.Code} — {s.Name}" : (page.StoreNameRaw ?? page.StoreCodeRaw ?? "Bilinmeyen Mağaza");
+            var (sameVisit, error) = FormNumberMatcher.Match(job.Id, page, checkItems);
+            if (error != null) { results.Add(error); continue; }
 
-            var sameVisit = checkItems.Where(i =>
-                i.MatchedStoreId == page.MatchedStoreId &&
-                page.ServiceDate.HasValue && i.VisitDate.HasValue && i.VisitDate.Value.Date == page.ServiceDate.Value.Date)
-                .ToList();
+            var first = sameVisit![0];
+            var storeLabel = first.StoreName ?? first.StoreCode ?? "Bilinmeyen Mağaza";
 
             var formGasKg = ExtractGasKg(page);
             var hakedisGasItems = sameVisit.Where(i => TextNormalizationHelper.NormalizeName(i.OriginalMaterialName).Contains("gaz")).ToList();

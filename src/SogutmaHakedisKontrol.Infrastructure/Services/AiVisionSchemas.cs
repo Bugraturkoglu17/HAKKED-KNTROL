@@ -17,6 +17,15 @@ public static class AiVisionSchemas
         miktarı, tarih, mağaza kodu ve personel saatlerinde hata yapmaktansa null döndür ve
         requires_manual_review alanını true yap.
 
+        ── FORM NUMARASI (EN ÖNEMLİ ALAN) ──────────────────────────────────
+        form_number, bu formun hakediş Excel'indeki karşılığını bulmakta kullanılan ANA ANAHTARDIR —
+        diğer her alandan daha önceliklidir. SERVICE_FORM ve PERIODIC_MAINTENANCE_FORM sayfalarında
+        form numarasını bulmak için ÖZELLİKLE şu alanlara bak: sağ üst köşe, başlık bölümü, "Form No",
+        "Servis No", "Sıra No", "Belge No" etiketli kutular. Emin olduğun kadarıyla oku ve
+        form_number_confidence alanına 0-1 arası bir güven değeri yaz (net okunuyorsa yüksek, tahminiyse
+        düşük). Form numarasını ASLA tahmin etme veya uydurma — net okunamıyorsa form_number'ı null bırak,
+        form_number_confidence'ı düşük (0-0.3) yap ve requires_manual_review'i true yap.
+
         ── SAYFA SINIFLANDIRMA ─────────────────────────────────────────────
         Yüklenen PDF tek tip belge değildir; üç farklı sayfa şablonu karışık sırayla bulunabilir:
 
@@ -68,7 +77,8 @@ public static class AiVisionSchemas
           "type": "object",
           "properties": {
             "document_type": { "type": "string", "enum": ["SUMMARY", "SERVICE_FORM", "PERIODIC_MAINTENANCE_FORM", "UNKNOWN"] },
-            "form_number": { "type": ["string", "null"] },
+            "form_number": { "type": ["string", "null"], "description": "Hakediş Excel'i ile eşleştirmede kullanılan ana anahtar" },
+            "form_number_confidence": { "type": "number", "description": "0-1, form_number okumasına ne kadar güvenildiği" },
             "store": {
               "type": ["object", "null"],
               "properties": {
@@ -117,7 +127,7 @@ public static class AiVisionSchemas
             "warnings": { "type": "array", "items": { "type": "string" } },
             "requires_manual_review": { "type": "boolean" }
           },
-          "required": ["document_type", "form_number", "store", "service_date", "maintenance_date", "description_raw", "work_performed_raw", "form_total_hours", "employees", "materials", "warnings", "requires_manual_review"],
+          "required": ["document_type", "form_number", "form_number_confidence", "store", "service_date", "maintenance_date", "description_raw", "work_performed_raw", "form_total_hours", "employees", "materials", "warnings", "requires_manual_review"],
           "additionalProperties": false
         }
         """;

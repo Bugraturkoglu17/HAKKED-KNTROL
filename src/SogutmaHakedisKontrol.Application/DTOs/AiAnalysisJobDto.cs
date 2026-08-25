@@ -79,6 +79,7 @@ public class AiDocumentPageDto
     public string StoreMatchMethod { get; set; } = string.Empty;
 
     public string? FormNumber { get; set; }
+    public decimal? FormNumberConfidence { get; set; }
     public DateTime? ServiceDate { get; set; }
     public DateTime? MaintenanceDate { get; set; }
     public string? DescriptionRaw { get; set; }

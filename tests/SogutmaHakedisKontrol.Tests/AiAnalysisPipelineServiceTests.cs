@@ -36,7 +36,6 @@ public class AiAnalysisPipelineServiceTests
 
     private static AiAnalysisPipelineService BuildPipeline(AppDbContext db, FakeAiVisionClient vision, FakePdfPageRasterizer rasterizer)
     {
-        var storeMatching = new StoreMatchingService(db);
         var manHours = new ManHoursCalculator();
         var usage = new AiUsageTracker(db);
         var appPath = new FakeAppPathService();
@@ -50,7 +49,7 @@ public class AiAnalysisPipelineServiceTests
         {
             new DefaultCategoryComparisonStrategy(db), new GasUsageComparisonStrategy(db),
         });
-        return new AiAnalysisPipelineService(db, vision, rasterizer, storeMatching, manHours, usage, appPath, categoryProfiles, comparisonStrategies);
+        return new AiAnalysisPipelineService(db, vision, rasterizer, manHours, usage, appPath, categoryProfiles, comparisonStrategies);
     }
 
     [Fact]
@@ -71,6 +70,7 @@ public class AiAnalysisPipelineServiceTests
             ProgressPaymentCheckId = check.Id,
             StoreCode = "3336", StoreName = "MM Migros Bahçebey Çorum",
             VisitDate = new DateTime(2026, 5, 12),
+            MaintenanceFormNo = "15527",
             IsServiceItem = true,
             OriginalMaterialName = "ŞEHİRİÇİ SERVİS ÜCRETİ",
             Quantity = 1, Unit = "adet",
@@ -86,12 +86,14 @@ public class AiAnalysisPipelineServiceTests
             serviceMarker => Success(new AiPageExtractionDto
             {
                 DocumentType = "SERVICE_FORM",
+                FormNumber = "15527", FormNumberConfidence = 0.95m,
                 Store = new AiStoreCandidateDto { CodeRaw = "3336", Confidence = 0.95m },
                 ServiceDate = "2026-05-12",
             }),
             _ => Success(new AiPageExtractionDto
             {
                 DocumentType = "PERIODIC_MAINTENANCE_FORM",
+                FormNumber = "15527", FormNumberConfidence = 0.95m,
                 Store = new AiStoreCandidateDto { CodeRaw = "3336", Confidence = 0.95m },
                 MaintenanceDate = "2026-05-12",
             }),
@@ -267,6 +269,7 @@ public class AiAnalysisPipelineServiceTests
             ProgressPaymentCheckId = check.Id,
             StoreCode = "500", StoreName = "Gaz Test Mağaza", MatchedStoreId = store.Id,
             VisitDate = new DateTime(2026, 5, 20),
+            MaintenanceFormNo = "8842",
             IsServiceItem = false,
             OriginalMaterialName = "GAZ R404A",
             Quantity = 20, Unit = "kg",
@@ -278,6 +281,7 @@ public class AiAnalysisPipelineServiceTests
         var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
         {
             DocumentType = "SERVICE_FORM",
+            FormNumber = "8842", FormNumberConfidence = 0.95m,
             Store = new AiStoreCandidateDto { CodeRaw = "500", Confidence = 0.95m },
             ServiceDate = "2026-05-20",
             Materials = new List<AiMaterialExtractionDto>
@@ -295,6 +299,119 @@ public class AiAnalysisPipelineServiceTests
         Assert.Equal("UygunDegil", gasResult.Status);
         Assert.Contains("20", gasResult.Explanation);
         Assert.Contains("10", gasResult.Explanation);
+    }
+
+    /// <summary>Ayrı mağaza listesi kaldırıldı — form kontrolü artık ilk yüklenen hakediş Excelini
+    /// (form numarası → mağaza → tarih sırasıyla) kullanır. TEST 2-5: form no eşleştirme senaryoları.</summary>
+    private static async Task<(SogutmaHakedisKontrol.Infrastructure.Data.AppDbContext db, ProgressPaymentCheck check)> SeedFormMatchCheckAsync(
+        string formNo = "15527", string storeCode = "1001", string storeName = "Ankara MM", DateTime? visitDate = null)
+    {
+        var db = TestDbFactory.Create();
+        var (_, check) = SeedCheck(db);
+        db.ProgressPaymentCheckItems.Add(new ProgressPaymentCheckItem
+        {
+            ProgressPaymentCheckId = check.Id,
+            StoreCode = storeCode, StoreName = storeName,
+            VisitDate = visitDate ?? new DateTime(2026, 4, 23),
+            MaintenanceFormNo = formNo,
+            IsServiceItem = false,
+            OriginalMaterialName = "TEST MALZEME",
+            Quantity = 1, Unit = "adet",
+            CompanyUnitPrice = 100, CompanyLineTotal = 100,
+            CreatedAt = DateTime.Now,
+        });
+        await db.SaveChangesAsync();
+        return (db, check);
+    }
+
+    [Fact] // TEST 2 — Form Excel'de yok
+    public async Task FormNo_ExceldeYoksa_FormHakedisteBulunamadiUretir()
+    {
+        var (db, check) = await SeedFormMatchCheckAsync(formNo: "15527");
+        var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
+        {
+            DocumentType = "SERVICE_FORM", FormNumber = "99999", FormNumberConfidence = 0.9m,
+            Store = new AiStoreCandidateDto { CodeRaw = "1001", Confidence = 0.9m }, ServiceDate = "2026-04-23",
+        }));
+        var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
+        var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
+
+        var result = Assert.Single(await pipeline.GetComparisonResultsAsync(job.Id));
+        Assert.Equal("Eksik", result.Status);
+        Assert.Equal("Form Hakedişte Bulunamadı", result.Description);
+    }
+
+    [Fact] // TEST 3 — Form numarası okunamıyor
+    public async Task FormNo_Okunamiyorsa_ManuelKontrolUretirVeRastgeleEslesmez()
+    {
+        var (db, check) = await SeedFormMatchCheckAsync(formNo: "15527");
+        var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
+        {
+            DocumentType = "SERVICE_FORM", FormNumber = null, FormNumberConfidence = 0.1m,
+            Store = new AiStoreCandidateDto { CodeRaw = "1001", Confidence = 0.9m }, ServiceDate = "2026-04-23",
+            RequiresManualReview = true,
+        }));
+        var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
+        var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
+
+        var result = Assert.Single(await pipeline.GetComparisonResultsAsync(job.Id));
+        Assert.Equal("ManuelKontrol", result.Status);
+        Assert.Equal("Form Numarası Okunamadı", result.Description);
+    }
+
+    [Fact] // TEST 4 — Form no eşleşti ama mağaza kodu farklı
+    public async Task FormNo_EslestiAmaMagazaKoduFarkliysa_MagazaUyusmazligiUretir()
+    {
+        var (db, check) = await SeedFormMatchCheckAsync(formNo: "15527", storeCode: "1205", storeName: "Ankara MM");
+        var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
+        {
+            DocumentType = "SERVICE_FORM", FormNumber = "15527", FormNumberConfidence = 0.95m,
+            Store = new AiStoreCandidateDto { CodeRaw = "1001", NameRaw = "Ankara MM", Confidence = 0.9m }, ServiceDate = "2026-04-23",
+        }));
+        var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
+        var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
+
+        var result = Assert.Single(await pipeline.GetComparisonResultsAsync(job.Id));
+        Assert.Equal("UygunDegil", result.Status);
+        Assert.Equal("Mağaza Uyuşmazlığı", result.Description);
+    }
+
+    [Fact] // TEST 5 — Form no + mağaza eşleşti ama tarih farklı
+    public async Task FormNo_VeMagazaEslestiAmaTarihFarkliysa_TarihUyusmazligiUretir()
+    {
+        var (db, check) = await SeedFormMatchCheckAsync(formNo: "15527", storeCode: "1001", visitDate: new DateTime(2026, 4, 25));
+        var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
+        {
+            DocumentType = "SERVICE_FORM", FormNumber = "15527", FormNumberConfidence = 0.95m,
+            Store = new AiStoreCandidateDto { CodeRaw = "1001", Confidence = 0.9m }, ServiceDate = "2026-04-23",
+        }));
+        var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
+        var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
+
+        var result = Assert.Single(await pipeline.GetComparisonResultsAsync(job.Id));
+        Assert.Equal("UygunDegil", result.Status);
+        Assert.Equal("Tarih Uyuşmazlığı", result.Description);
+    }
+
+    [Fact] // TEST 1 — Form no + mağaza + tarih hepsi eşleşince kategori kontrolü gerçekten çalışır
+    public async Task FormNo_MagazaVeTarihEslesince_KategoriKontroluCalisir()
+    {
+        var (db, check) = await SeedFormMatchCheckAsync(formNo: "15527", storeCode: "1001", storeName: "Ankara MM");
+        var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
+        {
+            DocumentType = "SERVICE_FORM", FormNumber = "15527", FormNumberConfidence = 0.95m,
+            Store = new AiStoreCandidateDto { CodeRaw = "1001", NameRaw = "Ankara MM", Confidence = 0.95m }, ServiceDate = "2026-04-23",
+            Materials = new List<AiMaterialExtractionDto>
+            {
+                new() { RawName = "TEST MALZEME", NormalizedName = "test malzeme", Quantity = 1, Unit = "adet", Confidence = 0.9m },
+            },
+        }));
+        var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
+        var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
+
+        var results = await pipeline.GetComparisonResultsAsync(job.Id);
+        var result = results.Single(r => r.Description == "test malzeme");
+        Assert.Equal("Uygun", result.Status); // form no/mağaza/tarih doğrulandı, malzeme kategori kontrolü çalıştı ve uyumlu çıktı
     }
 
     private static AiVisionCallResultDto Success(AiPageExtractionDto extraction) => new()

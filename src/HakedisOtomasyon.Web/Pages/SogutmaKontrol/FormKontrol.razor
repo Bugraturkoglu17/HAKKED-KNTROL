@@ -1,8 +1,6 @@
 @page "/discipline/sogutma/kontrol/{Id:int}/form"
-@using StoreDto = SogutmaHakedisKontrol.Application.DTOs.StoreDto
 @inject IAiAnalysisPipelineService Pipeline
 @inject IProgressPaymentCheckService CheckService
-@inject IStoreMasterService StoreMasterService
 @inject SogutmaHakedisKontrol.Application.Interfaces.IFilePickerService FilePicker
 @inject IPdfPageRasterizer PdfRasterizer
 @inject IDialogService DialogService
@@ -53,6 +51,8 @@ else
         <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-2 d-block">
             Tek bir dosya alanına tüm servis/bakım formlarını (PDF, JPG, PNG) ekleyin — belge türünü AI
             formun üzerindeki başlıktan kendisi ayırt eder, ayrı ayrı yüklemenize gerek yoktur.
+            Hakediş Exceli tekrar yüklenmez; AI, formdaki <b>form numarasını</b> önceki aşamada yüklenen
+            hakediş satırlarıyla eşleştirir.
         </MudText>
 
         <FileDropZone OnFilesSelected="AddFilesAsync" />
@@ -108,13 +108,6 @@ else
                 </MudStack>
             </MudStack>
 
-            @if (_storeCount == 0)
-            {
-                <MudAlert Severity="Severity.Warning" Dense Class="mt-3">
-                    Mağaza listesi yüklenmeden mağaza tespiti güvenilir yapılamaz.
-                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="OpenStoreImportDialog">Mağaza Listesi Yükle</MudButton>
-                </MudAlert>
-            }
             @if (_openAiConfigured == false)
             {
                 <MudAlert Severity="Severity.Error" Dense Class="mt-3">
@@ -143,7 +136,6 @@ else
             <MudItem xs="6" md="2"><KpiStat Label="Bakım Formu (AI)" Value="@MaintenancePageCountLabel" /></MudItem>
             <MudItem xs="6" md="2"><KpiStat Label="İcmal / Özet Sayfası" Value="@SummaryPageCountLabel" /></MudItem>
             <MudItem xs="6" md="2"><KpiStat Label="Sınıflandırılamadı" Value="@UnknownPageCountLabel" Color="@UnknownPageColor" /></MudItem>
-            <MudItem xs="6" md="2"><KpiStat Label="Eşleşen Mağaza" Value="@MatchedStoreCountLabel" Color="Color.Success" /></MudItem>
             <MudItem xs="6" md="2"><KpiStat Label="Reddedilen Servis Ücreti" Value="@RejectedServiceFeeCountLabel" Color="Color.Error" /></MudItem>
         </MudGrid>
 
@@ -155,10 +147,6 @@ else
                 {
                     <MudStack Row AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-1">
                         <MudText Typo="Typo.caption">@ManualReviewPageLabel(p)</MudText>
-                        @if (p.MatchedStoreId is null)
-                        {
-                            <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => CorrectStoreAsync(p))">Mağazayı Seç</MudButton>
-                        }
                     </MudStack>
                     @foreach (var m in ManualReviewMaterials(p))
                     {
@@ -200,7 +188,7 @@ else
                 <HeaderContent>
                     <MudTh>Mağaza</MudTh>
                     <MudTh>Tarih</MudTh>
-                    <MudTh>Belge</MudTh>
+                    <MudTh>Form No</MudTh>
                     <MudTh>Kontrol Kalemi</MudTh>
                     <MudTh>Form Değeri</MudTh>
                     <MudTh>Hakediş Değeri</MudTh>
@@ -250,7 +238,6 @@ else
 
     private List<PickedFile> _files = new();
 
-    private int _storeCount;
     private bool _openAiConfigured = true;
 
     private AiAnalysisJobDto? _job;
@@ -290,7 +277,6 @@ else
             _check = await CheckService.GetByIdAsync(Id);
             if (_check != null)
             {
-                await LoadStoreCountAsync();
                 DetectOpenAiConfigured();
                 await LoadJobAsync();
                 await CheckService.SetStageAsync(Id, HakedisControlStage.FormReviewInProgress);
@@ -304,12 +290,6 @@ else
         {
             _loading = false;
         }
-    }
-
-    private async Task LoadStoreCountAsync()
-    {
-        var list = await StoreMasterService.GetAllAsync(_check!.CompanyName, _check!.Region);
-        _storeCount = list.Count;
     }
 
     private void DetectOpenAiConfigured()
@@ -386,16 +366,6 @@ else
         return (bytes / 1024.0 / 1024.0).ToString("0.#") + " MB";
     }
 
-    private async Task OpenStoreImportDialog()
-    {
-        var parameters = new DialogParameters { ["CompanyName"] = _check!.CompanyName, ["Region"] = _check!.Region };
-        var dialog = await DialogService.ShowAsync<HakedisOtomasyon.Web.Components.SogutmaKontrol.StoreImportDialog>("Mağaza Listesi İçe Aktar", parameters);
-        var result = await dialog.Result;
-        if (result.Canceled) return;
-        await LoadStoreCountAsync();
-        Snackbar.Add("Mağaza listesi güncellendi.", Severity.Success);
-    }
-
     // Tek dosya alanı: tüm belgeler serviceForms olarak gönderilir — sayfa türü zaten
     // içerik bazlı (pozisyon bağımsız) sınıflandırıldığı için ayrı bir "bakım formu" alanına gerek yok.
     private async Task RunAnalysisAsync()
@@ -458,21 +428,6 @@ else
         }
     }
 
-    private async Task CorrectStoreAsync(AiDocumentPageDto page)
-    {
-        var parameters = new DialogParameters
-        {
-            ["CompanyName"] = _check!.CompanyName, ["Region"] = _check!.Region,
-            ["PageCodeRaw"] = page.StoreCodeRaw, ["PageNameRaw"] = page.StoreNameRaw,
-        };
-        var dialog = await DialogService.ShowAsync<AiStoreCorrectionDialog>("Mağazayı Kesinleştir", parameters);
-        var result = await dialog.Result;
-        if (result.Canceled || result.Data is not StoreDto selected) return;
-        await Pipeline.CorrectPageStoreAsync(page.Id, selected.Id);
-        await LoadJobAsync();
-        Snackbar.Add("Mağaza güncellendi.", Severity.Success);
-    }
-
     private async Task CorrectMaterialAsync(AiPageMaterialDto material)
     {
         var parameters = new DialogParameters { ["Material"] = material };
@@ -524,7 +479,6 @@ else
     private string SummaryPageCountLabel => _job?.SummaryPageCount.ToString() ?? "0";
     private string UnknownPageCountLabel => _job?.UnknownPageCount.ToString() ?? "0";
     private Color UnknownPageColor => _job != null && _job.UnknownPageCount > 0 ? Color.Error : Color.Default;
-    private string MatchedStoreCountLabel => _job?.MatchedStoreCount.ToString() ?? "0";
     private string RejectedServiceFeeCountLabel => _job?.RejectedServiceFeeCount.ToString() ?? "0";
 
     private static Color ResultColor(string status) => status switch

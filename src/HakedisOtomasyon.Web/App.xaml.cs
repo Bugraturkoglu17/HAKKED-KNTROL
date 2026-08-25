@@ -162,6 +162,7 @@ public partial class WpfApp : System.Windows.Application
                 MigrateSogutmaAiSchema(sogutmaDb);
                 MigrateSogutmaPriceCorrectionSchema(sogutmaDb);
                 MigrateSogutmaCategorySchema(sogutmaDb);
+                MigrateSogutmaFormNumberSchema(sogutmaDb);
             }
             catch (Exception ex)
             {
@@ -452,6 +453,38 @@ public partial class WpfApp : System.Windows.Application
         catch (Exception ex)
         {
             LogError("Soğutma kategori şema migrasyonu hatası", ex);
+        }
+    }
+
+    /// <summary>
+    /// Form numarası bazlı eşleştirme için AiDocumentPages.FormNumberConfidence sütununu (eksikse) ekler.
+    /// </summary>
+    private static void MigrateSogutmaFormNumberSchema(SogutmaHakedisKontrol.Infrastructure.Data.AppDbContext db)
+    {
+        try
+        {
+            var conn = db.Database.GetDbConnection();
+            conn.Open();
+            try
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = "PRAGMA table_info(AiDocumentPages)";
+                var cols = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                using (var reader = cmd.ExecuteReader())
+                    while (reader.Read()) cols.Add(reader.GetString(1));
+
+                if (!cols.Contains("FormNumberConfidence"))
+                {
+                    using var alter = conn.CreateCommand();
+                    alter.CommandText = "ALTER TABLE \"AiDocumentPages\" ADD COLUMN \"FormNumberConfidence\" TEXT";
+                    alter.ExecuteNonQuery();
+                }
+            }
+            finally { conn.Close(); }
+        }
+        catch (Exception ex)
+        {
+            LogError("Soğutma form numarası şema migrasyonu hatası", ex);
         }
     }
 

@@ -27,6 +27,7 @@ public class AiDocumentPage
     public StoreMatchMethod StoreMatchMethod { get; set; } = StoreMatchMethod.None;
 
     public string? FormNumber { get; set; }
+    public decimal? FormNumberConfidence { get; set; } // 0-1 — hakediş Excel'i ile eşleştirmede ana anahtar
     public DateTime? ServiceDate { get; set; }        // SERVICE_FORM
     public DateTime? MaintenanceDate { get; set; }    // PERIODIC_MAINTENANCE_FORM
 

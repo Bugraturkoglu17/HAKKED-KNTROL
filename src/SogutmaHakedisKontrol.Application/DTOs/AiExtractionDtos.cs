@@ -9,6 +9,7 @@ public class AiPageExtractionDto
 {
     public string DocumentType { get; set; } = "UNKNOWN"; // SUMMARY | SERVICE_FORM | PERIODIC_MAINTENANCE_FORM | UNKNOWN
     public string? FormNumber { get; set; }
+    public decimal? FormNumberConfidence { get; set; } // 0-1, hakediş Exceli ile eşleştirmenin ana anahtarı
     public AiStoreCandidateDto? Store { get; set; }
     public string? ServiceDate { get; set; }        // yyyy-MM-dd, yalnızca SERVICE_FORM
     public string? MaintenanceDate { get; set; }     // yyyy-MM-dd, yalnızca PERIODIC_MAINTENANCE_FORM
