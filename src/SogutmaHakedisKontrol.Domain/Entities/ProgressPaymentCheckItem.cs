@@ -14,6 +14,12 @@ public class ProgressPaymentCheckItem
     public string? SheetName { get; set; }
     public int? SourceRowNumber { get; set; }
 
+    // ── Orijinal Excel hücre adresleri (Düzelt için gerçek hücreyi bulmakta kullanılır) ──
+    public string? MaterialCellRef { get; set; }
+    public string? QuantityCellRef { get; set; }
+    public string? UnitPriceCellRef { get; set; }
+    public string? LineTotalCellRef { get; set; }
+
     public string? StoreCode { get; set; }
     public string? StoreName { get; set; }
     public string? StoreFormat { get; set; }
@@ -53,6 +59,9 @@ public class ProgressPaymentCheckItem
 
     public bool IsExcluded { get; set; }
     public bool QuantityManuallyCorrected { get; set; }
+
+    /// <summary>Kullanıcı "Düzelt" dedi — export'ta UnitPriceCellRef'teki hücre onaylı fiyatla değiştirilip kırmızı işaretlenir.</summary>
+    public bool PriceCorrectionApplied { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.Now;
 

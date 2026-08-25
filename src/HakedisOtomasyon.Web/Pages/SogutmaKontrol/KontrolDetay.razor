@@ -31,6 +31,13 @@ else
                     Eşleşme Kontrolü (@_pendingCount)
                 </MudButton>
             }
+            @if (_bulkCorrectableCount > 0)
+            {
+                <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.PriceCheck"
+                           OnClick="BulkCorrectPricesAsync">
+                    Tüm Kesin Birim Fiyat Hatalarını Düzelt (@_bulkCorrectableCount)
+                </MudButton>
+            }
             <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Download"
                        OnClick="ExportAsync">
                 Kontrol Edilmiş Excel'i İndir
@@ -168,6 +175,30 @@ else
                                    OnClick="@(() => EditQuantityAsync(context))" />
                     <MudIconButton Icon="@(context.IsExcluded ? Icons.Material.Filled.Visibility : Icons.Material.Filled.VisibilityOff)"
                                    Size="Size.Small" Title="Kontrol Dışı Bırak/Al" OnClick="@(() => ToggleExcludeAsync(context))" />
+
+                    @if (context.ControlStatus == CheckItemControlStatus.BirimFiyatBulunamadi)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.AddCircleOutline" Size="Size.Small" Color="Color.Primary"
+                                       Title="Yeni Kalem Ekle" OnClick="@(() => AddNewItemAsync(context, useCompanyPrice: false))" />
+                        @if (context.CompanyUnitPrice > 0)
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.VerifiedUser" Size="Size.Small" Color="Color.Success"
+                                           Title="Bu Fiyat Doğrudur, Sisteme Ekle" OnClick="@(() => AddNewItemAsync(context, useCompanyPrice: true))" />
+                        }
+                    }
+                    @if (context.ControlStatus == CheckItemControlStatus.FiyatHatasi)
+                    {
+                        @if (context.PriceCorrectionApplied)
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.Undo" Size="Size.Small" Color="Color.Warning"
+                                           Title="Düzeltmeyi Geri Al" OnClick="@(() => TogglePriceCorrectionAsync(context))" />
+                        }
+                        else
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.Build" Size="Size.Small" Color="Color.Error"
+                                           Title="Düzelt" OnClick="@(() => TogglePriceCorrectionAsync(context))" />
+                        }
+                    }
                 </MudTd>
             </RowTemplate>
             <PagerContent><MudTablePager /></PagerContent>
@@ -206,6 +237,7 @@ else
     private bool _loading = true;
     private string _searchText = string.Empty;
     private string _statusFilter = "all";
+    private int _bulkCorrectableCount;
 
     private int _pendingCount => _items.Count(i => i.MatchStatus == MaterialMatchStatus.FuzzyPending && !i.IsExcluded);
 
@@ -217,6 +249,7 @@ else
         StateHasChanged();
         _check = await CheckService.GetByIdAsync(Id);
         _items = _check is null ? new() : await CheckService.GetItemsAsync(Id);
+        _bulkCorrectableCount = _check is null ? 0 : await CheckService.GetBulkPriceCorrectionPreviewCountAsync(Id);
         _loading = false;
     }
 
@@ -294,6 +327,74 @@ else
     {
         await CheckService.ExcludeItemAsync(item.Id, !item.IsExcluded);
         await LoadAsync();
+    }
+
+    private async Task AddNewItemAsync(ProgressPaymentCheckItemDto item, bool useCompanyPrice)
+    {
+        if (_check is null) return;
+
+        var candidates = await CheckService.FindSimilarCandidatesAsync(item.Id);
+        var strong = candidates.FirstOrDefault(c => c.Confidence >= 0.55m && !c.SpecMismatchWarning);
+        if (strong != null)
+        {
+            var label = string.IsNullOrWhiteSpace(strong.Spec) ? strong.MaterialName : $"{strong.MaterialName} — {strong.Spec}";
+            var msg = $"\"{item.OriginalMaterialName}\" için sistemde benzer bir ürün bulundu: \"{label}\" ({strong.Price:N2} {strong.Currency}). Benzerlik: %{strong.Confidence * 100:N0}. Teknik ölçüler farklıysa ayrı ürün olarak eklemeye devam edebilirsiniz.";
+            var choice = await DialogService.ShowMessageBox("Benzer Ürün Bulundu", msg,
+                yesText: "Bu Ürünle Eşleştir", noText: "Yeni Kalem Olarak Ekle", cancelText: "İptal");
+            if (choice is null) return;
+            if (choice == true)
+            {
+                await CheckService.ResolveMatchAsync(Id, new List<int> { item.Id }, strong.UnitPriceItemId, saveAsAlias: true, _check.CompanyName);
+                await LoadAsync();
+                Snackbar.Add("Mevcut ürünle eşleştirildi.", Severity.Success);
+                return;
+            }
+        }
+
+        var dto = new UnitPriceItemDto
+        {
+            MaterialName = item.OriginalMaterialName,
+            Spec = item.OriginalMaterialSpec,
+            Unit = item.Unit,
+            Price = useCompanyPrice ? item.CompanyUnitPrice : 0,
+            Currency = "TRY",
+        };
+        var parameters = new DialogParameters { ["Item"] = dto };
+        var dialog = await DialogService.ShowAsync<CoolingPriceItemEditDialog>(
+            useCompanyPrice ? "Bu Fiyat Doğrudur — Sisteme Ekle" : "Yeni Birim Fiyat Kalemi", parameters);
+        var result = await dialog.Result;
+        if (result.Canceled || result.Data is not UnitPriceItemDto newItem) return;
+
+        await CheckService.CreateAndMatchNewItemAsync(Id, new List<int> { item.Id }, newItem, _check.CompanyName,
+            useCompanyPrice ? "BuFiyatDogru" : "YeniKalemEkle");
+        await LoadAsync();
+        Snackbar.Add("Yeni birim fiyat kalemi eklendi ve eşleştirildi.", Severity.Success);
+    }
+
+    private async Task TogglePriceCorrectionAsync(ProgressPaymentCheckItemDto item)
+    {
+        var applying = !item.PriceCorrectionApplied;
+        await CheckService.SetPriceCorrectionAsync(item.Id, applying);
+        await LoadAsync();
+        Snackbar.Add(applying ? "Fiyat düzeltmesi işaretlendi." : "Düzeltme geri alındı.", Severity.Success);
+    }
+
+    private async Task BulkCorrectPricesAsync()
+    {
+        var count = await CheckService.GetBulkPriceCorrectionPreviewCountAsync(Id);
+        if (count == 0)
+        {
+            Snackbar.Add("Düzeltilecek kesin fiyat hatası bulunamadı.", Severity.Info);
+            return;
+        }
+        var confirm = await DialogService.ShowMessageBox("Toplu Birim Fiyat Düzeltmesi",
+            $"{count} satırdaki birim fiyat onaylı fiyatla değiştirilecektir. Onaylıyor musunuz?",
+            yesText: "Evet, Düzelt", cancelText: "İptal");
+        if (confirm != true) return;
+
+        var applied = await CheckService.ApplyBulkPriceCorrectionAsync(Id);
+        await LoadAsync();
+        Snackbar.Add($"{applied} satırda birim fiyat düzeltmesi uygulandı.", Severity.Success);
     }
 
     private async Task FinalizeAsync()

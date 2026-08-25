@@ -13,6 +13,7 @@ public class AppDbContext : DbContext
     public DbSet<MaterialAlias> MaterialAliases => Set<MaterialAlias>();
     public DbSet<ProgressPaymentCheck> ProgressPaymentChecks => Set<ProgressPaymentCheck>();
     public DbSet<ProgressPaymentCheckItem> ProgressPaymentCheckItems => Set<ProgressPaymentCheckItem>();
+    public DbSet<CheckItemActionLog> CheckItemActionLogs => Set<CheckItemActionLog>();
 
     // ── Mağaza ana listesi + AI belge analizi ───────────────────────────
     public DbSet<Store> Stores => Set<Store>();
@@ -102,6 +103,10 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<ProgressPaymentCheckItem>(e =>
         {
             e.Property(i => i.SheetName).HasMaxLength(100);
+            e.Property(i => i.MaterialCellRef).HasMaxLength(20);
+            e.Property(i => i.QuantityCellRef).HasMaxLength(20);
+            e.Property(i => i.UnitPriceCellRef).HasMaxLength(20);
+            e.Property(i => i.LineTotalCellRef).HasMaxLength(20);
             e.Property(i => i.StoreCode).HasMaxLength(50);
             e.Property(i => i.StoreName).HasMaxLength(300);
             e.Property(i => i.StoreFormat).HasMaxLength(100);
@@ -129,6 +134,16 @@ public class AppDbContext : DbContext
                 .WithMany(c => c.Items)
                 .HasForeignKey(i => i.ProgressPaymentCheckId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<CheckItemActionLog>(e =>
+        {
+            e.Property(a => a.Action).HasMaxLength(50).IsRequired();
+            e.Property(a => a.OldValue).HasMaxLength(500);
+            e.Property(a => a.NewValue).HasMaxLength(500);
+            e.Property(a => a.Note).HasMaxLength(1000).IsRequired();
+            e.HasIndex(a => a.ProgressPaymentCheckId);
+            e.HasIndex(a => a.ProgressPaymentCheckItemId);
         });
 
         // ── Mağaza ana listesi ────────────────────────────────────────────

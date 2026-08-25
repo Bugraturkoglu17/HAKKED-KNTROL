@@ -44,6 +44,10 @@ public class ProgressPaymentCheckItemDto
     public int ProgressPaymentCheckId { get; set; }
     public string? SheetName { get; set; }
     public int? SourceRowNumber { get; set; }
+    public string? MaterialCellRef { get; set; }
+    public string? QuantityCellRef { get; set; }
+    public string? UnitPriceCellRef { get; set; }
+    public string? LineTotalCellRef { get; set; }
     public string? StoreCode { get; set; }
     public string? StoreName { get; set; }
     public string? StoreFormat { get; set; }
@@ -77,6 +81,7 @@ public class ProgressPaymentCheckItemDto
     public string? ControlNote { get; set; }
     public bool IsExcluded { get; set; }
     public bool QuantityManuallyCorrected { get; set; }
+    public bool PriceCorrectionApplied { get; set; }
 
     public string ControlStatusLabel => ControlStatus switch
     {
@@ -110,4 +115,16 @@ public class MaterialMatchQueueEntryDto
     public string? OriginalMaterialSpec { get; set; } = string.Empty;
     public int OccurrenceCount { get; set; }
     public List<MaterialMatchCandidateDto> Candidates { get; set; } = new();
+}
+
+/// <summary>Bir hakediş kalemi üzerinde alınan kararın kalıcı kaydı (Düzelt/Geri Al/Yeni Kalem Ekle/...).</summary>
+public class CheckItemActionLogDto
+{
+    public int Id { get; set; }
+    public int ProgressPaymentCheckItemId { get; set; }
+    public string Action { get; set; } = string.Empty;
+    public string? OldValue { get; set; }
+    public string? NewValue { get; set; }
+    public string Note { get; set; } = string.Empty;
+    public DateTime CreatedAt { get; set; }
 }

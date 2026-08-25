@@ -160,6 +160,7 @@ public partial class WpfApp : System.Windows.Application
                 var sogutmaDb = scope.ServiceProvider.GetRequiredService<SogutmaHakedisKontrol.Infrastructure.Data.AppDbContext>();
                 sogutmaDb.Database.EnsureCreated();
                 MigrateSogutmaAiSchema(sogutmaDb);
+                MigrateSogutmaPriceCorrectionSchema(sogutmaDb);
             }
             catch (Exception ex)
             {
@@ -329,6 +330,87 @@ public partial class WpfApp : System.Windows.Application
         catch (Exception ex)
         {
             LogError("Soğutma AI şema migrasyonu hatası", ex);
+        }
+    }
+
+    /// <summary>
+    /// Birim fiyat düzeltme özelliği (Düzelt/Geri Al/Yeni Kalem Ekle/Toplu Düzelt) için gereken
+    /// ProgressPaymentCheckItems sütunlarını ve CheckItemActionLogs denetim izi tablosunu, eksikse,
+    /// mevcut veriye dokunmadan ekler.
+    /// </summary>
+    private static void MigrateSogutmaPriceCorrectionSchema(SogutmaHakedisKontrol.Infrastructure.Data.AppDbContext db)
+    {
+        try
+        {
+            var conn = db.Database.GetDbConnection();
+            conn.Open();
+            try
+            {
+                var existingTables = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table'";
+                    using var reader = cmd.ExecuteReader();
+                    while (reader.Read()) existingTables.Add(reader.GetString(0));
+                }
+
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.CommandText = "PRAGMA table_info(ProgressPaymentCheckItems)";
+                    var cols = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    using (var reader = cmd.ExecuteReader())
+                        while (reader.Read()) cols.Add(reader.GetString(1));
+
+                    var newColumns = new Dictionary<string, string>
+                    {
+                        ["MaterialCellRef"] = "TEXT",
+                        ["QuantityCellRef"] = "TEXT",
+                        ["UnitPriceCellRef"] = "TEXT",
+                        ["LineTotalCellRef"] = "TEXT",
+                        ["PriceCorrectionApplied"] = "INTEGER NOT NULL DEFAULT 0",
+                    };
+                    foreach (var (colName, colType) in newColumns)
+                    {
+                        if (cols.Contains(colName)) continue;
+                        using var alter = conn.CreateCommand();
+                        alter.CommandText = $"ALTER TABLE \"ProgressPaymentCheckItems\" ADD COLUMN \"{colName}\" {colType}";
+                        alter.ExecuteNonQuery();
+                    }
+                }
+
+                if (!existingTables.Contains("CheckItemActionLogs"))
+                {
+                    var script = db.Database.GenerateCreateScript();
+                    var statements = script
+                        .Split(new[] { ";\r\n", ";\n" }, StringSplitOptions.RemoveEmptyEntries)
+                        .Select(s => s.Trim())
+                        .Where(s => s.Length > 0);
+
+                    foreach (var stmt in statements)
+                    {
+                        var tableMatch = System.Text.RegularExpressions.Regex.Match(stmt, "CREATE TABLE \"(\\w+)\"");
+                        if (tableMatch.Success && tableMatch.Groups[1].Value == "CheckItemActionLogs")
+                        {
+                            using var create = conn.CreateCommand();
+                            create.CommandText = stmt + ";";
+                            create.ExecuteNonQuery();
+                            continue;
+                        }
+                        var indexMatch = System.Text.RegularExpressions.Regex.Match(stmt, "CREATE (?:UNIQUE )?INDEX \"[^\"]+\" ON \"(\\w+)\"");
+                        if (indexMatch.Success && indexMatch.Groups[1].Value == "CheckItemActionLogs")
+                        {
+                            using var idx = conn.CreateCommand();
+                            idx.CommandText = stmt + ";";
+                            idx.ExecuteNonQuery();
+                        }
+                    }
+                }
+            }
+            finally { conn.Close(); }
+        }
+        catch (Exception ex)
+        {
+            LogError("Soğutma fiyat düzeltme şema migrasyonu hatası", ex);
         }
     }
 

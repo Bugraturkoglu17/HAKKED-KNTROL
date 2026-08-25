@@ -15,15 +15,20 @@ public class ProgressPaymentCheckService : IProgressPaymentCheckService
     private const decimal ToleranceTry = 1.0m;      // ±1 TL yuvarlama toleransı
     private const decimal TolerancePercent = 0.5m;   // ±%0.5 yuvarlama toleransı
 
+    private static readonly XLColor CorrectionFillColor = XLColor.FromArgb(255, 199, 206);
+    private static readonly XLColor CorrectionFontColor = XLColor.FromArgb(156, 0, 6);
+
     private readonly AppDbContext _db;
     private readonly IMaterialMatchingService _matching;
     private readonly IAppPathService _appPath;
+    private readonly IUnitPriceListService _unitPriceList;
 
-    public ProgressPaymentCheckService(AppDbContext db, IMaterialMatchingService matching, IAppPathService appPath)
+    public ProgressPaymentCheckService(AppDbContext db, IMaterialMatchingService matching, IAppPathService appPath, IUnitPriceListService unitPriceList)
     {
         _db = db;
         _matching = matching;
         _appPath = appPath;
+        _unitPriceList = unitPriceList;
     }
 
     // ------------------------------------------------------------------ //
@@ -103,6 +108,10 @@ public class ProgressPaymentCheckService : IProgressPaymentCheckService
                 ProgressPaymentCheckId = check.Id,
                 SheetName = dto.SheetName,
                 SourceRowNumber = dto.SourceRowNumber,
+                MaterialCellRef = dto.MaterialCellRef,
+                QuantityCellRef = dto.QuantityCellRef,
+                UnitPriceCellRef = dto.UnitPriceCellRef,
+                LineTotalCellRef = dto.LineTotalCellRef,
                 StoreCode = dto.StoreCode,
                 StoreName = dto.StoreName,
                 StoreFormat = dto.StoreFormat,
@@ -225,11 +234,13 @@ public class ProgressPaymentCheckService : IProgressPaymentCheckService
 
         foreach (var item in items)
         {
+            var oldMatch = item.MatchedMaterialName;
             item.MatchedUnitPriceItemId = unitPriceItem.Id;
             item.MatchedMaterialName = string.IsNullOrWhiteSpace(unitPriceItem.Spec)
                 ? unitPriceItem.MaterialName : $"{unitPriceItem.MaterialName} — {unitPriceItem.Spec}";
             item.MatchConfidence = 1.0m;
             item.MatchStatus = MaterialMatchStatus.ManuallyMatched;
+            LogAction(item, "Eslestir", oldMatch, item.MatchedMaterialName, $"\"{item.OriginalMaterialName}\" kalemi \"{item.MatchedMaterialName}\" ile eşleştirildi.");
         }
         await _db.SaveChangesAsync();
 
@@ -281,6 +292,135 @@ public class ProgressPaymentCheckService : IProgressPaymentCheckService
         item.ControlNote = string.IsNullOrWhiteSpace(item.ControlNote) ? logNote : $"{logNote} {item.ControlNote}";
         await _db.SaveChangesAsync();
         await RecalculateAsync(item.ProgressPaymentCheckId);
+    }
+
+    // ------------------------------------------------------------------ //
+    //  YENİ KALEM EKLE / BU FİYAT DOĞRUDUR
+    // ------------------------------------------------------------------ //
+    public async Task<List<MaterialMatchCandidateDto>> FindSimilarCandidatesAsync(int checkItemId)
+    {
+        var item = await _db.ProgressPaymentCheckItems.FindAsync(checkItemId);
+        if (item is null) return new();
+        var check = await _db.ProgressPaymentChecks.FindAsync(item.ProgressPaymentCheckId);
+        if (check is null) return new();
+        return await _matching.FindCandidatesAsync(check.UnitPriceListId, item.OriginalMaterialName, item.OriginalMaterialSpec, check.CompanyName, maxResults: 3);
+    }
+
+    public async Task<UnitPriceItemDto> CreateAndMatchNewItemAsync(int checkId, List<int> checkItemIds, UnitPriceItemDto newItem, string? companyName, string actionLabel)
+    {
+        var check = await _db.ProgressPaymentChecks.FindAsync(checkId)
+            ?? throw new InvalidOperationException("Kontrol kaydı bulunamadı.");
+
+        var created = await _unitPriceList.CreateItemAsync(check.UnitPriceListId, newItem);
+
+        var items = await _db.ProgressPaymentCheckItems
+            .Where(i => i.ProgressPaymentCheckId == checkId && checkItemIds.Contains(i.Id))
+            .ToListAsync();
+
+        var matchedLabel = string.IsNullOrWhiteSpace(created.Spec) ? created.MaterialName : $"{created.MaterialName} — {created.Spec}";
+        var note = actionLabel == "BuFiyatDogru"
+            ? $"Firma fiyatı ({created.Price:0.##} {created.Currency}) doğru kabul edilerek yeni katalog kalemi olarak eklendi."
+            : "Kullanıcı tarafından yeni katalog kalemi olarak eklendi ve eşleştirildi.";
+
+        string? firstOriginalName = items.FirstOrDefault()?.OriginalMaterialName;
+        string? firstOriginalSpec = items.FirstOrDefault()?.OriginalMaterialSpec;
+
+        foreach (var item in items)
+        {
+            item.MatchedUnitPriceItemId = created.Id;
+            item.MatchedMaterialName = matchedLabel;
+            item.MatchConfidence = 1.0m;
+            item.MatchStatus = MaterialMatchStatus.ManuallyMatched;
+            LogAction(item, actionLabel, item.OriginalMaterialName, matchedLabel, note);
+        }
+        await _db.SaveChangesAsync();
+
+        if (!string.IsNullOrWhiteSpace(firstOriginalName))
+        {
+            var aliasText = string.IsNullOrWhiteSpace(firstOriginalSpec) ? firstOriginalName : $"{firstOriginalName} {firstOriginalSpec}";
+            await _matching.SaveAliasAsync(companyName, aliasText!, created.Id);
+        }
+
+        await UpdateCheckStatusAsync(checkId);
+        await RecalculateAsync(checkId);
+        return created;
+    }
+
+    // ------------------------------------------------------------------ //
+    //  BİRİM FİYAT DÜZELTME (Düzelt / Geri Al / Toplu Düzelt)
+    // ------------------------------------------------------------------ //
+    public async Task SetPriceCorrectionAsync(int checkItemId, bool apply)
+    {
+        var item = await _db.ProgressPaymentCheckItems.FindAsync(checkItemId);
+        if (item is null) return;
+        item.PriceCorrectionApplied = apply;
+        LogAction(item, apply ? "Duzelt" : "GeriAl",
+            item.CompanyUnitPrice.ToString("0.####"), item.ApprovedUnitPriceTry?.ToString("0.####"),
+            apply
+                ? $"Birim fiyat {item.CompanyUnitPrice:N2} TL yerine onaylı {item.ApprovedUnitPriceTry:N2} TL olarak düzeltildi (export'ta uygulanacak)."
+                : "Fiyat düzeltmesi geri alındı.");
+        await _db.SaveChangesAsync();
+    }
+
+    private static bool IsDefiniteMatch(MaterialMatchStatus s) =>
+        s is MaterialMatchStatus.Exact or MaterialMatchStatus.LearnedAlias or MaterialMatchStatus.ManuallyMatched;
+
+    public async Task<int> GetBulkPriceCorrectionPreviewCountAsync(int checkId)
+    {
+        var candidates = await _db.ProgressPaymentCheckItems
+            .Where(i => i.ProgressPaymentCheckId == checkId && !i.IsExcluded && !i.PriceCorrectionApplied
+                        && i.ControlStatus == CheckItemControlStatus.FiyatHatasi)
+            .ToListAsync();
+        return candidates.Count(i => IsDefiniteMatch(i.MatchStatus));
+    }
+
+    public async Task<int> ApplyBulkPriceCorrectionAsync(int checkId)
+    {
+        var candidates = await _db.ProgressPaymentCheckItems
+            .Where(i => i.ProgressPaymentCheckId == checkId && !i.IsExcluded && !i.PriceCorrectionApplied
+                        && i.ControlStatus == CheckItemControlStatus.FiyatHatasi)
+            .ToListAsync();
+        var items = candidates.Where(i => IsDefiniteMatch(i.MatchStatus)).ToList();
+
+        foreach (var item in items)
+        {
+            item.PriceCorrectionApplied = true;
+            LogAction(item, "TopluDuzelt", item.CompanyUnitPrice.ToString("0.####"), item.ApprovedUnitPriceTry?.ToString("0.####"),
+                $"Toplu düzeltme: {item.CompanyUnitPrice:N2} TL yerine onaylı {item.ApprovedUnitPriceTry:N2} TL olarak düzeltildi.");
+        }
+        await _db.SaveChangesAsync();
+        return items.Count;
+    }
+
+    public async Task<List<CheckItemActionLogDto>> GetActionLogAsync(int checkId)
+    {
+        return await _db.CheckItemActionLogs
+            .Where(l => l.ProgressPaymentCheckId == checkId)
+            .OrderByDescending(l => l.CreatedAt)
+            .Select(l => new CheckItemActionLogDto
+            {
+                Id = l.Id,
+                ProgressPaymentCheckItemId = l.ProgressPaymentCheckItemId,
+                Action = l.Action,
+                OldValue = l.OldValue,
+                NewValue = l.NewValue,
+                Note = l.Note,
+                CreatedAt = l.CreatedAt,
+            }).ToListAsync();
+    }
+
+    private void LogAction(ProgressPaymentCheckItem item, string action, string? oldValue, string? newValue, string note)
+    {
+        _db.CheckItemActionLogs.Add(new CheckItemActionLog
+        {
+            ProgressPaymentCheckItemId = item.Id,
+            ProgressPaymentCheckId = item.ProgressPaymentCheckId,
+            Action = action,
+            OldValue = oldValue,
+            NewValue = newValue,
+            Note = note,
+            CreatedAt = DateTime.Now,
+        });
     }
 
     private async Task UpdateCheckStatusAsync(int checkId)
@@ -487,9 +627,30 @@ public class ProgressPaymentCheckService : IProgressPaymentCheckService
                 ws.Cell(rowNo, c0 + 5).Value = item.CompanyLineTotal;
                 if (item.Difference.HasValue) ws.Cell(rowNo, c0 + 6).Value = item.Difference.Value;
                 ws.Cell(rowNo, c0 + 7).Value = ControlStatusLabel(item.ControlStatus);
-                ws.Cell(rowNo, c0 + 8).Value = item.ControlNote ?? "";
+                ws.Cell(rowNo, c0 + 8).Value = BuildExportNote(item); // yalnızca problemli satırlara not — Uygun satırlar boş kalır
+
+                // ── Yanlış birim fiyat "Düzelt" ile onaylandıysa: firmanın kendi hücresini onaylı fiyatla
+                // değiştir ve yalnızca bu hücreyi kırmızı işaretle. Formüller/diğer hücreler dokunulmaz.
+                if (item.PriceCorrectionApplied && item.ApprovedUnitPriceTry.HasValue && !string.IsNullOrWhiteSpace(item.UnitPriceCellRef))
+                {
+                    try
+                    {
+                        var priceCell = ws.Cell(item.UnitPriceCellRef);
+                        priceCell.Value = item.ApprovedUnitPriceTry.Value;
+                        priceCell.Style.Fill.BackgroundColor = CorrectionFillColor;
+                        priceCell.Style.Font.FontColor = CorrectionFontColor;
+                        priceCell.Style.Font.Bold = true;
+                    }
+                    catch { /* hücre adresi çözülemedi — orijinal satır formatı beklenenden farklı, sessizce geç */ }
+                }
             }
         }
+
+        // Formül hücreleri (satır toplamı, KDV, genel toplam vb.) silinmez/statikleştirilmez — yalnızca
+        // birim fiyat hücresi değişti; workbook Excel'de açıldığında otomatik yeniden hesaplansın diye
+        // hesaplama modu Auto'ya ayarlanır ve mümkün olduğunca önceden yeniden hesaplanır.
+        try { wb.CalculateMode = XLCalculateMode.Auto; } catch { /* kritik değil */ }
+        try { wb.RecalculateAllFormulas(); } catch { /* bazı fonksiyonlar desteklenmeyebilir — dosya yine de geçerli kalır */ }
 
         var folder = GetControlledFolder(check.CompanyName, check.Year, check.Month);
         Directory.CreateDirectory(folder);
@@ -501,6 +662,20 @@ public class ProgressPaymentCheckService : IProgressPaymentCheckService
         await _db.SaveChangesAsync();
         return outPath;
     }
+
+    /// <summary>Export'ta sadece problemli satırlara not yazılır — Uygun satırların not hücresi boş kalır (firmaya gidecek dosyada gereksiz not olmaz).</summary>
+    private static string BuildExportNote(ProgressPaymentCheckItem item) => item.ControlStatus switch
+    {
+        CheckItemControlStatus.Uygun => string.Empty,
+        CheckItemControlStatus.FiyatHatasi => item.PriceCorrectionApplied
+            ? $"Birim fiyat {item.CompanyUnitPrice:N2} TL yerine onaylı {item.ApprovedUnitPriceTry:N2} TL olarak düzeltilmiştir."
+            : $"Firma birim fiyatı ({item.CompanyUnitPrice:N2} TL) onaylı birim fiyattan ({item.ApprovedUnitPriceTry:N2} TL) farklıdır. Kontrol edilmelidir.",
+        CheckItemControlStatus.BirimFiyatBulunamadi => "Onaylı birim fiyat listesinde karşılığı bulunamadı. Kontrol edilmelidir.",
+        CheckItemControlStatus.BirimUyusmazligi => "Hakedişteki birim ile onaylı birim fiyat birimi uyuşmamaktadır.",
+        CheckItemControlStatus.OnayBekliyor => "Tahmini eşleşme kullanıcı onayı bekliyor. Manuel inceleme gereklidir.",
+        CheckItemControlStatus.KontrolDisi => "Kullanıcı tarafından kontrol dışı bırakılmıştır.",
+        _ => string.IsNullOrWhiteSpace(item.ControlNote) ? "Manuel inceleme gereken kalem." : item.ControlNote!,
+    };
 
     private static string ControlStatusLabel(CheckItemControlStatus s) => s switch
     {
@@ -565,6 +740,10 @@ public class ProgressPaymentCheckService : IProgressPaymentCheckService
         ProgressPaymentCheckId = i.ProgressPaymentCheckId,
         SheetName = i.SheetName,
         SourceRowNumber = i.SourceRowNumber,
+        MaterialCellRef = i.MaterialCellRef,
+        QuantityCellRef = i.QuantityCellRef,
+        UnitPriceCellRef = i.UnitPriceCellRef,
+        LineTotalCellRef = i.LineTotalCellRef,
         StoreCode = i.StoreCode,
         StoreName = i.StoreName,
         StoreFormat = i.StoreFormat,
@@ -593,5 +772,6 @@ public class ProgressPaymentCheckService : IProgressPaymentCheckService
         ControlNote = i.ControlNote,
         IsExcluded = i.IsExcluded,
         QuantityManuallyCorrected = i.QuantityManuallyCorrected,
+        PriceCorrectionApplied = i.PriceCorrectionApplied,
     };
 }

@@ -120,6 +120,10 @@ public static class ProgressPaymentExcelParser
             {
                 SheetName = dataSheet.Name,
                 SourceRowNumber = row.RowNumber(),
+                MaterialCellRef = colMalzemeAdi > 0 ? row.Cell(colMalzemeAdi).Address.ToString() : null,
+                QuantityCellRef = colMiktar > 0 ? row.Cell(colMiktar).Address.ToString() : null,
+                UnitPriceCellRef = colFiyat > 0 ? row.Cell(colFiyat).Address.ToString() : null,
+                LineTotalCellRef = colToplam > 0 ? row.Cell(colToplam).Address.ToString() : null,
                 StoreCode = string.IsNullOrWhiteSpace(magazaKodu) ? null : magazaKodu,
                 StoreName = string.IsNullOrWhiteSpace(magazaAdi) ? null : magazaAdi,
                 StoreFormat = CellText(row, colFormat) is { Length: > 0 } fmt ? fmt : null,
