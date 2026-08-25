@@ -18,4 +18,18 @@ public class WpfFilePickerService : IFilePickerService
             return dlg.ShowDialog() == true ? dlg.FileName : null;
         }).Task;
     }
+
+    public Task<string?> PickDocumentFileAsync()
+    {
+        return System.Windows.Application.Current.Dispatcher.InvokeAsync<string?>(() =>
+        {
+            var dlg = new OpenFileDialog
+            {
+                Filter = "Belge Dosyaları (*.pdf;*.jpg;*.jpeg;*.png)|*.pdf;*.jpg;*.jpeg;*.png|Tüm Dosyalar (*.*)|*.*",
+                Multiselect = false,
+                CheckFileExists = true
+            };
+            return dlg.ShowDialog() == true ? dlg.FileName : null;
+        }).Task;
+    }
 }

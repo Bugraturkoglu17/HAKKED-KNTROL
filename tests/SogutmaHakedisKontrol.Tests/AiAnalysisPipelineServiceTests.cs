@@ -1,0 +1,246 @@
+using SogutmaHakedisKontrol.Application.DTOs;
+using SogutmaHakedisKontrol.Domain.Entities;
+using SogutmaHakedisKontrol.Domain.Enums;
+using SogutmaHakedisKontrol.Infrastructure.Data;
+using SogutmaHakedisKontrol.Infrastructure.Services;
+using Xunit;
+
+namespace SogutmaHakedisKontrol.Tests;
+
+/// <summary>Spec §21 Test 3, Test 6, Test 7 — pipeline'ın tamamı, gerçek OpenAI çağrısı yapılmadan
+/// sahte (deterministic) bir vision istemcisiyle uçtan uca test edilir.</summary>
+public class AiAnalysisPipelineServiceTests
+{
+    private const string Company = "İNTİKOŞ";
+    private const string Region = "İÇ ANADOLU";
+
+    private static (AppDbContext db, ProgressPaymentCheck check) SeedCheck(AppDbContext db)
+    {
+        var list = new UnitPriceList { CompanyName = Company, Region = Region, Name = "Test Liste", IsActive = true, CreatedAt = DateTime.Now };
+        db.UnitPriceLists.Add(list);
+        db.SaveChanges();
+
+        var check = new ProgressPaymentCheck
+        {
+            UnitPriceListId = list.Id,
+            CompanyName = Company, Region = Region,
+            ClaimTypeName = "SABİT FİYAT", Year = 2026, Month = 5, PeriodLabel = "Mayıs 2026",
+            OriginalFileName = "test.xlsx", OriginalFilePath = "test.xlsx",
+            Status = ProgressPaymentCheckStatus.Taslak, CreatedAt = DateTime.Now,
+        };
+        db.ProgressPaymentChecks.Add(check);
+        db.SaveChanges();
+        return (db, check);
+    }
+
+    private static AiAnalysisPipelineService BuildPipeline(AppDbContext db, FakeAiVisionClient vision, FakePdfPageRasterizer rasterizer)
+    {
+        var storeMatching = new StoreMatchingService(db);
+        var manHours = new ManHoursCalculator();
+        var usage = new AiUsageTracker(db);
+        var appPath = new FakeAppPathService();
+        return new AiAnalysisPipelineService(db, vision, rasterizer, storeMatching, manHours, usage, appPath);
+    }
+
+    [Fact]
+    public async Task Test3_PeriyodikBakimVarsa_SehirIciServisUcretiReddedilir()
+    {
+        using var db = TestDbFactory.Create();
+        var (_, check) = SeedCheck(db);
+
+        db.Stores.Add(new Store
+        {
+            CompanyName = Company, Region = Region, Code = "3336", Name = "MM Migros Bahçebey Çorum",
+            NormalizedCode = TextNormalizationHelper.NormalizeCode("3336"),
+            NormalizedName = TextNormalizationHelper.NormalizeName("MM Migros Bahçebey Çorum"),
+            IsActive = true, CreatedAt = DateTime.Now,
+        });
+        db.ProgressPaymentCheckItems.Add(new ProgressPaymentCheckItem
+        {
+            ProgressPaymentCheckId = check.Id,
+            StoreCode = "3336", StoreName = "MM Migros Bahçebey Çorum",
+            VisitDate = new DateTime(2026, 5, 12),
+            IsServiceItem = true,
+            OriginalMaterialName = "ŞEHİRİÇİ SERVİS ÜCRETİ",
+            Quantity = 1, Unit = "adet",
+            CompanyUnitPrice = 2750, CompanyLineTotal = 2750,
+            CreatedAt = DateTime.Now,
+        });
+        db.SaveChanges();
+
+        const byte serviceMarker = 1;
+        const byte maintenanceMarker = 2;
+        var vision = new FakeAiVisionClient((pageIndex, source) => source switch
+        {
+            serviceMarker => Success(new AiPageExtractionDto
+            {
+                DocumentType = "SERVICE_FORM",
+                Store = new AiStoreCandidateDto { CodeRaw = "3336", Confidence = 0.95m },
+                ServiceDate = "2026-05-12",
+            }),
+            _ => Success(new AiPageExtractionDto
+            {
+                DocumentType = "PERIODIC_MAINTENANCE_FORM",
+                Store = new AiStoreCandidateDto { CodeRaw = "3336", Confidence = 0.95m },
+                MaintenanceDate = "2026-05-12",
+            }),
+        });
+
+        var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
+        var job = await pipeline.RunAsync(check.Id,
+            serviceForms: new List<(byte[], string)> { (new byte[] { serviceMarker }, "servis.pdf") },
+            maintenanceFormsPdf: new byte[] { maintenanceMarker }, maintenanceFormsFileName: "bakim.pdf",
+            progress: null);
+
+        var results = await pipeline.GetComparisonResultsAsync(job.Id);
+        var feeResult = results.Single(r => r.ItemType == "ServiceFee");
+
+        Assert.Equal("UygunDegil", feeResult.Status);
+        Assert.Contains("periyodik bakım", feeResult.Explanation, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Test6_OkunamayanMiktarUydurulmaz_ManuelKontroleDuser()
+    {
+        using var db = TestDbFactory.Create();
+        var (_, check) = SeedCheck(db);
+        db.Stores.Add(new Store
+        {
+            CompanyName = Company, Region = Region, Code = "100", Name = "Test Mağaza",
+            NormalizedCode = "100", NormalizedName = "test magaza", IsActive = true, CreatedAt = DateTime.Now,
+        });
+        db.SaveChanges();
+
+        var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
+        {
+            DocumentType = "SERVICE_FORM",
+            Store = new AiStoreCandidateDto { CodeRaw = "100", Confidence = 0.9m },
+            ServiceDate = "2026-05-01",
+            Materials = new List<AiMaterialExtractionDto>
+            {
+                new() { RawName = "R404A GAZ", Quantity = null, Confidence = 0.38m, RequiresManualReview = true },
+            },
+            RequiresManualReview = true,
+        }));
+
+        var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
+        var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
+
+        var pages = await pipeline.GetPagesAsync(job.Id);
+        var material = pages.Single().Materials.Single();
+
+        Assert.Null(material.Quantity);
+        Assert.True(material.RequiresManualReview);
+        Assert.True(pages.Single().RequiresManualReview);
+    }
+
+    [Fact]
+    public async Task Test7_BirSayfaBasarisizOlsaDaDigerleriKaybolmaz_SadeceBasarisizYenidenDenenir()
+    {
+        using var db = TestDbFactory.Create();
+        var (_, check) = SeedCheck(db);
+        db.SaveChanges();
+
+        // 3 sayfa: 0 ve 2 başarılı, 1 sürekli başarısız (retry mekanizması tükenir).
+        var vision = new FakeAiVisionClient(pageIndex => pageIndex == 1
+            ? new AiVisionCallResultDto { Success = false, ErrorMessage = "Simüle edilmiş API hatası" }
+            : Success(new AiPageExtractionDto { DocumentType = "UNKNOWN" }));
+
+        var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(3));
+        var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
+
+        Assert.Equal(1, job.FailedPages);
+        var pages = await pipeline.GetPagesAsync(job.Id);
+        Assert.Equal(2, pages.Count(p => p.Status != nameof(AiPageStatus.Failed)));
+        Assert.Equal(1, pages.Count(p => p.Status == nameof(AiPageStatus.Failed)));
+
+        // Başarısız sayfa 3 kez denenmiş olmalı (MaxRetriesPerPage), başarılı sayfalar 1 kez.
+        Assert.Equal(3, vision.CallCountForPage(1));
+        Assert.Equal(1, vision.CallCountForPage(0));
+        Assert.Equal(1, vision.CallCountForPage(2));
+    }
+
+    [Fact]
+    public async Task Test8_SayfaTipleriPozisyondanBagimsizSiniflandirilir()
+    {
+        using var db = TestDbFactory.Create();
+        var (_, check) = SeedCheck(db);
+        db.Stores.Add(new Store
+        {
+            CompanyName = Company, Region = Region, Code = "500", Name = "Mix Test Mağaza",
+            NormalizedCode = "500", NormalizedName = "mix test magaza", IsActive = true, CreatedAt = DateTime.Now,
+        });
+        db.SaveChanges();
+
+        // Tek PDF içinde İcmal, Servis, Bakım, Sınıflandırılamayan sırasıyla karışık —
+        // sınıflandırma yalnızca sayfa içeriğine göre yapılmalı, PDF'teki konuma göre değil.
+        var vision = new FakeAiVisionClient(pageIndex => pageIndex switch
+        {
+            0 => Success(new AiPageExtractionDto { DocumentType = "SUMMARY" }),
+            1 => Success(new AiPageExtractionDto
+            {
+                DocumentType = "SERVICE_FORM",
+                Store = new AiStoreCandidateDto { CodeRaw = "500", Confidence = 0.9m },
+                ServiceDate = "2026-06-01",
+            }),
+            2 => Success(new AiPageExtractionDto
+            {
+                DocumentType = "PERIODIC_MAINTENANCE_FORM",
+                Store = new AiStoreCandidateDto { CodeRaw = "500", Confidence = 0.9m },
+                MaintenanceDate = "2026-06-02",
+            }),
+            _ => Success(new AiPageExtractionDto { DocumentType = "UNKNOWN" }),
+        });
+
+        var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(4));
+        var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "karisik.pdf") }, null, null, null);
+
+        var pages = await pipeline.GetPagesAsync(job.Id);
+        Assert.Equal("Summary", pages.Single(p => p.PageNumber == 1).DocumentType);
+        Assert.Empty(pages.Single(p => p.PageNumber == 1).Materials);
+        Assert.Equal("ServiceForm", pages.Single(p => p.PageNumber == 2).DocumentType);
+        Assert.Equal("PeriodicMaintenanceForm", pages.Single(p => p.PageNumber == 3).DocumentType);
+        Assert.Equal("Unknown", pages.Single(p => p.PageNumber == 4).DocumentType);
+        Assert.True(pages.Single(p => p.PageNumber == 4).RequiresManualReview);
+
+        Assert.Equal(1, job.SummaryPageCount);
+        Assert.Equal(1, job.ClassifiedServiceFormPageCount);
+        Assert.Equal(1, job.ClassifiedMaintenancePageCount);
+        Assert.Equal(1, job.UnknownPageCount);
+    }
+
+    [Fact]
+    public async Task Test9_CokluServisFormuPdfBirlestirilirVeBelgeAdiKorunur()
+    {
+        using var db = TestDbFactory.Create();
+        var (_, check) = SeedCheck(db);
+        db.SaveChanges();
+
+        var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto { DocumentType = "SERVICE_FORM" }));
+
+        var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(2));
+        var job = await pipeline.RunAsync(check.Id,
+            serviceForms: new List<(byte[], string)>
+            {
+                (new byte[] { 1 }, "Servis_Formlari_1.pdf"),
+                (new byte[] { 2 }, "Servis_Formlari_2.pdf"),
+            },
+            maintenanceFormsPdf: null, maintenanceFormsFileName: null, progress: null);
+
+        Assert.Equal(4, job.TotalServiceFormPages);
+
+        var pages = await pipeline.GetPagesAsync(job.Id);
+        Assert.Equal("Servis_Formlari_1.pdf", pages.Single(p => p.PageNumber == 1).SourceFileName);
+        Assert.Equal("Servis_Formlari_1.pdf", pages.Single(p => p.PageNumber == 2).SourceFileName);
+        Assert.Equal("Servis_Formlari_2.pdf", pages.Single(p => p.PageNumber == 3).SourceFileName);
+        Assert.Equal("Servis_Formlari_2.pdf", pages.Single(p => p.PageNumber == 4).SourceFileName);
+    }
+
+    private static AiVisionCallResultDto Success(AiPageExtractionDto extraction) => new()
+    {
+        Success = true,
+        Extraction = extraction,
+        RawJson = "{}",
+        Usage = new AiTokenUsageDto { Model = "gpt-5.5", InputTokens = 100, OutputTokens = 50 },
+    };
+}

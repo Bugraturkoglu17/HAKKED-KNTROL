@@ -1,6 +1,11 @@
 # .NET build çıktıları
 src/**/bin/
 src/**/obj/
+tests/**/bin/
+tests/**/obj/
+
+# Gizli anahtarlar — API key buraya yazılır, ASLA push edilmez
+.env
 
 # Log dosyaları
 *.log

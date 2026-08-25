@@ -1,0 +1,65 @@
+@using SogutmaHakedisKontrol.Application.DTOs
+@using SogutmaHakedisKontrol.Application.Interfaces
+@using StoreDto = SogutmaHakedisKontrol.Application.DTOs.StoreDto
+@inject IStoreMasterService StoreMasterService
+
+<MudDialog Style="min-width:560px">
+    <TitleContent><MudText Typo="Typo.h6">Mağazayı Kesinleştir</MudText></TitleContent>
+    <DialogContent>
+        <MudPaper Class="pa-2 mb-3" Outlined>
+            <MudText Typo="Typo.caption" Color="Color.Secondary">AI'nın okuduğu aday</MudText>
+            <MudText Typo="Typo.body2">Kod: @(PageCodeRaw ?? "—")  ·  Ad: @(PageNameRaw ?? "—")</MudText>
+        </MudPaper>
+        <MudTextField @bind-Value="_query" @bind-Value:after="SearchAsync" Label="Mağaza ara..." Variant="Variant.Outlined"
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Immediate Autofocus />
+        <MudList T="StoreDto" Class="mt-2" Style="max-height:320px;overflow-y:auto">
+            @foreach (var s in _results)
+            {
+                <MudListItem T="StoreDto" OnClick="@(() => _selected = s)"
+                             Class="@(s.Id == _selected?.Id ? "mud-selected-item" : "")">
+                    <MudText Typo="Typo.body2" Style="font-weight:600">@s.Code — @s.Name</MudText>
+                    @if (!string.IsNullOrEmpty(s.City)) { <MudText Typo="Typo.caption" Color="Color.Secondary">@s.City</MudText> }
+                </MudListItem>
+            }
+            @if (_results.Count == 0)
+            {
+                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="pa-2">Sonuç bulunamadı.</MudText>
+            }
+        </MudList>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => MudDialog.Cancel())">İptal</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" Disabled="_selected is null"
+                   OnClick="@(() => MudDialog.Close(DialogResult.Ok(_selected)))">
+            Bu Mağaza İle Eşleştir
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public string CompanyName { get; set; } = string.Empty;
+    [Parameter] public string Region { get; set; } = string.Empty;
+    [Parameter] public string? PageCodeRaw { get; set; }
+    [Parameter] public string? PageNameRaw { get; set; }
+
+    private string _query = string.Empty;
+    private List<StoreDto> _all = new();
+    private List<StoreDto> _results = new();
+    private StoreDto? _selected;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _all = await StoreMasterService.GetAllAsync(CompanyName, Region);
+        _query = PageNameRaw ?? PageCodeRaw ?? string.Empty;
+        SearchAsync();
+    }
+
+    private void SearchAsync()
+    {
+        var q = _query?.Trim();
+        _results = string.IsNullOrWhiteSpace(q)
+            ? _all.Take(30).ToList()
+            : _all.Where(s => s.Code.Contains(q, StringComparison.OrdinalIgnoreCase) || s.Name.Contains(q, StringComparison.OrdinalIgnoreCase)).Take(30).ToList();
+    }
+}

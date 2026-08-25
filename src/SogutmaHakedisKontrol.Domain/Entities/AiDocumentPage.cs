@@ -1,0 +1,58 @@
+using SogutmaHakedisKontrol.Domain.Enums;
+
+namespace SogutmaHakedisKontrol.Domain.Entities;
+
+/// <summary>
+/// PDF içindeki tek bir sayfanın (bir servis formu ya da bir periyodik bakım formu) AI analiz sonucu.
+/// Her sayfanın durumu bağımsız saklanır — bir sayfanın hatası diğerlerini etkilemez (kontrollü retry).
+/// </summary>
+public class AiDocumentPage
+{
+    public int Id { get; set; }
+    public int JobId { get; set; }
+
+    public AiDocumentSource SourceKind { get; set; }   // ServiceForm dosyası mı, PeriodicMaintenance dosyası mı
+    public int PageNumber { get; set; }
+
+    public AiPageStatus Status { get; set; } = AiPageStatus.Pending;
+    public AiDocumentType DocumentType { get; set; } = AiDocumentType.Unknown; // GPT sınıflandırması
+
+    // ── Mağaza adayı (AI ham çıktısı) ────────────────────────────────────
+    public string? StoreCodeRaw { get; set; }
+    public string? StoreNameRaw { get; set; }
+    public decimal? StoreConfidence { get; set; }
+
+    // ── Mağaza kesinleştirme (backend) ───────────────────────────────────
+    public int? MatchedStoreId { get; set; }
+    public StoreMatchMethod StoreMatchMethod { get; set; } = StoreMatchMethod.None;
+
+    public string? FormNumber { get; set; }
+    public DateTime? ServiceDate { get; set; }        // SERVICE_FORM
+    public DateTime? MaintenanceDate { get; set; }    // PERIODIC_MAINTENANCE_FORM
+
+    public string? DescriptionRaw { get; set; }
+    public string? WorkPerformedRaw { get; set; }
+
+    // ── Adam-saat (backend deterministic hesap, bkz. ManHoursCalculator) ──
+    public decimal? FormTotalHoursRaw { get; set; }   // formda yazan "Toplam Saat" (varsa)
+    public decimal? CalculatedManHours { get; set; }
+    public decimal? PayableManHours { get; set; }
+    public bool? FormTotalMatch { get; set; }
+
+    // ── Periyodik bakım + servis çakışma sonucu ──────────────────────────
+    public bool ServiceFeeRejectedDueToMaintenance { get; set; }
+
+    public string? RawResponseJson { get; set; }
+    public string? ErrorMessage { get; set; }
+    public int RetryCount { get; set; }
+
+    public bool RequiresManualReview { get; set; }
+    public string? ManualReviewReason { get; set; }
+
+    public DateTime CreatedAt { get; set; } = DateTime.Now;
+    public DateTime? ProcessedAt { get; set; }
+
+    public AiAnalysisJob Job { get; set; } = null!;
+    public ICollection<AiPageEmployee> Employees { get; set; } = new List<AiPageEmployee>();
+    public ICollection<AiPageMaterial> Materials { get; set; } = new List<AiPageMaterial>();
+}

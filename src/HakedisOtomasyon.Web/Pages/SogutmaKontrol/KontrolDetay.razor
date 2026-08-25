@@ -52,6 +52,8 @@ else
         </MudAlert>
     }
 
+    <HakedisKontrolWizard CheckId="Id" CompanyName="@_check.CompanyName" CompanyRegion="@_check.Region" />
+
     <MudGrid Spacing="1" Class="mb-2">
         <MudItem xs="6" md="2"><KpiStat Label="Toplam Kalem" Value="@_check.TotalItemCount.ToString()" /></MudItem>
         <MudItem xs="6" md="2"><KpiStat Label="Uygun" Value="@_check.UygunCount.ToString()" Color="Color.Success" /></MudItem>

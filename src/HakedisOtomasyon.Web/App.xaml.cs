@@ -159,6 +159,7 @@ public partial class WpfApp : System.Windows.Application
                 SeedSogutmaKontrolDatabaseIfMissing(sogutmaPath.DatabasePath);
                 var sogutmaDb = scope.ServiceProvider.GetRequiredService<SogutmaHakedisKontrol.Infrastructure.Data.AppDbContext>();
                 sogutmaDb.Database.EnsureCreated();
+                MigrateSogutmaAiSchema(sogutmaDb);
             }
             catch (Exception ex)
             {
@@ -244,6 +245,91 @@ public partial class WpfApp : System.Windows.Application
 
         Directory.CreateDirectory(Path.GetDirectoryName(databasePath)!);
         File.Copy(seedPath, databasePath);
+    }
+
+    /// <summary>
+    /// Soğutma Hakediş Kontrolü DB'si daha önceki bir sürümde (AI belge analizi/mağaza ana
+    /// listesi eklenmeden önce) oluşturulmuşsa, EnsureCreated() var olan dosyaya yeni tablo/sütun
+    /// eklemez. Bu yüzden ProgressPaymentCheckItems.MatchedStoreId sütununu ve Store/AiAnalysisJob/
+    /// AiDocumentPage/AiPageEmployee/AiPageMaterial/AiComparisonResult/AiUsageLog tablolarını,
+    /// eksikse, EF modelinden üretilen DDL'i kullanarak (mevcut veriye dokunmadan) ekler.
+    /// </summary>
+    private static void MigrateSogutmaAiSchema(SogutmaHakedisKontrol.Infrastructure.Data.AppDbContext db)
+    {
+        try
+        {
+            var conn = db.Database.GetDbConnection();
+            conn.Open();
+            try
+            {
+                var existingTables = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table'";
+                    using var reader = cmd.ExecuteReader();
+                    while (reader.Read()) existingTables.Add(reader.GetString(0));
+                }
+
+                // ProgressPaymentCheckItems.MatchedStoreId (mevcut tabloya eklenen tekil sütun)
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.CommandText = "PRAGMA table_info(ProgressPaymentCheckItems)";
+                    var cols = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    using (var reader = cmd.ExecuteReader())
+                        while (reader.Read()) cols.Add(reader.GetString(1));
+                    if (!cols.Contains("MatchedStoreId"))
+                    {
+                        using var alter = conn.CreateCommand();
+                        alter.CommandText = "ALTER TABLE \"ProgressPaymentCheckItems\" ADD COLUMN \"MatchedStoreId\" INTEGER";
+                        alter.ExecuteNonQuery();
+                    }
+                }
+
+                // Mağaza ana listesi + AI belge analizi tabloları (tamamen yeni tablolar)
+                var newTableNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    "Stores", "AiAnalysisJobs", "AiDocumentPages", "AiPageEmployees",
+                    "AiPageMaterials", "AiComparisonResults", "AiUsageLogs", "AiSourceDocuments",
+                };
+                if (newTableNames.Any(t => !existingTables.Contains(t)))
+                {
+                    var script = db.Database.GenerateCreateScript();
+                    var statements = script
+                        .Split(new[] { ";\r\n", ";\n" }, StringSplitOptions.RemoveEmptyEntries)
+                        .Select(s => s.Trim())
+                        .Where(s => s.Length > 0);
+
+                    foreach (var stmt in statements)
+                    {
+                        var tableMatch = System.Text.RegularExpressions.Regex.Match(stmt, "CREATE TABLE \"(\\w+)\"");
+                        if (tableMatch.Success)
+                        {
+                            var tableName = tableMatch.Groups[1].Value;
+                            if (!newTableNames.Contains(tableName) || existingTables.Contains(tableName)) continue;
+                            using var create = conn.CreateCommand();
+                            create.CommandText = stmt + ";";
+                            create.ExecuteNonQuery();
+                            continue;
+                        }
+
+                        var indexMatch = System.Text.RegularExpressions.Regex.Match(stmt, "CREATE (?:UNIQUE )?INDEX \"[^\"]+\" ON \"(\\w+)\"");
+                        if (indexMatch.Success)
+                        {
+                            var tableName = indexMatch.Groups[1].Value;
+                            if (!newTableNames.Contains(tableName) || existingTables.Contains(tableName)) continue;
+                            using var idx = conn.CreateCommand();
+                            idx.CommandText = stmt + ";";
+                            idx.ExecuteNonQuery();
+                        }
+                    }
+                }
+            }
+            finally { conn.Close(); }
+        }
+        catch (Exception ex)
+        {
+            LogError("Soğutma AI şema migrasyonu hatası", ex);
+        }
     }
 
     /// <summary>

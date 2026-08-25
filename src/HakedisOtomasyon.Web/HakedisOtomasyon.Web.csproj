@@ -46,4 +46,15 @@
   <ItemGroup>
     <None Include="Uninstall.bat" CopyToPublishDirectory="Always" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- .env örnek şablonu her zaman commit edilir. Gerçek .env (API key içerir) .gitignore'da
+         hariç tutulur; varsa build çıktısına kopyalanır ki uygulama onu bulabilsin. -->
+    <Content Include=".env.example">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Content>
+    <Content Include=".env" Condition="Exists('.env')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
 </Project>

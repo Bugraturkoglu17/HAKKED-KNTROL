@@ -13,6 +13,7 @@ public class ProgressPaymentCheckDto
     public int Month { get; set; }
     public string PeriodLabel { get; set; } = string.Empty;
     public string OriginalFileName { get; set; } = string.Empty;
+    public string OriginalFilePath { get; set; } = string.Empty;
     public decimal? ExchangeRateEur { get; set; }
     public decimal CompanyTotal { get; set; }
     public decimal CalculatedTotal { get; set; }

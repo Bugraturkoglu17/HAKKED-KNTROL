@@ -1,0 +1,161 @@
+@using SogutmaHakedisKontrol.Application.DTOs
+@using SogutmaHakedisKontrol.Application.Interfaces
+@inject IStoreMasterService StoreMasterService
+@inject ISnackbar Snackbar
+@inject SogutmaHakedisKontrol.Application.Interfaces.IFilePickerService FilePicker
+
+<MudDialog Style="min-width:680px;max-width:860px">
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.Store" Class="mr-2" Style="vertical-align:middle" />
+            Mağaza Listesi İçe Aktar
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (_state == State.SelectFile)
+        {
+            <MudAlert Severity="Severity.Info" Class="mb-3">
+                Excel'de en az <b>Mağaza Kodu</b> ve <b>Mağaza Adı</b> kolonları bulunmalıdır. Varsa Bölge/Şehir/Adres
+                kolonları da kullanılır. Bu liste, hakediş kontrolü ve AI belge analizi boyunca mağaza tespitinin
+                tek referans kaynağı olacaktır.
+            </MudAlert>
+            <MudButton Variant="Variant.Outlined" Size="Size.Large" FullWidth
+                       StartIcon="@Icons.Material.Filled.FolderOpen" OnClick="SelectFile">
+                @(_filePath is null ? "Excel Dosyası Seç..." : System.IO.Path.GetFileName(_filePath))
+            </MudButton>
+        }
+        else if (_state == State.Analyzing)
+        {
+            <MudText Align="Align.Center" Class="mb-2">Excel dosyası analiz ediliyor...</MudText>
+            <MudProgressLinear Indeterminate Color="Color.Primary" />
+        }
+        else if (_state == State.Preview && _preview is not null)
+        {
+            <MudGrid Spacing="2" Class="mb-3">
+                <MudItem xs="6" md="4">
+                    <MudPaper Class="pa-2 text-center" Elevation="1">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Toplam Mağaza</MudText>
+                        <MudText Typo="Typo.h5" Color="@(_preview.TotalStores > 0 ? Color.Primary : Color.Error)" Style="font-weight:700">@_preview.TotalStores</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="6" md="4">
+                    <MudPaper Class="pa-2 text-center" Elevation="1">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Mükerrer Kod</MudText>
+                        <MudText Typo="Typo.h5" Color="@(_preview.DuplicateCodeCount > 0 ? Color.Warning : Color.Default)">@_preview.DuplicateCodeCount</MudText>
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+
+            @if (_preview.DuplicateCodeCount > 0)
+            {
+                <MudAlert Severity="Severity.Warning" Dense Class="mb-2">
+                    Mükerrer mağaza kodları: <MudText Typo="Typo.caption">@string.Join(" · ", _preview.DuplicateCodes)</MudText>
+                </MudAlert>
+            }
+            @if (_preview.TotalStores == 0)
+            {
+                <MudAlert Severity="Severity.Error" Class="mb-2">
+                    Excel okundu ancak mağaza bulunamadı.
+                    @foreach (var err in _preview.Errors) { <br /><MudText Typo="Typo.caption">@err</MudText> }
+                </MudAlert>
+            }
+
+            <MudText Typo="Typo.subtitle2" Class="mb-1">Önizleme (ilk 15 mağaza):</MudText>
+            <MudTable Dense Items="@_preview.Items.Take(15)" Elevation="0" Outlined Style="max-height:280px;overflow-y:auto">
+                <HeaderContent>
+                    <MudTh>Kod</MudTh>
+                    <MudTh>Ad</MudTh>
+                    <MudTh>Bölge</MudTh>
+                    <MudTh>Şehir</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.Code</MudTd>
+                    <MudTd>@context.Name</MudTd>
+                    <MudTd>@context.StoreRegion</MudTd>
+                    <MudTd>@context.City</MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+        else if (_state == State.Importing)
+        {
+            <MudText Align="Align.Center" Class="mb-2">Mağazalar aktarılıyor...</MudText>
+            <MudProgressLinear Indeterminate Color="Color.Success" />
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Disabled="_state == State.Analyzing || _state == State.Importing">İptal</MudButton>
+        @if (_state == State.SelectFile && _filePath is not null)
+        {
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Analytics" OnClick="AnalyzeFile">
+                Analiz Et
+            </MudButton>
+        }
+        @if (_state == State.Preview && _preview is not null)
+        {
+            <MudButton OnClick="@(() => _state = State.SelectFile)">Geri</MudButton>
+            <MudButton Color="Color.Success" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Download"
+                       Disabled="@(_preview.TotalStores == 0)" OnClick="ImportAsync">
+                İçeri Aktar (@_preview.TotalStores Mağaza)
+            </MudButton>
+        }
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public string CompanyName { get; set; } = "İNTİKOŞ";
+    [Parameter] public string Region { get; set; } = "İÇ ANADOLU";
+
+    private enum State { SelectFile, Analyzing, Preview, Importing }
+    private State _state = State.SelectFile;
+    private string? _filePath;
+    private StoreImportPreviewDto? _preview;
+
+    private async Task SelectFile()
+    {
+        _filePath = await FilePicker.PickExcelFileAsync();
+        _preview = null;
+        _state = State.SelectFile;
+    }
+
+    private async Task AnalyzeFile()
+    {
+        if (_filePath is null) return;
+        _state = State.Analyzing;
+        StateHasChanged();
+        try
+        {
+            await using var fs = new FileStream(_filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+            using var ms = new MemoryStream();
+            await fs.CopyToAsync(ms);
+            ms.Position = 0;
+            _preview = await StoreMasterService.ParseExcelAsync(ms, System.IO.Path.GetFileName(_filePath));
+            _state = State.Preview;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Analiz hatası: {ex.Message}", Severity.Error);
+            _state = State.SelectFile;
+        }
+    }
+
+    private async Task ImportAsync()
+    {
+        if (_preview is null || _filePath is null) return;
+        _state = State.Importing;
+        StateHasChanged();
+        try
+        {
+            var count = await StoreMasterService.ImportAsync(CompanyName, Region, System.IO.Path.GetFileName(_filePath), _preview.Items);
+            Snackbar.Add($"{count} mağaza başarıyla aktarıldı.", Severity.Success);
+            MudDialog.Close(DialogResult.Ok(count));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Aktarma hatası: {ex.Message}", Severity.Error);
+            _state = State.Preview;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

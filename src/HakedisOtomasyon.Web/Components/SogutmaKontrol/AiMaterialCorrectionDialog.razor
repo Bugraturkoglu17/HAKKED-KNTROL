@@ -1,0 +1,47 @@
+@using SogutmaHakedisKontrol.Application.DTOs
+
+<MudDialog Style="min-width:420px">
+    <TitleContent><MudText Typo="Typo.h6">Malzeme Miktarını Düzelt</MudText></TitleContent>
+    <DialogContent>
+        <MudText Typo="Typo.body2" Class="mb-1" Style="font-weight:600">@Material.RawName</MudText>
+        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-3 d-block">
+            AI'nın okuduğu değer: @(Material.Quantity?.ToString("0.##") ?? "Okunamadı") @Material.Unit
+            (güven: %@(((Material.Confidence ?? 0) * 100).ToString("N0")))
+        </MudText>
+        <MudGrid Spacing="2">
+            <MudItem xs="8">
+                <MudNumericField T="decimal?" @bind-Value="_quantity" Label="Doğru Miktar" Variant="Variant.Outlined" Format="N2" Autofocus />
+            </MudItem>
+            <MudItem xs="4">
+                <MudTextField @bind-Value="_unit" Label="Birim" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_note" Label="Not (opsiyonel)" Variant="Variant.Outlined" Lines="2" />
+            </MudItem>
+        </MudGrid>
+        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-2 d-block">
+            AI'nın orijinal okuduğu değer kaybolmaz — ayrı kaydedilir.
+        </MudText>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => MudDialog.Cancel())">İptal</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Submit">Kaydet</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public AiPageMaterialDto Material { get; set; } = null!;
+
+    private decimal? _quantity;
+    private string? _unit;
+    private string? _note;
+
+    protected override void OnInitialized()
+    {
+        _quantity = Material.UserCorrectedQuantity ?? Material.Quantity;
+        _unit = Material.UserCorrectedUnit ?? Material.Unit;
+    }
+
+    private void Submit() => MudDialog.Close(DialogResult.Ok((_quantity, _unit, _note)));
+}

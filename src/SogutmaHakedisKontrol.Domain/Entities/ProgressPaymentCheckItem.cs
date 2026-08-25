@@ -17,6 +17,7 @@ public class ProgressPaymentCheckItem
     public string? StoreCode { get; set; }
     public string? StoreName { get; set; }
     public string? StoreFormat { get; set; }
+    public int? MatchedStoreId { get; set; }   // Mağaza ana listesiyle eşleşme (AI karşılaştırması için)
     public DateTime? VisitDate { get; set; }
     public string? MaintenanceFormNo { get; set; }
 

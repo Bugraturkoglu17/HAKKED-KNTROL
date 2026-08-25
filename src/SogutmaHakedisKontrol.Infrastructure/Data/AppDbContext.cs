@@ -14,6 +14,16 @@ public class AppDbContext : DbContext
     public DbSet<ProgressPaymentCheck> ProgressPaymentChecks => Set<ProgressPaymentCheck>();
     public DbSet<ProgressPaymentCheckItem> ProgressPaymentCheckItems => Set<ProgressPaymentCheckItem>();
 
+    // ── Mağaza ana listesi + AI belge analizi ───────────────────────────
+    public DbSet<Store> Stores => Set<Store>();
+    public DbSet<AiAnalysisJob> AiAnalysisJobs => Set<AiAnalysisJob>();
+    public DbSet<AiDocumentPage> AiDocumentPages => Set<AiDocumentPage>();
+    public DbSet<AiPageEmployee> AiPageEmployees => Set<AiPageEmployee>();
+    public DbSet<AiPageMaterial> AiPageMaterials => Set<AiPageMaterial>();
+    public DbSet<AiComparisonResult> AiComparisonResults => Set<AiComparisonResult>();
+    public DbSet<AiUsageLog> AiUsageLogs => Set<AiUsageLog>();
+    public DbSet<AiSourceDocument> AiSourceDocuments => Set<AiSourceDocument>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -118,6 +128,131 @@ public class AppDbContext : DbContext
             e.HasOne(i => i.ProgressPaymentCheck)
                 .WithMany(c => c.Items)
                 .HasForeignKey(i => i.ProgressPaymentCheckId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ── Mağaza ana listesi ────────────────────────────────────────────
+        modelBuilder.Entity<Store>(e =>
+        {
+            e.Property(s => s.CompanyName).HasMaxLength(200).IsRequired();
+            e.Property(s => s.Region).HasMaxLength(200).IsRequired();
+            e.Property(s => s.Code).HasMaxLength(50).IsRequired();
+            e.Property(s => s.Name).HasMaxLength(300).IsRequired();
+            e.Property(s => s.City).HasMaxLength(100);
+            e.Property(s => s.StoreRegion).HasMaxLength(100);
+            e.Property(s => s.Address).HasMaxLength(500);
+            e.Property(s => s.NormalizedCode).HasMaxLength(50).IsRequired();
+            e.Property(s => s.NormalizedName).HasMaxLength(300).IsRequired();
+            e.HasIndex(s => new { s.CompanyName, s.Region, s.NormalizedCode });
+            e.HasIndex(s => s.NormalizedName);
+        });
+
+        // ── AI belge analizi ──────────────────────────────────────────────
+        modelBuilder.Entity<AiAnalysisJob>(e =>
+        {
+            e.Property(j => j.ServiceFormsFileName).HasMaxLength(500);
+            e.Property(j => j.ServiceFormsFilePath).HasMaxLength(1000);
+            e.Property(j => j.MaintenanceFormsFileName).HasMaxLength(500);
+            e.Property(j => j.MaintenanceFormsFilePath).HasMaxLength(1000);
+            e.Property(j => j.CurrentStepDescription).HasMaxLength(300);
+            e.Property(j => j.ErrorMessage).HasMaxLength(2000);
+            e.Property(j => j.Status).HasConversion<int>();
+
+            e.HasOne(j => j.ProgressPaymentCheck)
+                .WithMany()
+                .HasForeignKey(j => j.ProgressPaymentCheckId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<AiDocumentPage>(e =>
+        {
+            e.Property(p => p.StoreCodeRaw).HasMaxLength(100);
+            e.Property(p => p.StoreNameRaw).HasMaxLength(300);
+            e.Property(p => p.StoreConfidence).HasColumnType("decimal(5,4)");
+            e.Property(p => p.FormNumber).HasMaxLength(100);
+            e.Property(p => p.DescriptionRaw).HasMaxLength(2000);
+            e.Property(p => p.WorkPerformedRaw).HasMaxLength(2000);
+            e.Property(p => p.FormTotalHoursRaw).HasColumnType("decimal(9,2)");
+            e.Property(p => p.CalculatedManHours).HasColumnType("decimal(9,2)");
+            e.Property(p => p.PayableManHours).HasColumnType("decimal(9,2)");
+            e.Property(p => p.RawResponseJson).HasColumnType("TEXT");
+            e.Property(p => p.ErrorMessage).HasMaxLength(2000);
+            e.Property(p => p.ManualReviewReason).HasMaxLength(500);
+            e.Property(p => p.SourceKind).HasConversion<int>();
+            e.Property(p => p.Status).HasConversion<int>();
+            e.Property(p => p.DocumentType).HasConversion<int>();
+            e.Property(p => p.StoreMatchMethod).HasConversion<int>();
+            e.HasIndex(p => new { p.JobId, p.SourceKind, p.PageNumber });
+
+            e.HasOne(p => p.Job)
+                .WithMany(j => j.Pages)
+                .HasForeignKey(p => p.JobId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<AiPageEmployee>(e =>
+        {
+            e.Property(x => x.NameRaw).HasMaxLength(200);
+            e.Property(x => x.StartTimeRaw).HasMaxLength(20);
+            e.Property(x => x.EndTimeRaw).HasMaxLength(20);
+            e.Property(x => x.HoursWorked).HasColumnType("decimal(9,2)");
+            e.Property(x => x.Confidence).HasColumnType("decimal(5,4)");
+
+            e.HasOne(x => x.Page)
+                .WithMany(p => p.Employees)
+                .HasForeignKey(x => x.PageId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<AiPageMaterial>(e =>
+        {
+            e.Property(x => x.RawName).HasMaxLength(500).IsRequired();
+            e.Property(x => x.NormalizedName).HasMaxLength(500);
+            e.Property(x => x.Quantity).HasColumnType("decimal(18,4)");
+            e.Property(x => x.Unit).HasMaxLength(50);
+            e.Property(x => x.Confidence).HasColumnType("decimal(5,4)");
+            e.Property(x => x.UserCorrectedQuantity).HasColumnType("decimal(18,4)");
+            e.Property(x => x.UserCorrectedUnit).HasMaxLength(50);
+            e.Property(x => x.CorrectionNote).HasMaxLength(500);
+
+            e.HasOne(x => x.Page)
+                .WithMany(p => p.Materials)
+                .HasForeignKey(x => x.PageId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<AiComparisonResult>(e =>
+        {
+            e.Property(x => x.StoreLabel).HasMaxLength(300).IsRequired();
+            e.Property(x => x.Description).HasMaxLength(500).IsRequired();
+            e.Property(x => x.FormValue).HasMaxLength(300);
+            e.Property(x => x.HakedisValue).HasMaxLength(300);
+            e.Property(x => x.Explanation).HasMaxLength(1000).IsRequired();
+            e.Property(x => x.ItemType).HasConversion<int>();
+            e.Property(x => x.Status).HasConversion<int>();
+            e.HasIndex(x => x.JobId);
+
+            e.HasOne(x => x.Job)
+                .WithMany(j => j.ComparisonResults)
+                .HasForeignKey(x => x.JobId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<AiUsageLog>(e =>
+        {
+            e.Property(x => x.Model).HasMaxLength(100).IsRequired();
+        });
+
+        modelBuilder.Entity<AiSourceDocument>(e =>
+        {
+            e.Property(x => x.FileName).HasMaxLength(500).IsRequired();
+            e.Property(x => x.FilePath).HasMaxLength(1000).IsRequired();
+            e.Property(x => x.SourceKind).HasConversion<int>();
+            e.HasIndex(x => new { x.JobId, x.SourceKind, x.PageOffset });
+
+            e.HasOne(x => x.Job)
+                .WithMany()
+                .HasForeignKey(x => x.JobId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
     }

@@ -543,6 +543,7 @@ public class ProgressPaymentCheckService : IProgressPaymentCheckService
         Month = c.Month,
         PeriodLabel = c.PeriodLabel,
         OriginalFileName = c.OriginalFileName,
+        OriginalFilePath = c.OriginalFilePath,
         ExchangeRateEur = c.ExchangeRateEur,
         CompanyTotal = c.CompanyTotal,
         CalculatedTotal = c.CalculatedTotal,
