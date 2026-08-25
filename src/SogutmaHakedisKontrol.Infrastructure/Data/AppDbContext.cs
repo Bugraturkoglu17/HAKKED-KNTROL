@@ -93,6 +93,8 @@ public class AppDbContext : DbContext
             e.Property(c => c.CalculatedTotal).HasColumnType("decimal(18,2)");
             e.Property(c => c.Difference).HasColumnType("decimal(18,2)");
             e.Property(c => c.Status).HasConversion<int>();
+            e.Property(c => c.Category).HasConversion<int?>();
+            e.Property(c => c.Stage).HasConversion<int>();
 
             e.HasOne(c => c.UnitPriceList)
                 .WithMany()

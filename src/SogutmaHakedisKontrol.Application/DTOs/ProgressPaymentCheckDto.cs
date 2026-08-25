@@ -9,6 +9,8 @@ public class ProgressPaymentCheckDto
     public string CompanyName { get; set; } = string.Empty;
     public string Region { get; set; } = string.Empty;
     public string ClaimTypeName { get; set; } = string.Empty;
+    public HakedisCategory? Category { get; set; }
+    public HakedisControlStage Stage { get; set; }
     public int Year { get; set; }
     public int Month { get; set; }
     public string PeriodLabel { get; set; } = string.Empty;
@@ -36,6 +38,8 @@ public class ProgressPaymentCheckDto
         ProgressPaymentCheckStatus.Tamamlandi => "Tamamlandı",
         _ => Status.ToString()
     };
+
+    public string? CategoryLabel => Category?.DisplayName();
 }
 
 public class ProgressPaymentCheckItemDto

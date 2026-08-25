@@ -1,4 +1,5 @@
 using SogutmaHakedisKontrol.Application.DTOs;
+using SogutmaHakedisKontrol.Domain.Enums;
 
 namespace SogutmaHakedisKontrol.Application.Interfaces;
 
@@ -10,14 +11,25 @@ public interface IProgressPaymentCheckService
 
     Task<ProgressPaymentImportPreviewDto> ParseExcelAsync(Stream stream, string fileName, int unitPriceListId);
 
-    /// <summary>Excel'i içe aktarır, otomatik eşleştirmeyi (alias + exact + fuzzy skorlama) çalıştırır ve kaydeder.
-    /// Orijinal dosya baytları değiştirilmeden ayrı bir konuma kopyalanır (asla üzerine yazılmaz).</summary>
-    Task<ProgressPaymentCheckDto> CreateCheckAsync(
-        int unitPriceListId, string companyName, string region, string claimTypeName,
+    /// <summary>Yeni hakediş akışının 1. adımı: kategori seçilir seçilmez, Excel yüklenmeden önce, boş bir
+    /// kontrol kaydı gerçek DB satırı olarak oluşturulur (Stage=CategorySelected) — sayfa yenilense de kaybolmaz.</summary>
+    Task<ProgressPaymentCheckDto> CreateDraftCheckAsync(int unitPriceListId, string companyName, string region, HakedisCategory category);
+
+    /// <summary>2. adım: taslak kontrol kaydına Excel'i bağlar — satırları yazar, otomatik eşleştirmeyi
+    /// (alias + exact + fuzzy skorlama) çalıştırır. Orijinal dosya baytları değiştirilmeden ayrı bir konuma
+    /// kopyalanır (asla üzerine yazılmaz).</summary>
+    Task<ProgressPaymentCheckDto> AttachExcelAsync(
+        int checkId, string claimTypeName,
         int year, int month, string periodLabel,
         string originalFileName, byte[] originalFileBytes,
         decimal? exchangeRateEur,
         ProgressPaymentImportPreviewDto parsed);
+
+    /// <summary>Çok sayfalı akışta kaldığı aşamayı günceller (sayfalar arası ileri/geri gidişte state kaybolmasın diye).</summary>
+    Task SetStageAsync(int checkId, HakedisControlStage stage);
+
+    /// <summary>Fiyat Kontrolünden Form Kontrolüne geçmeden önce uyarı göstermek için: eşleşmeyen + onay bekleyen kalem sayısı.</summary>
+    Task<int> GetUnresolvedPriceItemCountAsync(int checkId);
 
     /// <summary>Turuncu kuyruktaki bekleyen (henüz karar verilmemiş) grupları döner.</summary>
     Task<List<MaterialMatchQueueEntryDto>> GetPendingMatchQueueAsync(int checkId);

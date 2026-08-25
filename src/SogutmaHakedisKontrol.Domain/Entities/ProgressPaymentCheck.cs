@@ -13,6 +13,11 @@ public class ProgressPaymentCheck
     public string CompanyName { get; set; } = string.Empty;
     public string Region { get; set; } = string.Empty;
     public string ClaimTypeName { get; set; } = string.Empty; // ör. "SABİT FİYAT", "PERY BAKIM" (serbest metin, gelecekte çoğalır)
+
+    /// <summary>Kullanıcının kontrol başında seçtiği hakediş türü — AI'nin baktığı alanları belirler. Eski kayıtlarda null.</summary>
+    public HakedisCategory? Category { get; set; }
+    /// <summary>Çok sayfalı akışta kaldığı aşama (fiyat/form/sonuç) — ProgressPaymentCheckStatus'tan bağımsız.</summary>
+    public HakedisControlStage Stage { get; set; } = HakedisControlStage.CategorySelected;
     public int Year { get; set; }
     public int Month { get; set; }
     public string PeriodLabel { get; set; } = string.Empty;   // ör. "Nisan 2026"

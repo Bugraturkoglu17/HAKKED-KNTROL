@@ -29,6 +29,8 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
     private readonly IManHoursCalculator _manHours;
     private readonly IAiUsageTracker _usageTracker;
     private readonly IAppPathService _appPath;
+    private readonly ICategoryControlProfileRegistry _categoryProfiles;
+    private readonly ICategoryComparisonStrategyRegistry _comparisonStrategies;
 
     private readonly int _maxConcurrency;
 
@@ -39,7 +41,9 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
         IStoreMatchingService storeMatching,
         IManHoursCalculator manHours,
         IAiUsageTracker usageTracker,
-        IAppPathService appPath)
+        IAppPathService appPath,
+        ICategoryControlProfileRegistry categoryProfiles,
+        ICategoryComparisonStrategyRegistry comparisonStrategies)
     {
         _db = db;
         _visionClient = visionClient;
@@ -48,6 +52,8 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
         _manHours = manHours;
         _usageTracker = usageTracker;
         _appPath = appPath;
+        _categoryProfiles = categoryProfiles;
+        _comparisonStrategies = comparisonStrategies;
 
         _maxConcurrency = int.TryParse(Environment.GetEnvironmentVariable("OPENAI_MAX_CONCURRENCY"), out var c) && c > 0 ? c : 3;
     }
@@ -140,10 +146,11 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
         var maintenanceImageByPageId = pageEntities.Where(p => p.SourceKind == AiDocumentSource.PeriodicMaintenance)
             .Zip(maintenancePages, (p, img) => (p.Id, img)).ToDictionary(x => x.Id, x => x.img);
 
+        var categoryProfile = _categoryProfiles.Get(check.Category);
         await AnalyzePagesAsync(job, pageEntities.Where(p => p.SourceKind == AiDocumentSource.ServiceForm).ToList(),
-            serviceImageByPageId, "Servis formları", progress, cancellationToken);
+            serviceImageByPageId, "Servis formları", progress, cancellationToken, categoryProfile.AiInstructionSupplement);
         await AnalyzePagesAsync(job, pageEntities.Where(p => p.SourceKind == AiDocumentSource.PeriodicMaintenance).ToList(),
-            maintenanceImageByPageId, "Periyodik bakım formları", progress, cancellationToken);
+            maintenanceImageByPageId, "Periyodik bakım formları", progress, cancellationToken, categoryProfile.AiInstructionSupplement);
 
         // ── Mağaza eşleştirme ────────────────────────────────────────────
         job.Status = AiJobStatus.Matching;
@@ -159,7 +166,7 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
         job.Status = AiJobStatus.Comparing;
         Report(progress, AiJobStatus.Comparing, "Malzeme ve servis ücreti kontrolleri yapılıyor...");
         await _db.SaveChangesAsync(cancellationToken);
-        await BuildComparisonAsync(job, check, cancellationToken);
+        await _comparisonStrategies.Get(check.Category).BuildAsync(job, cancellationToken);
         Report(progress, AiJobStatus.Comparing, "Hakediş karşılaştırması tamamlanıyor...");
 
         // ── Tamamlandı ────────────────────────────────────────────────────
@@ -206,7 +213,7 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
     // ------------------------------------------------------------------ //
     private async Task AnalyzePagesAsync(
         AiAnalysisJob job, List<AiDocumentPage> pages, Dictionary<int, byte[]> imagesByPageId,
-        string label, IProgress<AiJobProgressUpdate>? progress, CancellationToken cancellationToken)
+        string label, IProgress<AiJobProgressUpdate>? progress, CancellationToken cancellationToken, string? extraInstruction = null)
     {
         if (pages.Count == 0) return;
 
@@ -217,7 +224,7 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
             await semaphore.WaitAsync(cancellationToken);
             try
             {
-                await AnalyzeSinglePageWithRetryAsync(job.Id, page, imagesByPageId[page.Id], cancellationToken);
+                await AnalyzeSinglePageWithRetryAsync(job.Id, page, imagesByPageId[page.Id], extraInstruction, cancellationToken);
             }
             finally
             {
@@ -230,7 +237,7 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
         await Task.WhenAll(tasks);
     }
 
-    private async Task AnalyzeSinglePageWithRetryAsync(int jobId, AiDocumentPage page, byte[] imageBytes, CancellationToken cancellationToken)
+    private async Task AnalyzeSinglePageWithRetryAsync(int jobId, AiDocumentPage page, byte[] imageBytes, string? extraInstruction, CancellationToken cancellationToken)
     {
         // Not: EF Core DbContext eşzamanlı erişime uygun değildir — her sayfa kendi scope'unda,
         // yalnızca kendi satırını günceller ve hemen kaydeder (satır bazlı bağımsız kayıt).
@@ -241,7 +248,7 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
         {
             try
             {
-                result = await _visionClient.AnalyzePageAsync(imageBytes, cancellationToken);
+                result = await _visionClient.AnalyzePageAsync(imageBytes, extraInstruction, cancellationToken);
                 if (result.Success) break;
                 lastError = result.ErrorMessage;
             }
@@ -428,164 +435,9 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
     }
 
     // ------------------------------------------------------------------ //
-    //  HAKEDİŞ KARŞILAŞTIRMASI
+    //  HAKEDİŞ KARŞILAŞTIRMASI — bkz. ICategoryComparisonStrategy (CategoryComparisonStrategies.cs)
+    //  DefaultCategoryComparisonStrategy / GasUsageComparisonStrategy, _comparisonStrategies üzerinden çağrılır.
     // ------------------------------------------------------------------ //
-    private async Task BuildComparisonAsync(AiAnalysisJob job, ProgressPaymentCheck check, CancellationToken cancellationToken)
-    {
-        // Bu job'a ait önceki karşılaştırma sonuçlarını temizle (yeniden hesaplama için idempotent).
-        var existing = await _db.AiComparisonResults.Where(r => r.JobId == job.Id).ToListAsync(cancellationToken);
-        _db.AiComparisonResults.RemoveRange(existing);
-
-        var pages = await _db.AiDocumentPages
-            .Where(p => p.JobId == job.Id && p.DocumentType == AiDocumentType.ServiceForm && p.MatchedStoreId.HasValue)
-            .Include(p => p.Materials)
-            .ToListAsync(cancellationToken);
-
-        var storeIds = pages.Where(p => p.MatchedStoreId.HasValue).Select(p => p.MatchedStoreId!.Value).Distinct().ToList();
-        var stores = await _db.Stores.Where(s => storeIds.Contains(s.Id)).ToDictionaryAsync(s => s.Id, cancellationToken);
-
-        var checkItems = await _db.ProgressPaymentCheckItems
-            .Where(i => i.ProgressPaymentCheckId == job.ProgressPaymentCheckId)
-            .ToListAsync(cancellationToken);
-
-        var results = new List<AiComparisonResult>();
-
-        foreach (var page in pages)
-        {
-            var storeLabel = page.MatchedStoreId.HasValue && stores.TryGetValue(page.MatchedStoreId.Value, out var s)
-                ? $"{s.Code} — {s.Name}" : (page.StoreNameRaw ?? page.StoreCodeRaw ?? "Bilinmeyen Mağaza");
-
-            var sameVisit = checkItems.Where(i =>
-                i.MatchedStoreId == page.MatchedStoreId &&
-                page.ServiceDate.HasValue && i.VisitDate.HasValue && i.VisitDate.Value.Date == page.ServiceDate.Value.Date)
-                .ToList();
-
-            // ── Malzeme: form → hakediş (eşleşme / uygun değil / eksik) ──
-            var matchedHakedisMaterialIds = new HashSet<int>();
-            foreach (var mat in page.Materials)
-            {
-                var effectiveQty = mat.UserCorrectedQuantity ?? mat.Quantity;
-                var searchName = TextNormalizationHelper.NormalizeName(mat.NormalizedName ?? mat.RawName);
-
-                var candidate = sameVisit
-                    .Where(i => !i.IsServiceItem)
-                    .Select(i => (Item: i, Score: TextNormalizationHelper.SimilarityRatio(searchName, TextNormalizationHelper.NormalizeName(i.OriginalMaterialName))))
-                    .OrderByDescending(x => x.Score)
-                    .FirstOrDefault();
-
-                if (candidate.Item != null && candidate.Score >= 0.6)
-                {
-                    matchedHakedisMaterialIds.Add(candidate.Item.Id);
-                    var hakedisQty = candidate.Item.Quantity;
-                    var formStr = effectiveQty.HasValue ? $"{effectiveQty.Value:0.##} {mat.UserCorrectedUnit ?? mat.Unit}" : "Okunamadı";
-                    var hakedisStr = $"{hakedisQty:0.##} {candidate.Item.Unit}";
-
-                    if (!effectiveQty.HasValue || mat.RequiresManualReview)
-                    {
-                        results.Add(NewResult(job.Id, page, storeLabel, AiComparisonItemType.Material, mat.NormalizedName ?? mat.RawName,
-                            formStr, hakedisStr, AiComparisonStatus.ManuelKontrol,
-                            $"\"{mat.RawName}\" için okunan miktar belirsiz — manuel kontrol edilmeli."));
-                    }
-                    else if (Math.Abs(effectiveQty.Value - hakedisQty) <= MaterialQuantityTolerance)
-                    {
-                        results.Add(NewResult(job.Id, page, storeLabel, AiComparisonItemType.Material, mat.NormalizedName ?? mat.RawName,
-                            formStr, hakedisStr, AiComparisonStatus.Uygun, "Servis formu ile hakediş miktarı uyumlu."));
-                    }
-                    else
-                    {
-                        results.Add(NewResult(job.Id, page, storeLabel, AiComparisonItemType.Material, mat.NormalizedName ?? mat.RawName,
-                            formStr, hakedisStr, AiComparisonStatus.UygunDegil,
-                            $"Servis formunda {formStr}, hakedişte {hakedisStr} girilmiş."));
-                    }
-                }
-                else
-                {
-                    var formStr = effectiveQty.HasValue ? $"{effectiveQty.Value:0.##} {mat.UserCorrectedUnit ?? mat.Unit}" : "Okunamadı";
-                    results.Add(NewResult(job.Id, page, storeLabel, AiComparisonItemType.Material, mat.NormalizedName ?? mat.RawName,
-                        formStr, "—", AiComparisonStatus.Eksik,
-                        $"Servis formunda \"{mat.RawName}\" bulunuyor ancak hakedişte bu kaleme rastlanmadı."));
-                }
-            }
-
-            // ── Malzeme: hakediş → form (fazla / formda bulunamadı) ──────
-            foreach (var item in sameVisit.Where(i => !i.IsServiceItem && !matchedHakedisMaterialIds.Contains(i.Id)))
-            {
-                results.Add(NewResult(job.Id, page, storeLabel, AiComparisonItemType.Material, item.OriginalMaterialName,
-                    "—", $"{item.Quantity:0.##} {item.Unit}", AiComparisonStatus.Fazla,
-                    $"Hakedişte \"{item.OriginalMaterialName}\" bulunuyor fakat servis formunda bulunamadı."));
-            }
-
-            // ── Adam-saat ──────────────────────────────────────────────
-            if (page.PayableManHours.HasValue)
-            {
-                var hakedisManHours = sameVisit
-                    .Where(i => i.IsServiceItem && TextNormalizationHelper.NormalizeName(i.OriginalMaterialName).Contains("adamsaat"))
-                    .Sum(i => i.Quantity);
-
-                var formStr = $"{page.PayableManHours.Value:0.##} saat";
-                var hakedisStr = $"{hakedisManHours:0.##} saat";
-                if (Math.Abs(page.PayableManHours.Value - hakedisManHours) <= ManHoursTolerance)
-                {
-                    results.Add(NewResult(job.Id, page, storeLabel, AiComparisonItemType.ManHours, "Adam-Saat",
-                        formStr, hakedisStr, AiComparisonStatus.Uygun, "Formdaki çalışma sürelerine göre hesaplanan adam-saat hakedişle uyumlu."));
-                }
-                else
-                {
-                    results.Add(NewResult(job.Id, page, storeLabel, AiComparisonItemType.ManHours, "Adam-Saat",
-                        formStr, hakedisStr, AiComparisonStatus.UygunDegil,
-                        $"Formdaki çalışma sürelerine göre toplam {page.CalculatedManHours:0.##} adam-saat oluşmaktadır. " +
-                        $"Kural gereği 4 saat düşülerek en fazla {page.PayableManHours:0.##} adam-saat ödenebilir."));
-                }
-            }
-
-            // ── Servis ücreti (şehiriçi/şehirdışı) ───────────────────────
-            var serviceFeeItems = sameVisit.Where(i => i.IsServiceItem &&
-                (TextNormalizationHelper.NormalizeName(i.OriginalMaterialName).Contains("sehirici") ||
-                 TextNormalizationHelper.NormalizeName(i.OriginalMaterialName).Contains("sehirdisi"))).ToList();
-
-            if (page.ServiceFeeRejectedDueToMaintenance)
-            {
-                foreach (var fee in serviceFeeItems)
-                {
-                    results.Add(NewResult(job.Id, page, storeLabel, AiComparisonItemType.ServiceFee, fee.OriginalMaterialName,
-                        "Periyodik bakım mevcut", $"{fee.Quantity:0.##} adet", AiComparisonStatus.UygunDegil,
-                        $"{page.ServiceDate:dd.MM.yyyy} tarihinde bu mağazada periyodik bakım bulunmaktadır. " +
-                        "Aynı tarih için ayrıca şehir içi/şehir dışı servis ücreti ödenemez."));
-                }
-            }
-            else if (serviceFeeItems.Count > 0)
-            {
-                foreach (var fee in serviceFeeItems)
-                {
-                    results.Add(NewResult(job.Id, page, storeLabel, AiComparisonItemType.ServiceFee, fee.OriginalMaterialName,
-                        "Servis ziyareti mevcut", $"{fee.Quantity:0.##} adet", AiComparisonStatus.Uygun,
-                        "Periyodik bakım çakışması yok, servis ücreti uygundur."));
-                }
-            }
-        }
-
-        _db.AiComparisonResults.AddRange(results);
-        await _db.SaveChangesAsync(cancellationToken);
-    }
-
-    private static AiComparisonResult NewResult(int jobId, AiDocumentPage page, string storeLabel,
-        AiComparisonItemType type, string description, string? formValue, string? hakedisValue,
-        AiComparisonStatus status, string explanation) => new()
-    {
-        JobId = jobId,
-        StoreId = page.MatchedStoreId,
-        StoreLabel = storeLabel,
-        VisitDate = page.ServiceDate,
-        SourcePageId = page.Id,
-        ItemType = type,
-        Description = description,
-        FormValue = formValue,
-        HakedisValue = hakedisValue,
-        Status = status,
-        Explanation = explanation,
-        CreatedAt = DateTime.Now,
-    };
-
     private static void Report(IProgress<AiJobProgressUpdate>? progress, AiJobStatus status, string message, int? current = null, int? total = null)
         => progress?.Report(new AiJobProgressUpdate { Status = status, Message = message, Current = current, Total = total });
 
@@ -784,7 +636,7 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
         var job = await _db.AiAnalysisJobs.FindAsync(jobId);
         var check = job is null ? null : await _db.ProgressPaymentChecks.FindAsync(job.ProgressPaymentCheckId);
         if (job is null || check is null) return;
-        await BuildComparisonAsync(job, check, CancellationToken.None);
+        await _comparisonStrategies.Get(check.Category).BuildAsync(job, CancellationToken.None);
     }
 
     // ------------------------------------------------------------------ //
@@ -793,6 +645,8 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
     public async Task<AiAnalysisJobDto> RetryFailedPagesAsync(int jobId, IProgress<AiJobProgressUpdate>? progress, CancellationToken cancellationToken = default)
     {
         var job = await _db.AiAnalysisJobs.FindAsync(jobId) ?? throw new InvalidOperationException("Job bulunamadı.");
+        var check = await _db.ProgressPaymentChecks.FindAsync(job.ProgressPaymentCheckId);
+        var extraInstruction = _categoryProfiles.Get(check?.Category).AiInstructionSupplement;
         var failedPages = await _db.AiDocumentPages
             .Where(p => p.JobId == jobId && p.Status == AiPageStatus.Failed)
             .ToListAsync(cancellationToken);
@@ -820,22 +674,21 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
 
                 var allPages = _rasterizer.RasterizeToPngPages(await File.ReadAllBytesAsync(doc.FilePath, cancellationToken));
                 var images = pagesInDoc.ToDictionary(p => p.Id, p => allPages[p.PageNumber - doc.PageOffset - 1]);
-                await AnalyzePagesAsync(job, pagesInDoc, images, $"Servis formları (retry) — {doc.FileName}", progress, cancellationToken);
+                await AnalyzePagesAsync(job, pagesInDoc, images, $"Servis formları (retry) — {doc.FileName}", progress, cancellationToken, extraInstruction);
             }
         }
         if (byMaintenance.Count > 0 && job.MaintenanceFormsFilePath != null && File.Exists(job.MaintenanceFormsFilePath))
         {
             var allPages = _rasterizer.RasterizeToPngPages(await File.ReadAllBytesAsync(job.MaintenanceFormsFilePath, cancellationToken));
             var images = byMaintenance.ToDictionary(p => p.Id, p => allPages[p.PageNumber - 1]);
-            await AnalyzePagesAsync(job, byMaintenance, images, "Periyodik bakım formları (retry)", progress, cancellationToken);
+            await AnalyzePagesAsync(job, byMaintenance, images, "Periyodik bakım formları (retry)", progress, cancellationToken, extraInstruction);
         }
 
-        var check = await _db.ProgressPaymentChecks.FindAsync(job.ProgressPaymentCheckId);
         if (check != null)
         {
             await MatchStoresAsync(job, check, cancellationToken);
             await ApplyBusinessRulesAsync(job, cancellationToken);
-            await BuildComparisonAsync(job, check, cancellationToken);
+            await _comparisonStrategies.Get(check.Category).BuildAsync(job, cancellationToken);
         }
 
         var refreshedPages = await _db.AiDocumentPages.Where(p => p.JobId == job.Id).ToListAsync(cancellationToken);

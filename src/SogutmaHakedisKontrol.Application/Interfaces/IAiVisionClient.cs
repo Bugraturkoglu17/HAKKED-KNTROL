@@ -10,5 +10,6 @@ public interface IAiVisionClient
 {
     bool IsConfigured { get; }
 
-    Task<AiVisionCallResultDto> AnalyzePageAsync(byte[] pageImagePng, CancellationToken cancellationToken = default);
+    /// <summary>extraInstruction verilirse, seçilen hakediş kategorisine özel yönerge genel sistem talimatına eklenir.</summary>
+    Task<AiVisionCallResultDto> AnalyzePageAsync(byte[] pageImagePng, string? extraInstruction = null, CancellationToken cancellationToken = default);
 }

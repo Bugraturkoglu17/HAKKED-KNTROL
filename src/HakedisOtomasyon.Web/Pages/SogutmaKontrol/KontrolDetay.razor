@@ -17,9 +17,17 @@ else if (_check is null)
 }
 else
 {
+    <HakedisAsamaGostergesi CurrentIndex="1" />
+
     <MudStack Row AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-2">
         <div>
-            <MudText Typo="Typo.h5" Style="font-weight:700">@_check.ClaimTypeName — @_check.PeriodLabel</MudText>
+            <MudStack Row Spacing="1" AlignItems="AlignItems.Center">
+                <MudText Typo="Typo.h5" Style="font-weight:700">@_check.ClaimTypeName — @_check.PeriodLabel</MudText>
+                @if (!string.IsNullOrEmpty(_check.CategoryLabel))
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined">@_check.CategoryLabel</MudChip>
+                }
+            </MudStack>
             <MudText Typo="Typo.body2" Color="Color.Secondary">@_check.CompanyName · @_check.Region · @_check.OriginalFileName</MudText>
         </div>
         <MudStack Row Spacing="1">
@@ -58,8 +66,6 @@ else
             @_pendingCount kalem tahmini eşleşme onayı bekliyor. Kontrolü tamamlamadan önce "Eşleşme Kontrolü" ile karar verin.
         </MudAlert>
     }
-
-    <HakedisKontrolWizard CheckId="@Id" CompanyName="@_check.CompanyName" CompanyRegion="@_check.Region" />
 
     <MudGrid Spacing="1" Class="mb-2">
         <MudItem xs="6" md="2"><KpiStat Label="Toplam Kalem" Value="@_check.TotalItemCount.ToString()" /></MudItem>
@@ -199,6 +205,13 @@ else
             <PagerContent><MudTablePager /></PagerContent>
         </MudTable>
     </MudPaper>
+
+    <MudStack Row Justify="Justify.FlexEnd" Class="mt-4">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large"
+                   EndIcon="@Icons.Material.Filled.ArrowForward" OnClick="ProceedToFormReviewAsync">
+            Kaydet ve Form Kontrolüne Geç
+        </MudButton>
+    </MudStack>
 }
 
 <style>
@@ -396,6 +409,21 @@ else
         await CheckService.FinalizeAsync(Id);
         await LoadAsync();
         Snackbar.Add("Kontrol tamamlandı.", Severity.Success);
+    }
+
+    private async Task ProceedToFormReviewAsync()
+    {
+        var unresolved = await CheckService.GetUnresolvedPriceItemCountAsync(Id);
+        if (unresolved > 0)
+        {
+            var confirm = await DialogService.ShowMessageBox("Çözülmemiş Kalemler Var",
+                $"{unresolved} eşleşmeyen/onay bekleyen kalem bulunmaktadır. Yine de form kontrolüne geçmek istiyor musunuz?",
+                yesText: "Evet, Devam Et", cancelText: "İptal");
+            if (confirm != true) return;
+        }
+
+        await CheckService.SetStageAsync(Id, HakedisControlStage.PriceReviewCompleted);
+        Nav.NavigateTo($"/discipline/sogutma/kontrol/{Id}/form");
     }
 
     private async Task ExportAsync()

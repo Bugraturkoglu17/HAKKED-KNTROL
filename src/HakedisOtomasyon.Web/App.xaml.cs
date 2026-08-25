@@ -161,6 +161,7 @@ public partial class WpfApp : System.Windows.Application
                 sogutmaDb.Database.EnsureCreated();
                 MigrateSogutmaAiSchema(sogutmaDb);
                 MigrateSogutmaPriceCorrectionSchema(sogutmaDb);
+                MigrateSogutmaCategorySchema(sogutmaDb);
             }
             catch (Exception ex)
             {
@@ -411,6 +412,46 @@ public partial class WpfApp : System.Windows.Application
         catch (Exception ex)
         {
             LogError("Soğutma fiyat düzeltme şema migrasyonu hatası", ex);
+        }
+    }
+
+    /// <summary>
+    /// Kategori bazlı çok aşamalı akış için ProgressPaymentChecks tablosuna Category/Stage sütunlarını
+    /// ekler (eksikse). Eski kayıtlar Category=null, Stage=0 (CategorySelected) alır — bu satırlar hâlâ
+    /// eski tek-sayfalı davranışıyla /discipline/sogutma/kontrol/{Id}'de görünmeye devam eder.
+    /// </summary>
+    private static void MigrateSogutmaCategorySchema(SogutmaHakedisKontrol.Infrastructure.Data.AppDbContext db)
+    {
+        try
+        {
+            var conn = db.Database.GetDbConnection();
+            conn.Open();
+            try
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = "PRAGMA table_info(ProgressPaymentChecks)";
+                var cols = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                using (var reader = cmd.ExecuteReader())
+                    while (reader.Read()) cols.Add(reader.GetString(1));
+
+                var newColumns = new Dictionary<string, string>
+                {
+                    ["Category"] = "INTEGER",
+                    ["Stage"] = "INTEGER NOT NULL DEFAULT 0",
+                };
+                foreach (var (colName, colType) in newColumns)
+                {
+                    if (cols.Contains(colName)) continue;
+                    using var alter = conn.CreateCommand();
+                    alter.CommandText = $"ALTER TABLE \"ProgressPaymentChecks\" ADD COLUMN \"{colName}\" {colType}";
+                    alter.ExecuteNonQuery();
+                }
+            }
+            finally { conn.Close(); }
+        }
+        catch (Exception ex)
+        {
+            LogError("Soğutma kategori şema migrasyonu hatası", ex);
         }
     }
 

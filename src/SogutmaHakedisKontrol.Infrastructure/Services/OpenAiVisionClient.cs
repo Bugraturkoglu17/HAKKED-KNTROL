@@ -37,7 +37,7 @@ public class OpenAiVisionClient : IAiVisionClient
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_apiKey);
 
-    public async Task<AiVisionCallResultDto> AnalyzePageAsync(byte[] pageImagePng, CancellationToken cancellationToken = default)
+    public async Task<AiVisionCallResultDto> AnalyzePageAsync(byte[] pageImagePng, string? extraInstruction = null, CancellationToken cancellationToken = default)
     {
         if (!IsConfigured)
             return new AiVisionCallResultDto { Success = false, ErrorMessage = "OPENAI_API_KEY tanımlı değil." };
@@ -55,9 +55,13 @@ public class OpenAiVisionClient : IAiVisionClient
                 ResponseContentPart.CreateInputImagePart(BinaryData.FromBytes(pageImagePng), ResponseImageDetailLevel.High),
             };
 
+            var systemInstruction = string.IsNullOrWhiteSpace(extraInstruction)
+                ? AiVisionSchemas.SystemInstruction
+                : AiVisionSchemas.SystemInstruction + "\n\n--- SEÇİLEN HAKEDİŞ KATEGORİSİ İÇİN ÖNCELİKLİ ALANLAR ---\n" + extraInstruction;
+
             var options = new CreateResponseOptions(_model, new[]
             {
-                ResponseItem.CreateDeveloperMessageItem(AiVisionSchemas.SystemInstruction),
+                ResponseItem.CreateDeveloperMessageItem(systemInstruction),
                 ResponseItem.CreateUserMessageItem(userContent),
             })
             {

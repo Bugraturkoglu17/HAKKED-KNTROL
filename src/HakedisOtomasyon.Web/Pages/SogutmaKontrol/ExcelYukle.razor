@@ -1,16 +1,30 @@
-@namespace SogutmaHakedisKontrol.Web.Components
+@page "/discipline/sogutma/kontrol/{Id:int}/excel"
 @inject IProgressPaymentCheckService CheckService
+@inject IUnitPriceListService UnitPriceListService
 @inject SogutmaHakedisKontrol.Application.Interfaces.IFilePickerService FilePicker
+@inject NavigationManager Nav
 @inject ISnackbar Snackbar
 
-<MudDialog Style="min-width:760px;max-width:960px">
-    <TitleContent>
-        <MudText Typo="Typo.h6">
-            <MudIcon Icon="@Icons.Material.Filled.UploadFile" Class="mr-2" Style="vertical-align:middle" />
-            Hakediş Dosyasını Yükle
-        </MudText>
-    </TitleContent>
-    <DialogContent>
+<PageTitle>Hakediş Dosyasını Yükle</PageTitle>
+
+<HakedisAsamaGostergesi CurrentIndex="1" />
+
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate Color="Color.Primary" />
+}
+else if (_check is null)
+{
+    <MudAlert Severity="Severity.Error">Kontrol kaydı bulunamadı.</MudAlert>
+}
+else
+{
+    <MudText Typo="Typo.h5" Style="font-weight:700" Class="mb-1">Hakediş Dosyasını Yükle</MudText>
+    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+        Seçilen hakediş türü: <b>@_check.CategoryLabel</b> — @_check.CompanyName · @_check.Region
+    </MudText>
+
+    <MudPaper Class="pa-4" Elevation="2" Style="max-width:760px">
         @if (_state == State.SelectFile)
         {
             <MudButton Variant="Variant.Outlined" Size="Size.Large" FullWidth
@@ -30,12 +44,13 @@
                 <MudAlert Severity="Severity.Error" Class="mb-3">
                     @foreach (var err in _preview.Errors) { <MudText Typo="Typo.body2">@err</MudText> }
                 </MudAlert>
+                <MudButton Variant="Variant.Text" OnClick="Reset">Başka Dosya Seç</MudButton>
             }
             else
             {
                 <MudGrid Spacing="2" Class="mb-3">
                     <MudItem xs="12" md="4">
-                        <MudTextField @bind-Value="_claimTypeName" Label="Hakediş Türü" Variant="Variant.Outlined" />
+                        <MudTextField @bind-Value="_claimTypeName" Label="Hakediş Türü (etiket)" Variant="Variant.Outlined" />
                     </MudItem>
                     <MudItem xs="6" md="4">
                         <MudNumericField T="int" @bind-Value="_year" Label="Yıl" Variant="Variant.Outlined" />
@@ -99,6 +114,15 @@
                                          Format="N4" Min="0" Class="mt-2" Style="max-width:280px" />
                     </MudAlert>
                 }
+
+                <MudStack Row Justify="Justify.SpaceBetween" Class="mt-4">
+                    <MudButton Variant="Variant.Text" OnClick="Reset">Başka Dosya Seç</MudButton>
+                    <MudButton Color="Color.Success" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.PlayArrow"
+                               Disabled="@(RequiresEurRate && !_eurRate.HasValue)"
+                               OnClick="SubmitAsync">
+                        Kaydet ve Fiyat Kontrolüne Geç
+                    </MudButton>
+                </MudStack>
             }
         }
         else if (_state == State.Submitting)
@@ -106,26 +130,19 @@
             <MudText Align="Align.Center" Class="mb-2">Hakediş kaydediliyor ve eşleştirme çalıştırılıyor...</MudText>
             <MudProgressLinear Indeterminate Color="Color.Success" />
         }
-    </DialogContent>
-    <DialogActions>
-        <MudButton OnClick="Cancel" Disabled="_state == State.Analyzing || _state == State.Submitting">İptal</MudButton>
-        @if (_state == State.Review && _preview is not null && _preview.Errors.Count == 0)
-        {
-            <MudButton Color="Color.Success" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.PlayArrow"
-                       Disabled="@(RequiresEurRate && !_eurRate.HasValue)"
-                       OnClick="SubmitAsync">
-                Kaydet ve Kontrole Başla
-            </MudButton>
-        }
-    </DialogActions>
-</MudDialog>
+    </MudPaper>
+}
 
 @code {
-    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
-    [Parameter] public UnitPriceListDto UnitPriceList { get; set; } = null!;
+    [Parameter] public int Id { get; set; }
 
     private enum State { SelectFile, Analyzing, Review, Submitting }
     private State _state = State.SelectFile;
+
+    private bool _loading = true;
+    private ProgressPaymentCheckDto? _check;
+    private UnitPriceListDto? _unitPriceList;
+
     private string? _filePath;
     private byte[]? _fileBytes;
     private ProgressPaymentImportPreviewDto? _preview;
@@ -135,7 +152,23 @@
     private int _month = DateTime.Now.Month;
     private decimal? _eurRate;
 
-    private bool RequiresEurRate => UnitPriceList.HasEurItems;
+    private bool RequiresEurRate => _unitPriceList?.HasEurItems == true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _check = await CheckService.GetByIdAsync(Id);
+        if (_check is not null)
+            _unitPriceList = await UnitPriceListService.GetByIdAsync(_check.UnitPriceListId);
+        _loading = false;
+    }
+
+    private void Reset()
+    {
+        _state = State.SelectFile;
+        _filePath = null;
+        _fileBytes = null;
+        _preview = null;
+    }
 
     private async Task SelectFile()
     {
@@ -147,8 +180,8 @@
         {
             _fileBytes = await File.ReadAllBytesAsync(_filePath);
             using var ms = new MemoryStream(_fileBytes);
-            _preview = await CheckService.ParseExcelAsync(ms, System.IO.Path.GetFileName(_filePath), UnitPriceList.Id);
-            _claimTypeName = _preview.DetectedClaimTypeName;
+            _preview = await CheckService.ParseExcelAsync(ms, System.IO.Path.GetFileName(_filePath), _unitPriceList!.Id);
+            _claimTypeName = string.IsNullOrWhiteSpace(_preview.DetectedClaimTypeName) ? (_check?.CategoryLabel ?? string.Empty) : _preview.DetectedClaimTypeName;
             _year = _preview.DetectedYear ?? DateTime.Now.Year;
             _month = _preview.DetectedMonth ?? DateTime.Now.Month;
             _state = State.Review;
@@ -175,14 +208,12 @@
         try
         {
             var periodLabel = $"{TurkishMonth(_month)} {_year}";
-            var check = await CheckService.CreateCheckAsync(
-                UnitPriceList.Id, UnitPriceList.CompanyName, UnitPriceList.Region, _claimTypeName,
-                _year, _month, periodLabel,
+            await CheckService.AttachExcelAsync(
+                Id, _claimTypeName, _year, _month, periodLabel,
                 System.IO.Path.GetFileName(_filePath), _fileBytes,
-                RequiresEurRate ? _eurRate : null,
-                _preview);
+                RequiresEurRate ? _eurRate : null, _preview);
             Snackbar.Add("Hakediş yüklendi, otomatik eşleştirme tamamlandı.", Severity.Success);
-            MudDialog.Close(DialogResult.Ok(check.Id));
+            Nav.NavigateTo($"/discipline/sogutma/kontrol/{Id}");
         }
         catch (Exception ex)
         {
@@ -196,6 +227,4 @@
         1 => "Ocak", 2 => "Şubat", 3 => "Mart", 4 => "Nisan", 5 => "Mayıs", 6 => "Haziran",
         7 => "Temmuz", 8 => "Ağustos", 9 => "Eylül", 10 => "Ekim", 11 => "Kasım", 12 => "Aralık", _ => m.ToString()
     };
-
-    private void Cancel() => MudDialog.Cancel();
 }

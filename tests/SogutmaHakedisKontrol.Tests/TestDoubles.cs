@@ -24,7 +24,7 @@ internal class FakeAiVisionClient : IAiVisionClient
     /// <summary>Kaynak ayrımı gerekmeyen basit senaryolar için (tek PDF).</summary>
     public FakeAiVisionClient(Func<int, AiVisionCallResultDto> resolve) : this((idx, _) => resolve(idx)) { }
 
-    public Task<AiVisionCallResultDto> AnalyzePageAsync(byte[] pageImagePng, CancellationToken cancellationToken = default)
+    public Task<AiVisionCallResultDto> AnalyzePageAsync(byte[] pageImagePng, string? extraInstruction = null, CancellationToken cancellationToken = default)
     {
         var pageIndex = pageImagePng[0];
         var source = pageImagePng[1];

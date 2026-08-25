@@ -31,6 +31,17 @@ public class ProgressPaymentPriceCorrectionTests
         return list.Id;
     }
 
+    /// <summary>Eski tek-adımlı CreateCheckAsync'in yerini alan CreateDraftCheckAsync + AttachExcelAsync
+    /// çiftini testlerde tek çağrıda birleştirir (kategori seçimi + Excel yükleme iki ayrı sayfaya bölündü).</summary>
+    private static async Task<ProgressPaymentCheckDto> CreateAndAttachCheckAsync(
+        ProgressPaymentCheckService svc, int listId, string company, string region, string claimTypeName,
+        int year, int month, string periodLabel, string fileName, byte[] bytes, decimal? eurRate,
+        ProgressPaymentImportPreviewDto parsed, HakedisCategory category = HakedisCategory.PeriodicMaintenance)
+    {
+        var draft = await svc.CreateDraftCheckAsync(listId, company, region, category);
+        return await svc.AttachExcelAsync(draft.Id, claimTypeName, year, month, periodLabel, fileName, bytes, eurRate, parsed);
+    }
+
     /// <summary>Header satırı + tek veri satırı içeren, TOPLAM kolonu formülle hesaplanan sahte hakediş Excel'i üretir.</summary>
     private static byte[] BuildHakedisWorkbook(string materialName, decimal miktar, decimal fiyat)
     {
@@ -74,7 +85,7 @@ public class ProgressPaymentPriceCorrectionTests
         var parsed = ProgressPaymentExcelParser.Parse(stream, "test.xlsx");
         Assert.Single(parsed.Items);
 
-        var check = await svc.CreateCheckAsync(listId, "TESTFIRMA", "TEST BÖLGE", "SABİT FİYAT", 2026, 4, "Nisan 2026", "test.xlsx", bytes, exchangeRateEur: null, parsed);
+        var check = await CreateAndAttachCheckAsync(svc, listId, "TESTFIRMA", "TEST BÖLGE", "SABİT FİYAT", 2026, 4, "Nisan 2026", "test.xlsx", bytes, null, parsed);
         var items = await svc.GetItemsAsync(check.Id);
         var item = Assert.Single(items);
         Assert.Equal(CheckItemControlStatus.FiyatHatasi, item.ControlStatus); // 10 TL yazılmış ama onaylı 5 TL
@@ -109,7 +120,7 @@ public class ProgressPaymentPriceCorrectionTests
         var bytes = BuildHakedisWorkbook("Bakır Boru 3/8", miktar: 2, fiyat: 10);
         using var stream = new MemoryStream(bytes);
         var parsed = ProgressPaymentExcelParser.Parse(stream, "test.xlsx");
-        var check = await svc.CreateCheckAsync(listId, "TESTFIRMA", "TEST BÖLGE", "SABİT FİYAT", 2026, 4, "Nisan 2026", "test.xlsx", bytes, null, parsed);
+        var check = await CreateAndAttachCheckAsync(svc, listId, "TESTFIRMA", "TEST BÖLGE", "SABİT FİYAT", 2026, 4, "Nisan 2026", "test.xlsx", bytes, null, parsed);
         var item = Assert.Single(await svc.GetItemsAsync(check.Id));
 
         await svc.SetPriceCorrectionAsync(item.Id, apply: true);
@@ -130,7 +141,7 @@ public class ProgressPaymentPriceCorrectionTests
         var bytes = BuildHakedisWorkbook("Yeni Malzeme XYZ", miktar: 3, fiyat: 15);
         using var stream = new MemoryStream(bytes);
         var parsed = ProgressPaymentExcelParser.Parse(stream, "test.xlsx");
-        var check = await svc.CreateCheckAsync(listId, "TESTFIRMA", "TEST BÖLGE", "SABİT FİYAT", 2026, 4, "Nisan 2026", "test.xlsx", bytes, null, parsed);
+        var check = await CreateAndAttachCheckAsync(svc, listId, "TESTFIRMA", "TEST BÖLGE", "SABİT FİYAT", 2026, 4, "Nisan 2026", "test.xlsx", bytes, null, parsed);
         var item = Assert.Single(await svc.GetItemsAsync(check.Id));
         Assert.Equal(CheckItemControlStatus.BirimFiyatBulunamadi, item.ControlStatus); // önce eşleşmiyor
 
@@ -165,7 +176,7 @@ public class ProgressPaymentPriceCorrectionTests
         var bytes = BuildHakedisWorkbook("Bilinmeyen Parça", miktar: 1, fiyat: 42);
         using var stream = new MemoryStream(bytes);
         var parsed = ProgressPaymentExcelParser.Parse(stream, "test.xlsx");
-        var check = await svc.CreateCheckAsync(listId, "TESTFIRMA", "TEST BÖLGE", "SABİT FİYAT", 2026, 4, "Nisan 2026", "test.xlsx", bytes, null, parsed);
+        var check = await CreateAndAttachCheckAsync(svc, listId, "TESTFIRMA", "TEST BÖLGE", "SABİT FİYAT", 2026, 4, "Nisan 2026", "test.xlsx", bytes, null, parsed);
         var item = Assert.Single(await svc.GetItemsAsync(check.Id));
 
         var dto = new UnitPriceItemDto { MaterialName = item.OriginalMaterialName, Unit = item.Unit, Price = item.CompanyUnitPrice, Currency = "TRY" };
@@ -206,7 +217,7 @@ public class ProgressPaymentPriceCorrectionTests
         using var stream = new MemoryStream(bytes);
         var parsed = ProgressPaymentExcelParser.Parse(stream, "test.xlsx");
         Assert.Equal(12, parsed.Items.Count);
-        var check = await svc.CreateCheckAsync(listId, "TESTFIRMA", "TEST BÖLGE", "SABİT FİYAT", 2026, 4, "Nisan 2026", "test.xlsx", bytes, null, parsed);
+        var check = await CreateAndAttachCheckAsync(svc, listId, "TESTFIRMA", "TEST BÖLGE", "SABİT FİYAT", 2026, 4, "Nisan 2026", "test.xlsx", bytes, null, parsed);
 
         var outPath = await svc.ExportControlledExcelAsync(check.Id);
         using var outWb = new XLWorkbook(outPath);
@@ -233,5 +244,74 @@ public class ProgressPaymentPriceCorrectionTests
         }
         Assert.Equal(10, emptyNotes);  // 10 uygun satırda not yok — kolonlar tamamen boş
         Assert.Equal(2, filledNotes);  // 2 hatalı satırda sadece kontrol notu var, kırmızı
+    }
+
+    /// <summary>Kategori seçimi Excel yüklenmeden önce gerçek DB satırı olarak kaydedilir; "sayfa
+    /// yenilendiğinde kaybolmamalı" isteğini, taze bir DbContext ile tekrar okuyarak doğrular.</summary>
+    [Fact]
+    public async Task KategoriSecimi_ExceldenOnceKaydedilirVeRefreshSonrasiKaybolmaz()
+    {
+        var (svc, db) = CreateService();
+        var listId = await CreatePriceListAsync(db, "TESTFIRMA", "TEST BÖLGE");
+
+        var draft = await svc.CreateDraftCheckAsync(listId, "TESTFIRMA", "TEST BÖLGE", HakedisCategory.GasUsage);
+        Assert.Equal(HakedisCategory.GasUsage, draft.Category);
+        Assert.Equal(HakedisControlStage.CategorySelected, draft.Stage);
+
+        // "Refresh" simülasyonu: aynı DB dosyasını yeni bir DbContext ile aç, hâlâ orada mı?
+        var reread = await db.ProgressPaymentChecks.FindAsync(draft.Id);
+        Assert.NotNull(reread);
+        Assert.Equal(HakedisCategory.GasUsage, reread!.Category);
+
+        var bytes = BuildHakedisWorkbook("Test Malzeme", miktar: 1, fiyat: 10);
+        using var stream = new MemoryStream(bytes);
+        var parsed = ProgressPaymentExcelParser.Parse(stream, "test.xlsx");
+        var attached = await svc.AttachExcelAsync(draft.Id, "SABİT FİYAT", 2026, 4, "Nisan 2026", "test.xlsx", bytes, null, parsed);
+
+        Assert.Equal(HakedisControlStage.PriceReviewInProgress, attached.Stage);
+        Assert.Equal(HakedisCategory.GasUsage, attached.Category); // Excel bağlanınca kategori korunur
+    }
+
+    /// <summary>Export §27-28: Form/AI kontrolünde tespit edilen sorun, ilgili hakediş satırının
+    /// KONTROL NOTU hücresine de eklenir (yalnızca Uygun olmayan AiComparisonResult'lar).</summary>
+    [Fact]
+    public async Task Export_FormKontroldeTespitEdilenSorunAyniSatiraNotOlarakEklenir()
+    {
+        var (svc, db) = CreateService();
+        var listId = await CreatePriceListAsync(db, "TESTFIRMA", "TEST BÖLGE");
+        db.UnitPriceItems.Add(new UnitPriceItem
+        {
+            UnitPriceListId = listId, MaterialName = "Uygun Malzeme", Price = 10m, Currency = "TRY",
+            NormalizedName = new MaterialMatchingService(db).Normalize("Uygun Malzeme"), IsActive = true, CreatedAt = DateTime.Now,
+        });
+        await db.SaveChangesAsync();
+
+        var bytes = BuildHakedisWorkbook("Uygun Malzeme", miktar: 1, fiyat: 10);
+        using var stream = new MemoryStream(bytes);
+        var parsed = ProgressPaymentExcelParser.Parse(stream, "test.xlsx");
+        var check = await CreateAndAttachCheckAsync(svc, listId, "TESTFIRMA", "TEST BÖLGE", "SABİT FİYAT", 2026, 4, "Nisan 2026", "test.xlsx", bytes, null, parsed);
+        var item = Assert.Single(await svc.GetItemsAsync(check.Id));
+        Assert.Equal(CheckItemControlStatus.Uygun, item.ControlStatus); // fiyat kontrolünde sorun yok
+
+        // Bir AI job + form karşılaştırma sonucu simüle edilir (bu satıra bağlı, Uygun olmayan).
+        var job = new AiAnalysisJob { ProgressPaymentCheckId = check.Id, Status = AiJobStatus.Completed, CreatedAt = DateTime.Now };
+        db.AiAnalysisJobs.Add(job);
+        await db.SaveChangesAsync();
+        db.AiComparisonResults.Add(new AiComparisonResult
+        {
+            JobId = job.Id, ProgressPaymentCheckItemId = item.Id, StoreLabel = "Test Mağaza",
+            ItemType = AiComparisonItemType.Material, Description = "Uygun Malzeme",
+            Status = AiComparisonStatus.UygunDegil,
+            Explanation = "Hakedişte 1 adet belirtilmiş, servis formunda bulunamamıştır.",
+            CreatedAt = DateTime.Now,
+        });
+        await db.SaveChangesAsync();
+
+        var outPath = await svc.ExportControlledExcelAsync(check.Id);
+        using var outWb = new XLWorkbook(outPath);
+        var outWs = outWb.Worksheet("NİSAN");
+        var noteText = outWs.Cell(2, 6).GetString(); // 5 orijinal kolon (MAĞAZA/MALZEME/MİKTAR/FİYAT/TOPLAM) + KONTROL NOTU = 6
+
+        Assert.Contains("servis formunda bulunamamıştır", noteText);
     }
 }

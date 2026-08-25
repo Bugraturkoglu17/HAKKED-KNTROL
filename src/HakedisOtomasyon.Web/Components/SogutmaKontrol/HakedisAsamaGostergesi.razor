@@ -1,0 +1,24 @@
+@* Sade, dört adımlı akış göstergesi — Hakediş Türü / Fiyat Kontrolü / Form Kontrolü / Sonuç.
+   İçerik taşımaz, yalnızca hangi sayfada olunduğunu gösterir; her adım sayfası bunu üstüne koyar. *@
+
+<MudStack Row Spacing="1" AlignItems="AlignItems.Center" Class="mb-3" Style="flex-wrap:wrap">
+    @for (var i = 0; i < Steps.Length; i++)
+    {
+        var index = i;
+        <MudChip T="string" Size="Size.Small" Variant="@(index == CurrentIndex ? Variant.Filled : Variant.Outlined)"
+                 Color="@(index < CurrentIndex ? Color.Success : index == CurrentIndex ? Color.Primary : Color.Default)">
+            @(index + 1). @Steps[index]
+        </MudChip>
+        @if (index < Steps.Length - 1)
+        {
+            <MudIcon Icon="@Icons.Material.Filled.ChevronRight" Size="Size.Small" Color="Color.Default" />
+        }
+    }
+</MudStack>
+
+@code {
+    private static readonly string[] Steps = { "Hakediş Türü", "Fiyat Kontrolü", "Form Kontrolü", "Sonuç" };
+
+    /// <summary>0=Hakediş Türü, 1=Fiyat Kontrolü, 2=Form Kontrolü, 3=Sonuç.</summary>
+    [Parameter] public int CurrentIndex { get; set; }
+}

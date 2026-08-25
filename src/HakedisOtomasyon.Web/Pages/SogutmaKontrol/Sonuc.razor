@@ -1,0 +1,218 @@
+@page "/discipline/sogutma/kontrol/{Id:int}/sonuc"
+@inject IProgressPaymentCheckService CheckService
+@inject IAiAnalysisPipelineService Pipeline
+@inject SogutmaHakedisKontrol.Application.Interfaces.IDesktopFileService DesktopFile
+@inject ISnackbar Snackbar
+@inject NavigationManager Nav
+
+<PageTitle>Hakediş Kontrol Sonucu</PageTitle>
+
+<HakedisAsamaGostergesi CurrentIndex="3" />
+
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate Color="Color.Primary" />
+}
+else if (_check is null)
+{
+    <MudAlert Severity="Severity.Error">Kontrol kaydı bulunamadı.</MudAlert>
+}
+else
+{
+    <MudStack Row AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-1">
+        <div>
+            <MudText Typo="Typo.h5" Style="font-weight:700">Nihai Sonuç</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                @(_check.CategoryLabel ?? "Belirtilmemiş") — @_check.CompanyName · @_check.Region · @_check.PeriodLabel
+            </MudText>
+        </div>
+        <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.ArrowBack"
+                   Href="@($"/discipline/sogutma/kontrol/{Id}/form")">
+            Form Kontrolüne Dön
+        </MudButton>
+    </MudStack>
+    <MudDivider Class="my-3" />
+
+    <MudGrid Spacing="1" Class="mb-3">
+        <MudItem xs="6" md="2"><KpiStat Label="Hakediş Kalemi" Value="@_check.TotalItemCount.ToString()" /></MudItem>
+        <MudItem xs="6" md="2"><KpiStat Label="Birim Fiyat Hatası" Value="@_check.HataliCount.ToString()" Color="Color.Error" /></MudItem>
+        <MudItem xs="6" md="2"><KpiStat Label="Eşleşmeyen" Value="@_check.EslesmeyenCount.ToString()" Color="Color.Error" /></MudItem>
+        <MudItem xs="6" md="2"><KpiStat Label="Form Uyuşmazlığı" Value="@FormMismatchCount" Color="Color.Error" /></MudItem>
+        <MudItem xs="6" md="2"><KpiStat Label="Eksik / Fazla Belge" Value="@FormMissingCount" Color="Color.Warning" /></MudItem>
+        <MudItem xs="6" md="2"><KpiStat Label="Manuel Kontrol" Value="@FormManualCount" Color="Color.Warning" /></MudItem>
+    </MudGrid>
+
+    <MudGrid Spacing="1" Class="mb-4">
+        <MudItem xs="6" md="4">
+            <MudPaper Class="pa-2 text-center" Elevation="1">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Toplam Firma Hakedişi</MudText>
+                <MudText Typo="Typo.subtitle1" Style="font-weight:600">@_check.CompanyTotal.ToString("N2") TL</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" md="4">
+            <MudPaper Class="pa-2 text-center" Elevation="1">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Düzeltilmiş</MudText>
+                <MudText Typo="Typo.subtitle1" Style="font-weight:600">@_check.CalculatedTotal.ToString("N2") TL</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" md="4">
+            <MudPaper Class="pa-2 text-center" Elevation="1">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Toplam Fark</MudText>
+                <MudText Typo="Typo.subtitle1" Style="font-weight:600" Color="@(_check.Difference > 0 ? Color.Error : Color.Success)">@_check.Difference.ToString("N2") TL</MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <MudStack Row AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-2">
+        <MudText Typo="Typo.subtitle1" Style="font-weight:600">
+            @(_showAll ? "Tüm Kayıtlar" : "Problemli Kayıtlar")
+        </MudText>
+        <MudSwitch T="bool" @bind-Value="_showAll" Color="Color.Primary" Label="Tüm Sonuçları Gör" />
+    </MudStack>
+
+    <MudText Typo="Typo.subtitle2" Style="font-weight:600" Class="mt-3 mb-1">Fiyat Kontrolü</MudText>
+    @if (PriceRows.Count == 0)
+    {
+        <MudAlert Severity="Severity.Success" Dense Class="mb-3">Fiyat kontrolünde sorun bulunamadı.</MudAlert>
+    }
+    else
+    {
+        <MudPaper Elevation="1" Class="mb-3" Style="overflow-x:auto;max-width:100%">
+            <MudSimpleTable Dense Hover>
+                <thead>
+                    <tr><th>Durum</th><th>Mağaza</th><th>Malzeme</th><th>Fark</th><th>Not</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var i in PriceRows)
+                    {
+                        <tr>
+                            <td><MudChip T="string" Size="Size.Small" Color="@PriceStatusColor(i.ControlStatus)">@i.ControlStatusLabel</MudChip></td>
+                            <td>@i.StoreName</td>
+                            <td>@i.OriginalMaterialName</td>
+                            <td>@(i.Difference?.ToString("N2") ?? "—")</td>
+                            <td>@i.ControlNote</td>
+                        </tr>
+                    }
+                </tbody>
+            </MudSimpleTable>
+        </MudPaper>
+    }
+
+    <MudText Typo="Typo.subtitle2" Style="font-weight:600" Class="mt-3 mb-1">Form Kontrolü</MudText>
+    @if (_job is null)
+    {
+        <MudAlert Severity="Severity.Info" Dense Class="mb-3">Henüz form kontrolü çalıştırılmadı.</MudAlert>
+    }
+    else if (FormRows.Count == 0)
+    {
+        <MudAlert Severity="Severity.Success" Dense Class="mb-3">Form kontrolünde sorun bulunamadı.</MudAlert>
+    }
+    else
+    {
+        <MudPaper Elevation="1" Class="mb-3" Style="overflow-x:auto;max-width:100%">
+            <MudSimpleTable Dense Hover>
+                <thead>
+                    <tr><th>Durum</th><th>Mağaza</th><th>Kalem</th><th>Form</th><th>Hakediş</th><th>Açıklama</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var r in FormRows)
+                    {
+                        <tr>
+                            <td><MudChip T="string" Size="Size.Small" Color="@FormStatusColor(r.Status)">@FormStatusLabel(r.Status)</MudChip></td>
+                            <td>@r.StoreLabel</td>
+                            <td>@r.Description</td>
+                            <td>@r.FormValue</td>
+                            <td>@r.HakedisValue</td>
+                            <td>@r.Explanation</td>
+                        </tr>
+                    }
+                </tbody>
+            </MudSimpleTable>
+        </MudPaper>
+    }
+
+    <MudStack Row Justify="Justify.SpaceBetween" Class="mt-4">
+        <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.ArrowBack"
+                   Href="@($"/discipline/sogutma/kontrol/{Id}/form")">
+            Form Kontrolüne Dön
+        </MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Success" Size="Size.Large"
+                   StartIcon="@Icons.Material.Filled.Download" OnClick="ExportAsync">
+            Kaydet ve Export Al
+        </MudButton>
+    </MudStack>
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private bool _loading = true;
+    private ProgressPaymentCheckDto? _check;
+    private List<ProgressPaymentCheckItemDto> _items = new();
+    private AiAnalysisJobDto? _job;
+    private List<AiComparisonResultDto> _formResults = new();
+    private bool _showAll;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _check = await CheckService.GetByIdAsync(Id);
+        if (_check != null)
+        {
+            _items = await CheckService.GetItemsAsync(Id);
+            _job = await Pipeline.GetLatestJobForCheckAsync(Id);
+            if (_job != null) _formResults = await Pipeline.GetComparisonResultsAsync(_job.Id);
+        }
+        _loading = false;
+    }
+
+    private List<ProgressPaymentCheckItemDto> PriceRows =>
+        _showAll ? _items : _items.Where(i => i.ControlStatus != CheckItemControlStatus.Uygun).ToList();
+
+    private List<AiComparisonResultDto> FormRows =>
+        _showAll ? _formResults : _formResults.Where(r => r.Status != "Uygun").ToList();
+
+    private string FormMismatchCount => _job?.UygunDegilItemCount.ToString() ?? "0";
+    private string FormMissingCount => _job != null ? (_job.EksikItemCount + _job.FazlaItemCount).ToString() : "0";
+    private string FormManualCount => _formResults.Count(r => r.Status == "ManuelKontrol").ToString();
+
+    private static Color PriceStatusColor(CheckItemControlStatus s) => s switch
+    {
+        CheckItemControlStatus.Uygun => Color.Success,
+        CheckItemControlStatus.OnayBekliyor => Color.Warning,
+        CheckItemControlStatus.KontrolDisi => Color.Default,
+        CheckItemControlStatus.KontrolGerekli => Color.Info,
+        _ => Color.Error,
+    };
+
+    private static Color FormStatusColor(string status) => status switch
+    {
+        "Uygun" => Color.Success,
+        "UygunDegil" => Color.Error,
+        _ => Color.Warning,
+    };
+
+    private static string FormStatusLabel(string status) => status switch
+    {
+        "Uygun" => "Uygun",
+        "UygunDegil" => "Uygun Değil",
+        "Eksik" => "Eksik",
+        "Fazla" => "Fazla",
+        "ManuelKontrol" => "Manuel Kontrol",
+        _ => status,
+    };
+
+    private async Task ExportAsync()
+    {
+        try
+        {
+            var path = await CheckService.ExportControlledExcelAsync(Id);
+            await CheckService.SetStageAsync(Id, HakedisControlStage.Exported);
+            Snackbar.Add("Kontrol edilmiş Excel oluşturuldu.", Severity.Success);
+            DesktopFile.OpenFile(path);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Export hatası: {ex.Message}", Severity.Error);
+        }
+    }
+}

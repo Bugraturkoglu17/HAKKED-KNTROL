@@ -69,37 +69,67 @@ public class ProgressPaymentCheckService : IProgressPaymentCheckService
     // ------------------------------------------------------------------ //
     //  OLUŞTURMA + OTOMATİK EŞLEŞTİRME
     // ------------------------------------------------------------------ //
-    public async Task<ProgressPaymentCheckDto> CreateCheckAsync(
-        int unitPriceListId, string companyName, string region, string claimTypeName,
-        int year, int month, string periodLabel,
-        string originalFileName, byte[] originalFileBytes,
-        decimal? exchangeRateEur,
-        ProgressPaymentImportPreviewDto parsed)
+    public async Task<ProgressPaymentCheckDto> CreateDraftCheckAsync(int unitPriceListId, string companyName, string region, HakedisCategory category)
     {
-        var originalPath = SaveOriginalFile(companyName, year, month, originalFileName, originalFileBytes);
-
         var check = new ProgressPaymentCheck
         {
             UnitPriceListId = unitPriceListId,
             CompanyName = companyName,
             Region = region,
-            ClaimTypeName = claimTypeName,
-            Year = year,
-            Month = month,
-            PeriodLabel = periodLabel,
-            OriginalFileName = originalFileName,
-            OriginalFilePath = originalPath,
-            ExchangeRateEur = exchangeRateEur,
-            ExchangeRateEnteredAt = exchangeRateEur.HasValue ? DateTime.Now : null,
-            // Firma Toplamı = itemize edilmiş satırların toplamı (satır bazlı Fark hesabıyla tutarlı olan tek rakam budur).
-            // GENEL ICMAL özet sayfasındaki toplam bazı hakediş türlerinde itemize edilmemiş bir taban bedel içerebilir
-            // (gerçek veriyle doğrulandı) — bu yüzden satır bazlı kontrolün referansı olarak kullanılmaz.
-            CompanyTotal = parsed.Items.Count > 0 ? parsed.Items.Sum(i => i.CompanyLineTotal) : (parsed.DetectedCompanyGrandTotal ?? 0),
+            Category = category,
+            Stage = HakedisControlStage.CategorySelected,
             Status = ProgressPaymentCheckStatus.Taslak,
             CreatedAt = DateTime.Now,
         };
         _db.ProgressPaymentChecks.Add(check);
         await _db.SaveChangesAsync();
+        return MapCheck(check, new List<ProgressPaymentCheckItem>());
+    }
+
+    public async Task SetStageAsync(int checkId, HakedisControlStage stage)
+    {
+        var check = await _db.ProgressPaymentChecks.FindAsync(checkId);
+        if (check is null) return;
+        check.Stage = stage;
+        await _db.SaveChangesAsync();
+    }
+
+    public async Task<int> GetUnresolvedPriceItemCountAsync(int checkId)
+    {
+        return await _db.ProgressPaymentCheckItems.CountAsync(i =>
+            i.ProgressPaymentCheckId == checkId && !i.IsExcluded &&
+            (i.MatchStatus == MaterialMatchStatus.Unmatched || i.MatchStatus == MaterialMatchStatus.FuzzyPending));
+    }
+
+    public async Task<ProgressPaymentCheckDto> AttachExcelAsync(
+        int checkId, string claimTypeName,
+        int year, int month, string periodLabel,
+        string originalFileName, byte[] originalFileBytes,
+        decimal? exchangeRateEur,
+        ProgressPaymentImportPreviewDto parsed)
+    {
+        var check = await _db.ProgressPaymentChecks.FindAsync(checkId)
+            ?? throw new InvalidOperationException("Kontrol kaydı bulunamadı.");
+
+        var originalPath = SaveOriginalFile(check.CompanyName, year, month, originalFileName, originalFileBytes);
+
+        check.ClaimTypeName = claimTypeName;
+        check.Year = year;
+        check.Month = month;
+        check.PeriodLabel = periodLabel;
+        check.OriginalFileName = originalFileName;
+        check.OriginalFilePath = originalPath;
+        check.ExchangeRateEur = exchangeRateEur;
+        check.ExchangeRateEnteredAt = exchangeRateEur.HasValue ? DateTime.Now : null;
+        // Firma Toplamı = itemize edilmiş satırların toplamı (satır bazlı Fark hesabıyla tutarlı olan tek rakam budur).
+        // GENEL ICMAL özet sayfasındaki toplam bazı hakediş türlerinde itemize edilmemiş bir taban bedel içerebilir
+        // (gerçek veriyle doğrulandı) — bu yüzden satır bazlı kontrolün referansı olarak kullanılmaz.
+        check.CompanyTotal = parsed.Items.Count > 0 ? parsed.Items.Sum(i => i.CompanyLineTotal) : (parsed.DetectedCompanyGrandTotal ?? 0);
+        check.Stage = HakedisControlStage.PriceReviewInProgress;
+        await _db.SaveChangesAsync();
+
+        var unitPriceListId = check.UnitPriceListId;
+        var companyName = check.CompanyName;
 
         foreach (var dto in parsed.Items)
         {
@@ -590,6 +620,19 @@ public class ProgressPaymentCheckService : IProgressPaymentCheckService
         if (!File.Exists(check.OriginalFilePath))
             throw new InvalidOperationException("Orijinal hakediş dosyası bulunamadı: " + check.OriginalFilePath);
 
+        // Form/AI kontrolünde (bkz. FormKontrol sayfası) tespit edilen sorunlar da aynı satıra not olarak eklensin.
+        var latestJobId = await _db.AiAnalysisJobs
+            .Where(j => j.ProgressPaymentCheckId == checkId)
+            .OrderByDescending(j => j.CreatedAt)
+            .Select(j => (int?)j.Id)
+            .FirstOrDefaultAsync();
+        var formIssuesByItemId = latestJobId.HasValue
+            ? await _db.AiComparisonResults
+                .Where(r => r.JobId == latestJobId.Value && r.ProgressPaymentCheckItemId != null && r.Status != AiComparisonStatus.Uygun)
+                .GroupBy(r => r.ProgressPaymentCheckItemId!.Value)
+                .ToDictionaryAsync(g => g.Key, g => string.Join(" ", g.Select(r => r.Explanation)))
+            : new Dictionary<int, string>();
+
         using var wb = new XLWorkbook(check.OriginalFilePath); // orijinal dosya diskte değişmez, bu ayrı bir yeni dosyaya kaydedilecek
 
         var bySheet = items.Where(i => !string.IsNullOrEmpty(i.SheetName)).GroupBy(i => i.SheetName!);
@@ -613,6 +656,8 @@ public class ProgressPaymentCheckService : IProgressPaymentCheckService
             foreach (var (rowNo, item) in itemsByRow)
             {
                 var note = BuildExportNote(item);
+                if (formIssuesByItemId.TryGetValue(item.Id, out var formIssue) && !string.IsNullOrWhiteSpace(formIssue))
+                    note = string.IsNullOrEmpty(note) ? formIssue : $"{note} {formIssue}";
                 if (!string.IsNullOrEmpty(note))
                 {
                     var noteCell = ws.Cell(rowNo, c0);
@@ -706,6 +751,8 @@ public class ProgressPaymentCheckService : IProgressPaymentCheckService
         CompanyName = c.CompanyName,
         Region = c.Region,
         ClaimTypeName = c.ClaimTypeName,
+        Category = c.Category,
+        Stage = c.Stage,
         Year = c.Year,
         Month = c.Month,
         PeriodLabel = c.PeriodLabel,

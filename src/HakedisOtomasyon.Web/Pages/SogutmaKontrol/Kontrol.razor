@@ -1,7 +1,5 @@
 @page "/discipline/sogutma/kontrol"
 @inject IUnitPriceListService UnitPriceListService
-@inject IDialogService DialogService
-@inject NavigationManager Nav
 
 <PageTitle>Soğutma Hakediş Kontrolü</PageTitle>
 
@@ -83,7 +81,7 @@
             <MudButton Variant="Variant.Filled" Color="Color.Success" Size="Size.Large"
                        StartIcon="@Icons.Material.Filled.UploadFile"
                        Disabled="@(_activeList is null)"
-                       OnClick="OpenUploadDialog">
+                       Href="/discipline/sogutma/kontrol/yeni">
                 Hakediş Dosyasını Yükle ve Kontrol Et
             </MudButton>
             @if (_activeList is null)
@@ -115,16 +113,4 @@
         finally { _loading = false; }
     }
 
-    private async Task OpenUploadDialog()
-    {
-        if (_activeList is null) return;
-        var parameters = new DialogParameters { ["UnitPriceList"] = _activeList };
-        var options = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseOnEscapeKey = false };
-        var dialog = await DialogService.ShowAsync<CoolingCheckUploadDialog>("Hakediş Yükle", parameters, options);
-        var result = await dialog.Result;
-        if (!result.Canceled && result.Data is int checkId)
-        {
-            Nav.NavigateTo($"/discipline/sogutma/kontrol/{checkId}");
-        }
-    }
 }

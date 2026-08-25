@@ -1,0 +1,99 @@
+@page "/discipline/sogutma/kontrol/yeni"
+@inject IUnitPriceListService UnitPriceListService
+@inject IProgressPaymentCheckService CheckService
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+
+<PageTitle>Yeni Hakediş Kontrolü</PageTitle>
+
+<HakedisAsamaGostergesi CurrentIndex="0" />
+
+<MudText Typo="Typo.h5" Style="font-weight:700" Class="mb-1">Yeni Hakediş Kontrolü</MudText>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+    Önce hakediş türünü seçin — AI'nin servis formunda hangi alanlara bakacağını bu seçim belirler.
+</MudText>
+
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate Color="Color.Primary" />
+}
+else if (_activeList is null)
+{
+    <MudAlert Severity="Severity.Warning">
+        Bu firma/bölge için aktif birim fiyat listesi bulunamadı. Önce
+        <MudLink Href="/discipline/sogutma/kontrol/fiyat-listesi">Birim Fiyat Yönetimi</MudLink>'nden bir liste içe aktarın.
+    </MudAlert>
+}
+else
+{
+    <MudGrid Spacing="2">
+        @foreach (var category in Categories)
+        {
+            <MudItem xs="12" sm="6" md="3">
+                <MudPaper Class="pa-4 cursor-pointer" Elevation="@(_submitting ? 0 : 2)" Style="height:100%;transition:box-shadow .15s"
+                          @onclick="@(() => SelectAsync(category))">
+                    <MudStack AlignItems="AlignItems.Center" Spacing="2">
+                        <MudIcon Icon="@CategoryIcon(category)" Size="Size.Large" Color="Color.Primary" />
+                        <MudText Typo="Typo.subtitle1" Align="Align.Center" Style="font-weight:600">@category.DisplayName()</MudText>
+                    </MudStack>
+                </MudPaper>
+            </MudItem>
+        }
+    </MudGrid>
+}
+
+<style>
+    .cursor-pointer { cursor: pointer; }
+    .cursor-pointer:hover { box-shadow: 0 4px 14px rgba(0,0,0,.12); }
+</style>
+
+@code {
+    private const string DefaultCompany = "İNTİKOŞ";
+    private const string DefaultRegion = "İÇ ANADOLU";
+
+    private static readonly HakedisCategory[] Categories =
+    {
+        HakedisCategory.CompressorReplacement, HakedisCategory.GlycolUsage, HakedisCategory.EvapReplacement,
+        HakedisCategory.PartialRenovation, HakedisCategory.GasUsage, HakedisCategory.Monitoring,
+        HakedisCategory.PeriodicMaintenance, HakedisCategory.AdditionalWork,
+    };
+
+    private bool _loading = true;
+    private bool _submitting;
+    private UnitPriceListDto? _activeList;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _activeList = await UnitPriceListService.GetActiveAsync(DefaultCompany, DefaultRegion);
+        _loading = false;
+    }
+
+    private async Task SelectAsync(HakedisCategory category)
+    {
+        if (_activeList is null || _submitting) return;
+        _submitting = true;
+        try
+        {
+            var draft = await CheckService.CreateDraftCheckAsync(_activeList.Id, _activeList.CompanyName, _activeList.Region, category);
+            Nav.NavigateTo($"/discipline/sogutma/kontrol/{draft.Id}/excel");
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Kontrol kaydı oluşturulamadı: {ex.Message}", Severity.Error);
+            _submitting = false;
+        }
+    }
+
+    private static string CategoryIcon(HakedisCategory category) => category switch
+    {
+        HakedisCategory.CompressorReplacement => Icons.Material.Filled.SwapHoriz,
+        HakedisCategory.GlycolUsage => Icons.Material.Filled.Opacity,
+        HakedisCategory.EvapReplacement => Icons.Material.Filled.AcUnit,
+        HakedisCategory.PartialRenovation => Icons.Material.Filled.Construction,
+        HakedisCategory.GasUsage => Icons.Material.Filled.LocalFireDepartment,
+        HakedisCategory.Monitoring => Icons.Material.Filled.MonitorHeart,
+        HakedisCategory.PeriodicMaintenance => Icons.Material.Filled.EventRepeat,
+        HakedisCategory.AdditionalWork => Icons.Material.Filled.AddTask,
+        _ => Icons.Material.Filled.Category,
+    };
+}

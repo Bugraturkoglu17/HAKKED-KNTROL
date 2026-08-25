@@ -1,4 +1,5 @@
 using SogutmaHakedisKontrol.Application.DTOs;
+using SogutmaHakedisKontrol.Application.Interfaces;
 using SogutmaHakedisKontrol.Domain.Entities;
 using SogutmaHakedisKontrol.Domain.Enums;
 using SogutmaHakedisKontrol.Infrastructure.Data;
@@ -14,7 +15,7 @@ public class AiAnalysisPipelineServiceTests
     private const string Company = "İNTİKOŞ";
     private const string Region = "İÇ ANADOLU";
 
-    private static (AppDbContext db, ProgressPaymentCheck check) SeedCheck(AppDbContext db)
+    private static (AppDbContext db, ProgressPaymentCheck check) SeedCheck(AppDbContext db, HakedisCategory? category = null)
     {
         var list = new UnitPriceList { CompanyName = Company, Region = Region, Name = "Test Liste", IsActive = true, CreatedAt = DateTime.Now };
         db.UnitPriceLists.Add(list);
@@ -24,7 +25,7 @@ public class AiAnalysisPipelineServiceTests
         {
             UnitPriceListId = list.Id,
             CompanyName = Company, Region = Region,
-            ClaimTypeName = "SABİT FİYAT", Year = 2026, Month = 5, PeriodLabel = "Mayıs 2026",
+            ClaimTypeName = "SABİT FİYAT", Category = category, Year = 2026, Month = 5, PeriodLabel = "Mayıs 2026",
             OriginalFileName = "test.xlsx", OriginalFilePath = "test.xlsx",
             Status = ProgressPaymentCheckStatus.Taslak, CreatedAt = DateTime.Now,
         };
@@ -39,7 +40,17 @@ public class AiAnalysisPipelineServiceTests
         var manHours = new ManHoursCalculator();
         var usage = new AiUsageTracker(db);
         var appPath = new FakeAppPathService();
-        return new AiAnalysisPipelineService(db, vision, rasterizer, storeMatching, manHours, usage, appPath);
+        var categoryProfiles = new CategoryControlProfileRegistry(new ICategoryControlProfile[]
+        {
+            new CompressorReplacementProfile(), new GlycolUsageProfile(), new EvapReplacementProfile(),
+            new PartialRenovationProfile(), new GasUsageProfile(), new MonitoringProfile(),
+            new PeriodicMaintenanceProfile(), new AdditionalWorkProfile(),
+        });
+        var comparisonStrategies = new CategoryComparisonStrategyRegistry(new ICategoryComparisonStrategy[]
+        {
+            new DefaultCategoryComparisonStrategy(db), new GasUsageComparisonStrategy(db),
+        });
+        return new AiAnalysisPipelineService(db, vision, rasterizer, storeMatching, manHours, usage, appPath, categoryProfiles, comparisonStrategies);
     }
 
     [Fact]
@@ -234,6 +245,56 @@ public class AiAnalysisPipelineServiceTests
         Assert.Equal("Servis_Formlari_1.pdf", pages.Single(p => p.PageNumber == 2).SourceFileName);
         Assert.Equal("Servis_Formlari_2.pdf", pages.Single(p => p.PageNumber == 3).SourceFileName);
         Assert.Equal("Servis_Formlari_2.pdf", pages.Single(p => p.PageNumber == 4).SourceFileName);
+    }
+
+    /// <summary>Kategori bazlı mimari — GAZ KULLANIM kategorisinde hakediş 20 kg / form 10 kg ise
+    /// GasUsageComparisonStrategy devreye girmeli ve UygunDegil sonucu üretmeli (bkz. plan §6).</summary>
+    [Fact]
+    public async Task GazKullanimKategorisi_HakedisVeFormKgFarkliysaUygunDegilUretir()
+    {
+        using var db = TestDbFactory.Create();
+        var (_, check) = SeedCheck(db, HakedisCategory.GasUsage);
+        db.Stores.Add(new Store
+        {
+            CompanyName = Company, Region = Region, Code = "500", Name = "Gaz Test Mağaza",
+            NormalizedCode = "500", NormalizedName = "gaz test magaza", IsActive = true, CreatedAt = DateTime.Now,
+        });
+        db.SaveChanges();
+        var store = db.Stores.Single(s => s.Code == "500");
+
+        db.ProgressPaymentCheckItems.Add(new ProgressPaymentCheckItem
+        {
+            ProgressPaymentCheckId = check.Id,
+            StoreCode = "500", StoreName = "Gaz Test Mağaza", MatchedStoreId = store.Id,
+            VisitDate = new DateTime(2026, 5, 20),
+            IsServiceItem = false,
+            OriginalMaterialName = "GAZ R404A",
+            Quantity = 20, Unit = "kg",
+            CompanyUnitPrice = 100, CompanyLineTotal = 2000,
+            CreatedAt = DateTime.Now,
+        });
+        db.SaveChanges();
+
+        var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
+        {
+            DocumentType = "SERVICE_FORM",
+            Store = new AiStoreCandidateDto { CodeRaw = "500", Confidence = 0.95m },
+            ServiceDate = "2026-05-20",
+            Materials = new List<AiMaterialExtractionDto>
+            {
+                new() { RawName = "GAZ", NormalizedName = "gaz", Quantity = 10, Unit = "kg", Confidence = 0.9m },
+            },
+        }));
+
+        var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
+        var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
+
+        var results = await pipeline.GetComparisonResultsAsync(job.Id);
+        var gasResult = results.Single(r => r.ItemType == "GasUsage" && r.Description == "Gaz Miktarı (kg)");
+
+        Assert.Equal("UygunDegil", gasResult.Status);
+        Assert.Contains("20", gasResult.Explanation);
+        Assert.Contains("10", gasResult.Explanation);
     }
 
     private static AiVisionCallResultDto Success(AiPageExtractionDto extraction) => new()

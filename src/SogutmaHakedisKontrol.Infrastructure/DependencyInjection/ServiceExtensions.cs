@@ -36,6 +36,21 @@ public static class ServiceExtensions
         services.AddScoped<IAiVisionClient, OpenAiVisionClient>();
         services.AddScoped<IAiAnalysisPipelineService, AiAnalysisPipelineService>();
 
+        // ── Kategori bazlı kontrol profilleri / karşılaştırma stratejileri ──
+        services.AddScoped<ICategoryControlProfile, CompressorReplacementProfile>();
+        services.AddScoped<ICategoryControlProfile, GlycolUsageProfile>();
+        services.AddScoped<ICategoryControlProfile, EvapReplacementProfile>();
+        services.AddScoped<ICategoryControlProfile, PartialRenovationProfile>();
+        services.AddScoped<ICategoryControlProfile, GasUsageProfile>();
+        services.AddScoped<ICategoryControlProfile, MonitoringProfile>();
+        services.AddScoped<ICategoryControlProfile, PeriodicMaintenanceProfile>();
+        services.AddScoped<ICategoryControlProfile, AdditionalWorkProfile>();
+        services.AddScoped<ICategoryControlProfileRegistry, CategoryControlProfileRegistry>();
+
+        services.AddScoped<ICategoryComparisonStrategy, DefaultCategoryComparisonStrategy>();
+        services.AddScoped<ICategoryComparisonStrategy, GasUsageComparisonStrategy>();
+        services.AddScoped<ICategoryComparisonStrategyRegistry, CategoryComparisonStrategyRegistry>();
+
         return services;
     }
 }

@@ -1,0 +1,562 @@
+@page "/discipline/sogutma/kontrol/{Id:int}/form"
+@using StoreDto = SogutmaHakedisKontrol.Application.DTOs.StoreDto
+@inject IAiAnalysisPipelineService Pipeline
+@inject IProgressPaymentCheckService CheckService
+@inject IStoreMasterService StoreMasterService
+@inject SogutmaHakedisKontrol.Application.Interfaces.IFilePickerService FilePicker
+@inject IPdfPageRasterizer PdfRasterizer
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject NavigationManager Nav
+
+<PageTitle>Form Kontrolü</PageTitle>
+
+<HakedisAsamaGostergesi CurrentIndex="2" />
+
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate Color="Color.Primary" />
+}
+else if (_check is null)
+{
+    <MudAlert Severity="Severity.Error">Kontrol kaydı bulunamadı.</MudAlert>
+}
+else
+{
+    <MudStack Row AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-1">
+        <div>
+            <MudText Typo="Typo.h5" Style="font-weight:700">Form Kontrolü</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                Seçilen hakediş türü: <b>@(_check.CategoryLabel ?? "Belirtilmemiş")</b> — @_check.CompanyName · @_check.Region · @_check.PeriodLabel
+            </MudText>
+        </div>
+        <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.ArrowBack"
+                   Href="@($"/discipline/sogutma/kontrol/{Id}")">
+            Fiyat Kontrolüne Dön
+        </MudButton>
+    </MudStack>
+    <MudDivider Class="my-3" />
+
+    @if (_initError != null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-4">
+            <MudText Typo="Typo.body2" Style="font-weight:600">Form kontrolü başlatılamadı</MudText>
+            <MudText Typo="Typo.caption" Style="white-space:pre-wrap">@_initError</MudText>
+        </MudAlert>
+    }
+
+    <MudPaper Class="pa-3 mb-4" Outlined>
+        <MudStack Row AlignItems="AlignItems.Center" Spacing="2" Class="mb-1">
+            <MudIcon Icon="@Icons.Material.Filled.UploadFile" Color="Color.Primary" />
+            <MudText Typo="Typo.subtitle1" Style="font-weight:600">Servis ve Bakım Formlarını Yükle</MudText>
+        </MudStack>
+        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-2 d-block">
+            Tek bir dosya alanına tüm servis/bakım formlarını (PDF, JPG, PNG) ekleyin — belge türünü AI
+            formun üzerindeki başlıktan kendisi ayırt eder, ayrı ayrı yüklemenize gerek yoktur.
+        </MudText>
+
+        <FileDropZone OnFilesSelected="AddFilesAsync" />
+
+        @foreach (var f in _files)
+        {
+            <MudStack Row AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-1 mt-2">
+                <div>
+                    <MudText Typo="Typo.body2">@f.Name</MudText>
+                    <MudText Typo="Typo.caption" Color="@FileStatusColor(f)">@FileStatusLabel(f)</MudText>
+                </div>
+                <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="@(() => RemoveFile(f))" />
+            </MudStack>
+        }
+    </MudPaper>
+
+    <MudPaper Class="pa-4 mb-4" Elevation="2">
+        @if (_running)
+        {
+            <MudText Typo="Typo.subtitle1" Style="font-weight:600" Class="mb-2">Hakediş Analizi Devam Ediyor</MudText>
+            <MudText Typo="Typo.body2" Class="mb-2">@_progressMessage</MudText>
+            @if (_progressTotal.HasValue && _progressTotal.Value > 0)
+            {
+                <MudProgressLinear Value="@ProgressPercent" Color="Color.Primary" Class="mb-1" />
+                <MudText Typo="Typo.caption" Color="Color.Secondary">@ProgressCounterLabel</MudText>
+            }
+            else
+            {
+                <MudProgressLinear Indeterminate Color="Color.Primary" />
+            }
+        }
+        else
+        {
+            <MudStack Row AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Style="flex-wrap:wrap" Spacing="2">
+                <MudStack Row AlignItems="AlignItems.Center" Spacing="2">
+                    <MudIcon Icon="@Icons.Material.Filled.SmartToy" Color="@OpenAiStatusColor" />
+                    <div>
+                        <MudText Typo="Typo.subtitle2" Style="font-weight:600">OpenAI — Model: GPT-5.5</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@OpenAiStatusLabel</MudText>
+                    </div>
+                </MudStack>
+                <MudStack Row Spacing="2">
+                    @if (_job != null)
+                    {
+                        <MudButton Variant="Variant.Text" OnClick="RetryFailedAsync" Disabled="@RetryButtonDisabled">
+                            @RetryButtonLabel
+                        </MudButton>
+                    }
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.AutoAwesome"
+                               Disabled="@AnalyzeButtonDisabled" OnClick="RunAnalysisAsync">
+                        Yapay Zeka ile Kontrol Et
+                    </MudButton>
+                </MudStack>
+            </MudStack>
+
+            @if (_storeCount == 0)
+            {
+                <MudAlert Severity="Severity.Warning" Dense Class="mt-3">
+                    Mağaza listesi yüklenmeden mağaza tespiti güvenilir yapılamaz.
+                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="OpenStoreImportDialog">Mağaza Listesi Yükle</MudButton>
+                </MudAlert>
+            }
+            @if (_openAiConfigured == false)
+            {
+                <MudAlert Severity="Severity.Error" Dense Class="mt-3">
+                    OpenAI API anahtarı yapılandırılmamış. Kontrol çalıştırılamaz.
+                </MudAlert>
+            }
+        }
+    </MudPaper>
+
+    @if (_job == null)
+    {
+        <MudAlert Severity="Severity.Info" Dense Class="mb-4">Henüz bir analiz çalıştırılmadı.</MudAlert>
+    }
+    else
+    {
+        <MudGrid Spacing="1" Class="mb-3">
+            <MudItem xs="6" md="2"><KpiStat Label="Toplam Kontrol" Value="@TotalResultsLabel" /></MudItem>
+            <MudItem xs="6" md="2"><KpiStat Label="Uygun" Value="@UygunCountLabel" Color="Color.Success" /></MudItem>
+            <MudItem xs="6" md="2"><KpiStat Label="Uygun Değil" Value="@UygunDegilCountLabel" Color="Color.Error" /></MudItem>
+            <MudItem xs="6" md="2"><KpiStat Label="Manuel Kontrol" Value="@ManuelKontrolCountLabel" Color="Color.Warning" /></MudItem>
+            <MudItem xs="6" md="2"><KpiStat Label="Eksik / Fazla" Value="@EksikFazlaCountLabel" Color="Color.Warning" /></MudItem>
+        </MudGrid>
+
+        <MudGrid Spacing="1" Class="mb-3">
+            <MudItem xs="6" md="2"><KpiStat Label="Servis Formu (AI)" Value="@ServiceFormPageCountLabel" /></MudItem>
+            <MudItem xs="6" md="2"><KpiStat Label="Bakım Formu (AI)" Value="@MaintenancePageCountLabel" /></MudItem>
+            <MudItem xs="6" md="2"><KpiStat Label="İcmal / Özet Sayfası" Value="@SummaryPageCountLabel" /></MudItem>
+            <MudItem xs="6" md="2"><KpiStat Label="Sınıflandırılamadı" Value="@UnknownPageCountLabel" Color="@UnknownPageColor" /></MudItem>
+            <MudItem xs="6" md="2"><KpiStat Label="Eşleşen Mağaza" Value="@MatchedStoreCountLabel" Color="Color.Success" /></MudItem>
+            <MudItem xs="6" md="2"><KpiStat Label="Reddedilen Servis Ücreti" Value="@RejectedServiceFeeCountLabel" Color="Color.Error" /></MudItem>
+        </MudGrid>
+
+        @if (_manualReviewPages.Count > 0)
+        {
+            <MudAlert Severity="Severity.Warning" Class="mb-3">
+                <MudText Typo="Typo.body2" Style="font-weight:600" Class="mb-1">@ManualReviewHeaderLabel</MudText>
+                @foreach (var p in _manualReviewPages)
+                {
+                    <MudStack Row AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-1">
+                        <MudText Typo="Typo.caption">@ManualReviewPageLabel(p)</MudText>
+                        @if (p.MatchedStoreId is null)
+                        {
+                            <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => CorrectStoreAsync(p))">Mağazayı Seç</MudButton>
+                        }
+                    </MudStack>
+                    @foreach (var m in ManualReviewMaterials(p))
+                    {
+                        <MudStack Row AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="ml-4 mb-1">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">@ManualReviewMaterialLabel(m)</MudText>
+                            <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => CorrectMaterialAsync(m))">Düzelt</MudButton>
+                        </MudStack>
+                    }
+                }
+            </MudAlert>
+        }
+
+        <MudPaper Elevation="1" Style="overflow-x:auto;max-width:100%">
+            <MudTable Items="@_results" Dense Hover Filter="@TableFilter" RowsPerPage="25">
+                <ToolBarContent>
+                    <MudGrid Spacing="1" AlignItems="AlignItems.Center">
+                        <MudItem xs="12" md="4">
+                            <MudTextField @bind-Value="_searchText" Placeholder="Mağaza veya kalem ara..."
+                                          Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                                          Immediate Dense Clearable Variant="Variant.Outlined" Class="mt-0" />
+                        </MudItem>
+                        <MudItem xs="12" md="6">
+                            <MudChipSet T="string" SelectionMode="SelectionMode.SingleSelection"
+                                        SelectedValue="_statusFilter" SelectedValueChanged="OnStatusFilterChanged"
+                                        Style="flex-wrap:wrap">
+                                <MudChip T="string" Value="@AllFilterValue" Size="Size.Small">Tümü</MudChip>
+                                <MudChip T="string" Value="@UygunFilterValue" Size="Size.Small" Color="Color.Success">Uygun</MudChip>
+                                <MudChip T="string" Value="@UygunDegilFilterValue" Size="Size.Small" Color="Color.Error">Uygun Değil</MudChip>
+                                <MudChip T="string" Value="@EksikFilterValue" Size="Size.Small" Color="Color.Warning">Eksik</MudChip>
+                                <MudChip T="string" Value="@FazlaFilterValue" Size="Size.Small" Color="Color.Warning">Fazla</MudChip>
+                                <MudChip T="string" Value="@ManuelKontrolFilterValue" Size="Size.Small" Color="Color.Warning">Manuel Kontrol</MudChip>
+                            </MudChipSet>
+                        </MudItem>
+                        <MudItem xs="12" md="2">
+                            <MudSwitch T="bool" @bind-Value="_onlyProblems" Color="Color.Error" Label="Yalnızca Sorunluları Göster" />
+                        </MudItem>
+                    </MudGrid>
+                </ToolBarContent>
+                <HeaderContent>
+                    <MudTh>Mağaza</MudTh>
+                    <MudTh>Tarih</MudTh>
+                    <MudTh>Belge</MudTh>
+                    <MudTh>Kontrol Kalemi</MudTh>
+                    <MudTh>Form Değeri</MudTh>
+                    <MudTh>Hakediş Değeri</MudTh>
+                    <MudTh>Sonuç</MudTh>
+                    <MudTh>Açıklama</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.StoreLabel</MudTd>
+                    <MudTd>@VisitDateLabel(context)</MudTd>
+                    <MudTd>@FormReferenceLabel(context)</MudTd>
+                    <MudTd>@context.Description</MudTd>
+                    <MudTd>@context.FormValue</MudTd>
+                    <MudTd>@context.HakedisValue</MudTd>
+                    <MudTd><MudChip T="string" Size="Size.Small" Color="@ResultColor(context.Status)">@ResultLabel(context.Status)</MudChip></MudTd>
+                    <MudTd>
+                        <MudTooltip Text="@context.Explanation">
+                            <MudText Typo="Typo.caption" Style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block">
+                                @context.Explanation
+                            </MudText>
+                        </MudTooltip>
+                    </MudTd>
+                </RowTemplate>
+                <PagerContent><MudTablePager /></PagerContent>
+                <NoRecordsContent><MudAlert Severity="Severity.Info" Dense>Kayıt yok.</MudAlert></NoRecordsContent>
+            </MudTable>
+        </MudPaper>
+    }
+
+    <MudStack Row Justify="Justify.SpaceBetween" Class="mt-4">
+        <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.ArrowBack"
+                   Href="@($"/discipline/sogutma/kontrol/{Id}")">
+            Fiyat Kontrolüne Dön
+        </MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large"
+                   EndIcon="@Icons.Material.Filled.ArrowForward" OnClick="ProceedToResultsAsync">
+            Kaydet ve Sonuca Geç
+        </MudButton>
+    </MudStack>
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private bool _loading = true;
+    private ProgressPaymentCheckDto? _check;
+    private string? _initError;
+
+    private List<PickedFile> _files = new();
+
+    private int _storeCount;
+    private bool _openAiConfigured = true;
+
+    private AiAnalysisJobDto? _job;
+    private List<AiDocumentPageDto> _pages = new();
+    private List<AiDocumentPageDto> _manualReviewPages = new();
+    private List<AiComparisonResultDto> _results = new();
+
+    private bool _running;
+    private string _progressMessage = string.Empty;
+    private int? _progressCurrent;
+    private int? _progressTotal;
+
+    private string _searchText = string.Empty;
+    private string _statusFilter = "all";
+    private bool _onlyProblems;
+
+    private const string AllFilterValue = "all";
+    private const string UygunFilterValue = "Uygun";
+    private const string UygunDegilFilterValue = "UygunDegil";
+    private const string EksikFilterValue = "Eksik";
+    private const string FazlaFilterValue = "Fazla";
+    private const string ManuelKontrolFilterValue = "ManuelKontrol";
+
+    private class PickedFile
+    {
+        public string Path { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+        public long Size { get; set; }
+        public int PageCount { get; set; }
+        public bool HasError { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _check = await CheckService.GetByIdAsync(Id);
+            if (_check != null)
+            {
+                await LoadStoreCountAsync();
+                DetectOpenAiConfigured();
+                await LoadJobAsync();
+                await CheckService.SetStageAsync(Id, HakedisControlStage.FormReviewInProgress);
+            }
+        }
+        catch (Exception ex)
+        {
+            _initError = ex.ToString();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task LoadStoreCountAsync()
+    {
+        var list = await StoreMasterService.GetAllAsync(_check!.CompanyName, _check!.Region);
+        _storeCount = list.Count;
+    }
+
+    private void DetectOpenAiConfigured()
+    {
+        var key = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
+        _openAiConfigured = string.IsNullOrWhiteSpace(key) == false;
+    }
+
+    private async Task LoadJobAsync()
+    {
+        _job = await Pipeline.GetLatestJobForCheckAsync(Id);
+        if (_job == null) return;
+        _pages = await Pipeline.GetPagesAsync(_job.Id);
+        _manualReviewPages = _pages.Where(p => p.RequiresManualReview).ToList();
+        _results = await Pipeline.GetComparisonResultsAsync(_job.Id);
+    }
+
+    private bool CanProceedToAnalysis => _files.Count > 0 && _files.All(f => !f.HasError);
+    private bool AnalyzeButtonDisabled => !CanProceedToAnalysis || !_openAiConfigured;
+    private bool RetryButtonDisabled => _job == null || _job.FailedPages == 0;
+    private string RetryButtonLabel => _job == null ? string.Empty : $"Başarısız Sayfaları Yeniden Dene ({_job.FailedPages})";
+
+    private Color OpenAiStatusColor => _openAiConfigured ? Color.Success : Color.Error;
+    private string OpenAiStatusLabel => _openAiConfigured ? "Bağlı" : "Yapılandırılmamış";
+
+    private double ProgressPercent
+    {
+        get
+        {
+            if (_progressTotal is null or 0) return 0;
+            var current = _progressCurrent ?? 0;
+            return 100.0 * current / _progressTotal.Value;
+        }
+    }
+
+    private string ProgressCounterLabel => $"{_progressCurrent ?? 0} / {_progressTotal ?? 0}";
+
+    private static Color FileStatusColor(PickedFile f) => f.HasError ? Color.Error : Color.Secondary;
+    private static string FileStatusLabel(PickedFile f) =>
+        f.HasError ? "Dosya okunamadı" : $"{f.PageCount} sayfa — {FormatSize(f.Size)} — Analize hazır";
+
+    private void RemoveFile(PickedFile f) => _files.Remove(f);
+
+    private async Task AddFilesAsync(IReadOnlyList<string> paths)
+    {
+        foreach (var path in paths)
+        {
+            if (_files.Any(f => f.Path == path)) continue;
+            _files.Add(await BuildPickedFileAsync(path));
+        }
+    }
+
+    private async Task<PickedFile> BuildPickedFileAsync(string path)
+    {
+        var file = new PickedFile { Path = path, Name = Path.GetFileName(path) };
+        try
+        {
+            file.Size = new FileInfo(path).Length;
+            var ext = Path.GetExtension(path).ToLowerInvariant();
+            file.PageCount = ext == ".pdf" ? PdfRasterizer.GetPageCount(await File.ReadAllBytesAsync(path)) : 1;
+        }
+        catch
+        {
+            file.HasError = true;
+            Snackbar.Add($"{file.Name} okunamadı. Dosya bozuk olabilir.", Severity.Error);
+        }
+        return file;
+    }
+
+    private static string FormatSize(long bytes)
+    {
+        if (bytes < 1024) return bytes + " B";
+        if (bytes < 1024 * 1024) return (bytes / 1024.0).ToString("0.#") + " KB";
+        return (bytes / 1024.0 / 1024.0).ToString("0.#") + " MB";
+    }
+
+    private async Task OpenStoreImportDialog()
+    {
+        var parameters = new DialogParameters { ["CompanyName"] = _check!.CompanyName, ["Region"] = _check!.Region };
+        var dialog = await DialogService.ShowAsync<HakedisOtomasyon.Web.Components.SogutmaKontrol.StoreImportDialog>("Mağaza Listesi İçe Aktar", parameters);
+        var result = await dialog.Result;
+        if (result.Canceled) return;
+        await LoadStoreCountAsync();
+        Snackbar.Add("Mağaza listesi güncellendi.", Severity.Success);
+    }
+
+    // Tek dosya alanı: tüm belgeler serviceForms olarak gönderilir — sayfa türü zaten
+    // içerik bazlı (pozisyon bağımsız) sınıflandırıldığı için ayrı bir "bakım formu" alanına gerek yok.
+    private async Task RunAnalysisAsync()
+    {
+        _running = true;
+        _progressMessage = "Başlatılıyor...";
+        _progressCurrent = null;
+        _progressTotal = null;
+        StateHasChanged();
+
+        try
+        {
+            var payload = new List<(byte[], string)>();
+            foreach (var f in _files)
+                payload.Add((await File.ReadAllBytesAsync(f.Path), f.Name));
+
+            var progress = new Progress<AiJobProgressUpdate>(OnProgressUpdate);
+            _job = await Pipeline.RunAsync(Id, payload, null, null, progress);
+
+            await LoadJobAsync();
+            Snackbar.Add("Yapay zeka kontrolü tamamlandı.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Analiz hatası: " + ex.Message, Severity.Error);
+        }
+        finally
+        {
+            _running = false;
+        }
+    }
+
+    private void OnProgressUpdate(AiJobProgressUpdate u)
+    {
+        _progressMessage = u.Message;
+        _progressCurrent = u.Current;
+        _progressTotal = u.Total;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private async Task RetryFailedAsync()
+    {
+        if (_job == null) return;
+        _running = true;
+        StateHasChanged();
+        try
+        {
+            var progress = new Progress<AiJobProgressUpdate>(u => { _progressMessage = u.Message; InvokeAsync(StateHasChanged); });
+            _job = await Pipeline.RetryFailedPagesAsync(_job.Id, progress);
+            await LoadJobAsync();
+            Snackbar.Add("Yeniden deneme tamamlandı.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Yeniden deneme hatası: " + ex.Message, Severity.Error);
+        }
+        finally
+        {
+            _running = false;
+        }
+    }
+
+    private async Task CorrectStoreAsync(AiDocumentPageDto page)
+    {
+        var parameters = new DialogParameters
+        {
+            ["CompanyName"] = _check!.CompanyName, ["Region"] = _check!.Region,
+            ["PageCodeRaw"] = page.StoreCodeRaw, ["PageNameRaw"] = page.StoreNameRaw,
+        };
+        var dialog = await DialogService.ShowAsync<AiStoreCorrectionDialog>("Mağazayı Kesinleştir", parameters);
+        var result = await dialog.Result;
+        if (result.Canceled || result.Data is not StoreDto selected) return;
+        await Pipeline.CorrectPageStoreAsync(page.Id, selected.Id);
+        await LoadJobAsync();
+        Snackbar.Add("Mağaza güncellendi.", Severity.Success);
+    }
+
+    private async Task CorrectMaterialAsync(AiPageMaterialDto material)
+    {
+        var parameters = new DialogParameters { ["Material"] = material };
+        var dialog = await DialogService.ShowAsync<AiMaterialCorrectionDialog>("Malzeme Miktarını Düzelt", parameters);
+        var result = await dialog.Result;
+        if (result.Canceled || result.Data is not ValueTuple<decimal?, string?, string?> correction) return;
+        await Pipeline.CorrectMaterialAsync(material.Id, correction.Item1, correction.Item2, correction.Item3);
+        await LoadJobAsync();
+        Snackbar.Add("Malzeme güncellendi.", Severity.Success);
+    }
+
+    private void OnStatusFilterChanged(string? value) => _statusFilter = value ?? AllFilterValue;
+
+    private Func<AiComparisonResultDto, bool> TableFilter => FilterResult;
+
+    private bool FilterResult(AiComparisonResultDto r)
+    {
+        if (_onlyProblems && r.Status == UygunFilterValue) return false;
+        if (_statusFilter != AllFilterValue && r.Status != _statusFilter) return false;
+        if (string.IsNullOrEmpty(_searchText)) return true;
+        var q = _searchText.Trim();
+        return r.StoreLabel.Contains(q, StringComparison.OrdinalIgnoreCase) || r.Description.Contains(q, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string VisitDateLabel(AiComparisonResultDto r) => r.VisitDate?.ToString("dd.MM.yyyy") ?? "-";
+    private static string FormReferenceLabel(AiComparisonResultDto r) => r.FormReference ?? "-";
+
+    private static IEnumerable<AiPageMaterialDto> ManualReviewMaterials(AiDocumentPageDto p) => p.Materials.Where(m => m.RequiresManualReview);
+
+    private static string ManualReviewPageLabel(AiDocumentPageDto p)
+    {
+        var docType = DocTypeLabel(p.DocumentType);
+        var source = p.SourceFileName ?? (p.SourceKind == "ServiceForm" ? "Servis Formu Dosyası" : "Bakım Formu Dosyası");
+        var store = p.StoreNameRaw ?? p.StoreCodeRaw ?? "Mağaza tespit edilemedi";
+        return $"{docType} — {source} Sayfa {p.PageNumber} — {store} — {p.ManualReviewReason}";
+    }
+
+    private static string ManualReviewMaterialLabel(AiPageMaterialDto m) => $"{m.RawName} miktarı manuel kontrol edilmeli";
+
+    private string ManualReviewHeaderLabel => $"Manuel kontrol gereken belgeler ({_manualReviewPages.Count})";
+
+    private string TotalResultsLabel => _results.Count.ToString();
+    private string UygunCountLabel => _job?.UygunItemCount.ToString() ?? "0";
+    private string UygunDegilCountLabel => _job?.UygunDegilItemCount.ToString() ?? "0";
+    private string ManuelKontrolCountLabel => _results.Count(r => r.Status == ManuelKontrolFilterValue).ToString();
+    private string EksikFazlaCountLabel => _job != null ? (_job.EksikItemCount + _job.FazlaItemCount).ToString() : "0";
+    private string ServiceFormPageCountLabel => _job?.ClassifiedServiceFormPageCount.ToString() ?? "0";
+    private string MaintenancePageCountLabel => _job?.ClassifiedMaintenancePageCount.ToString() ?? "0";
+    private string SummaryPageCountLabel => _job?.SummaryPageCount.ToString() ?? "0";
+    private string UnknownPageCountLabel => _job?.UnknownPageCount.ToString() ?? "0";
+    private Color UnknownPageColor => _job != null && _job.UnknownPageCount > 0 ? Color.Error : Color.Default;
+    private string MatchedStoreCountLabel => _job?.MatchedStoreCount.ToString() ?? "0";
+    private string RejectedServiceFeeCountLabel => _job?.RejectedServiceFeeCount.ToString() ?? "0";
+
+    private static Color ResultColor(string status) => status switch
+    {
+        "Uygun" => Color.Success,
+        "UygunDegil" => Color.Error,
+        "Eksik" or "Fazla" or "ManuelKontrol" => Color.Warning,
+        _ => Color.Warning,
+    };
+
+    private static string ResultLabel(string status) => status switch
+    {
+        "Uygun" => "Uygun",
+        "UygunDegil" => "Uygun Değil",
+        "Eksik" => "Eksik",
+        "Fazla" => "Fazla",
+        "ManuelKontrol" => "Manuel Kontrol",
+        _ => status,
+    };
+
+    private static string DocTypeLabel(string documentType) => documentType switch
+    {
+        "ServiceForm" => "Servis Formu",
+        "PeriodicMaintenanceForm" => "Bakım Formu",
+        "Summary" => "İcmal / Özet Sayfası",
+        "Unknown" => "Sınıflandırılamadı",
+        _ => documentType,
+    };
+
+    private async Task ProceedToResultsAsync()
+    {
+        await CheckService.SetStageAsync(Id, HakedisControlStage.FormReviewCompleted);
+        Nav.NavigateTo($"/discipline/sogutma/kontrol/{Id}/sonuc");
+    }
+}
