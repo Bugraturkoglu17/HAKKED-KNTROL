@@ -179,12 +179,7 @@ else
                     @if (context.ControlStatus == CheckItemControlStatus.BirimFiyatBulunamadi)
                     {
                         <MudIconButton Icon="@Icons.Material.Filled.AddCircleOutline" Size="Size.Small" Color="Color.Primary"
-                                       Title="Yeni Kalem Ekle" OnClick="@(() => AddNewItemAsync(context, useCompanyPrice: false))" />
-                        @if (context.CompanyUnitPrice > 0)
-                        {
-                            <MudIconButton Icon="@Icons.Material.Filled.VerifiedUser" Size="Size.Small" Color="Color.Success"
-                                           Title="Bu Fiyat Doğrudur, Sisteme Ekle" OnClick="@(() => AddNewItemAsync(context, useCompanyPrice: true))" />
-                        }
+                                       Title="Yeni Kalem Ekle" OnClick="@(() => AddNewItemAsync(context))" />
                     }
                     @if (context.ControlStatus == CheckItemControlStatus.FiyatHatasi)
                     {
@@ -329,7 +324,7 @@ else
         await LoadAsync();
     }
 
-    private async Task AddNewItemAsync(ProgressPaymentCheckItemDto item, bool useCompanyPrice)
+    private async Task AddNewItemAsync(ProgressPaymentCheckItemDto item)
     {
         if (_check is null) return;
 
@@ -351,22 +346,21 @@ else
             }
         }
 
+        // Firmanın hakedişte yazdığı fiyatla önceden doldurulur — kullanıcı burada düzeltip kaydedebilir.
         var dto = new UnitPriceItemDto
         {
             MaterialName = item.OriginalMaterialName,
             Spec = item.OriginalMaterialSpec,
             Unit = item.Unit,
-            Price = useCompanyPrice ? item.CompanyUnitPrice : 0,
+            Price = item.CompanyUnitPrice,
             Currency = "TRY",
         };
         var parameters = new DialogParameters { ["Item"] = dto };
-        var dialog = await DialogService.ShowAsync<CoolingPriceItemEditDialog>(
-            useCompanyPrice ? "Bu Fiyat Doğrudur — Sisteme Ekle" : "Yeni Birim Fiyat Kalemi", parameters);
+        var dialog = await DialogService.ShowAsync<CoolingPriceItemEditDialog>("Yeni Birim Fiyat Kalemi", parameters);
         var result = await dialog.Result;
         if (result.Canceled || result.Data is not UnitPriceItemDto newItem) return;
 
-        await CheckService.CreateAndMatchNewItemAsync(Id, new List<int> { item.Id }, newItem, _check.CompanyName,
-            useCompanyPrice ? "BuFiyatDogru" : "YeniKalemEkle");
+        await CheckService.CreateAndMatchNewItemAsync(Id, new List<int> { item.Id }, newItem, _check.CompanyName, "YeniKalemEkle");
         await LoadAsync();
         Snackbar.Add("Yeni birim fiyat kalemi eklendi ve eşleştirildi.", Severity.Success);
     }

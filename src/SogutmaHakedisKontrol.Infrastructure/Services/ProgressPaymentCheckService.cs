@@ -604,30 +604,22 @@ public class ProgressPaymentCheckService : IProgressPaymentCheckService
             int headerRow = itemsByRow.Keys.Min() - 1;
             int c0 = lastCol + 1;
 
-            ws.Cell(headerRow, c0 + 0).Value = "ORİJİNAL MALZEME ADI";
-            ws.Cell(headerRow, c0 + 1).Value = "EŞLEŞEN MALZEME";
-            ws.Cell(headerRow, c0 + 2).Value = "KONTROL BİRİM FİYATI (TL)";
-            ws.Cell(headerRow, c0 + 3).Value = "KULLANILAN KUR";
-            ws.Cell(headerRow, c0 + 4).Value = "HESAPLANAN TUTAR";
-            ws.Cell(headerRow, c0 + 5).Value = "FİRMA TUTARI";
-            ws.Cell(headerRow, c0 + 6).Value = "FARK";
-            ws.Cell(headerRow, c0 + 7).Value = "KONTROL DURUMU";
-            ws.Cell(headerRow, c0 + 8).Value = "KONTROL NOTU";
-            var headerRange = ws.Range(headerRow, c0, headerRow, c0 + 8);
-            headerRange.Style.Font.Bold = true;
-            headerRange.Style.Fill.BackgroundColor = XLColor.FromArgb(230, 230, 230);
+            // Firmaya giden dosyada tek ek kolon: KONTROL NOTU. Uygun satırlara hiçbir şey yazılmaz;
+            // yalnızca problemli satırlara kırmızı renkte açıklama yazılır (bkz. BuildExportNote).
+            ws.Cell(headerRow, c0).Value = "KONTROL NOTU";
+            ws.Cell(headerRow, c0).Style.Font.Bold = true;
+            ws.Cell(headerRow, c0).Style.Fill.BackgroundColor = XLColor.FromArgb(230, 230, 230);
 
             foreach (var (rowNo, item) in itemsByRow)
             {
-                ws.Cell(rowNo, c0 + 0).Value = item.OriginalMaterialName;
-                ws.Cell(rowNo, c0 + 1).Value = item.MatchedMaterialName ?? "";
-                if (item.ApprovedUnitPriceTry.HasValue) ws.Cell(rowNo, c0 + 2).Value = item.ApprovedUnitPriceTry.Value;
-                if (check.ExchangeRateEur.HasValue && item.ApprovedCurrency == "EUR") ws.Cell(rowNo, c0 + 3).Value = check.ExchangeRateEur.Value;
-                if (item.CalculatedLineTotal.HasValue) ws.Cell(rowNo, c0 + 4).Value = item.CalculatedLineTotal.Value;
-                ws.Cell(rowNo, c0 + 5).Value = item.CompanyLineTotal;
-                if (item.Difference.HasValue) ws.Cell(rowNo, c0 + 6).Value = item.Difference.Value;
-                ws.Cell(rowNo, c0 + 7).Value = ControlStatusLabel(item.ControlStatus);
-                ws.Cell(rowNo, c0 + 8).Value = BuildExportNote(item); // yalnızca problemli satırlara not — Uygun satırlar boş kalır
+                var note = BuildExportNote(item);
+                if (!string.IsNullOrEmpty(note))
+                {
+                    var noteCell = ws.Cell(rowNo, c0);
+                    noteCell.Value = note;
+                    noteCell.Style.Font.FontColor = CorrectionFontColor;
+                    noteCell.Style.Font.Bold = true;
+                }
 
                 // ── Yanlış birim fiyat "Düzelt" ile onaylandıysa: firmanın kendi hücresini onaylı fiyatla
                 // değiştir ve yalnızca bu hücreyi kırmızı işaretle. Formüller/diğer hücreler dokunulmaz.

@@ -211,16 +211,27 @@ public class ProgressPaymentPriceCorrectionTests
         var outPath = await svc.ExportControlledExcelAsync(check.Id);
         using var outWb = new XLWorkbook(outPath);
         var outWs = outWb.Worksheet("NİSAN");
-        int lastCol = 4; // orijinal 4 kolon, KONTROL NOTU = lastCol+9 = 13
-        int noteCol = lastCol + 9;
+        int lastCol = 4; // orijinal 4 kolon, tek ek kolon: KONTROL NOTU = lastCol+1 = 5
+        int noteCol = lastCol + 1;
+
+        Assert.Equal("KONTROL NOTU", outWs.Cell(1, noteCol).GetString());
 
         int emptyNotes = 0, filledNotes = 0;
         for (int r = 2; r <= 13; r++)
         {
-            var noteText = outWs.Cell(r, noteCol).GetString();
-            if (string.IsNullOrWhiteSpace(noteText)) emptyNotes++; else filledNotes++;
+            var noteCell = outWs.Cell(r, noteCol);
+            var noteText = noteCell.GetString();
+            if (string.IsNullOrWhiteSpace(noteText))
+            {
+                emptyNotes++;
+            }
+            else
+            {
+                filledNotes++;
+                Assert.True(noteCell.Style.Font.FontColor.Color.R > 100 && noteCell.Style.Font.FontColor.Color.G < 60); // kırmızı ton
+            }
         }
-        Assert.Equal(10, emptyNotes);  // 10 uygun satırda not yok
-        Assert.Equal(2, filledNotes);  // 2 hatalı satırda açıklama var
+        Assert.Equal(10, emptyNotes);  // 10 uygun satırda not yok — kolonlar tamamen boş
+        Assert.Equal(2, filledNotes);  // 2 hatalı satırda sadece kontrol notu var, kırmızı
     }
 }
