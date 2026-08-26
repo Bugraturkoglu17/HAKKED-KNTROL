@@ -161,23 +161,27 @@ public static class ProgressPaymentExcelParser
             var row = ws.Row(r);
             if (row.IsEmpty()) continue;
 
+            // Not: TryAdd kullanılır — aynı anlama gelen birden fazla kolon varsa (ör. "ONAYA SUNULAN
+            // MİKTAR" + "KESİLEN MİKTAR" + "ONAYLANAN MİKTAR" aynı satırda) SOLDAKİ/İLK kolon esas
+            // alınır; sağdaki türetilmiş/ek kolonlar (kesinti, onay tutarı vb.) üzerine yazmaz.
             var cols = new Dictionary<string, int>();
             foreach (var cell in row.CellsUsed())
             {
                 var norm = Normalize(cell.GetString());
                 var col = cell.Address.ColumnNumber;
-                if (norm.Contains("magazakodu")) cols["magazakodu"] = col;
-                else if (norm.Contains("magazaadi")) cols["magazaadi"] = col;
-                else if (norm == "format") cols["format"] = col;
-                else if (norm == "tarih") cols["tarih"] = col;
-                else if (norm.Contains("bakimformno") || norm.Contains("servisformno")) cols["bakimformno"] = col;
-                else if (norm.Contains("malzemekodu")) cols["malzemekodu"] = col;
-                else if (norm.Contains("malzemeadi")) cols["malzemeadi"] = col;
-                else if (norm.Contains("malzemetipi")) cols["malzemetipi"] = col;
-                else if (norm.Contains("miktari") || norm == "miktar") cols["miktari"] = col;
-                else if (norm.Contains("birimi") || norm == "birim") cols["birimi"] = col;
-                else if (norm == "fiyat" || norm.Contains("birimfiyat")) cols["fiyat"] = col;
-                else if (norm == "toplam") cols["toplam"] = col;
+                if (norm.Contains("magazakodu") || norm.Contains("magzkodu")) cols.TryAdd("magazakodu", col);
+                else if (norm.Contains("magazaadi")) cols.TryAdd("magazaadi", col);
+                else if (norm == "format") cols.TryAdd("format", col);
+                else if (norm == "tarih") cols.TryAdd("tarih", col);
+                else if (norm.Contains("bakimformno") || norm.Contains("servisformno") || norm.Contains("formno")
+                         || norm.Contains("sirano") || norm.Contains("belgeno")) cols.TryAdd("bakimformno", col);
+                else if (norm.Contains("malzemekodu")) cols.TryAdd("malzemekodu", col);
+                else if (norm.Contains("malzemeadi")) cols.TryAdd("malzemeadi", col);
+                else if (norm.Contains("malzemetipi")) cols.TryAdd("malzemetipi", col);
+                else if (norm.Contains("miktar")) cols.TryAdd("miktari", col); // "MİKTARI", "MİKTAR", "ONAYA SUNULAN MİKTAR" vb. hepsi yakalanır
+                else if (norm.Contains("birimi") || norm == "birim") cols.TryAdd("birimi", col);
+                else if (norm == "fiyat" || norm.Contains("birimfiyat")) cols.TryAdd("fiyat", col);
+                else if (norm == "toplam") cols.TryAdd("toplam", col);
             }
 
             if (cols.ContainsKey("malzemeadi") && cols.ContainsKey("miktari"))
