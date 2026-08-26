@@ -419,7 +419,9 @@ public class AiAnalysisPipelineServiceTests
         var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
 
         var results = await pipeline.GetComparisonResultsAsync(job.Id);
-        var result = results.Single(r => r.Description == "test malzeme");
+        // Kontrol yönü EXCEL → FORM'dur: Description artık hakediş satırının kendi malzeme adı
+        // (OriginalMaterialName = "TEST MALZEME"), formdan okunan ada göre değil.
+        var result = results.Single(r => r.Description == "TEST MALZEME");
         Assert.Equal("Uygun", result.Status); // form no/mağaza/tarih doğrulandı, malzeme kategori kontrolü çalıştı ve uyumlu çıktı
     }
 
