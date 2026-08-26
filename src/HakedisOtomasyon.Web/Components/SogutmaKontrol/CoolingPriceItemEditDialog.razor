@@ -26,7 +26,7 @@
                 <MudTextField @bind-Value="Item.Unit" Label="Birim" Variant="Variant.Outlined" MaxLength="50" />
             </MudItem>
             <MudItem xs="12" md="4">
-                <MudNumericField T="decimal" @bind-Value="Item.Price" Label="Fiyat *" Variant="Variant.Outlined" Min="0" Format="N4" />
+                <MudNumericField T="decimal" @bind-Value="Item.Price" Label="Fiyat *" Variant="Variant.Outlined" Min="0" Format="#,##0.####" />
             </MudItem>
             <MudItem xs="12" md="4">
                 <MudSelect T="string" @bind-Value="Item.Currency" Label="Para Birimi" Variant="Variant.Outlined">

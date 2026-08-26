@@ -33,7 +33,15 @@ public static class ServiceExtensions
         services.AddScoped<IPdfPageRasterizer, PdfPageRasterizerService>();
         services.AddScoped<IManHoursCalculator, ManHoursCalculator>();
         services.AddScoped<IAiUsageTracker, AiUsageTracker>();
-        services.AddScoped<IAiVisionClient, OpenAiVisionClient>();
+
+        // AI_PROVIDER=ollama (varsayılan) → yerel, internete çıkmayan vision modeli (kurumsal ağ
+        // engeli OpenAI'ı bloklarsa bile çalışır). AI_PROVIDER=openai → OpenAI Responses API.
+        var aiProvider = (Environment.GetEnvironmentVariable("AI_PROVIDER") ?? "ollama").Trim().ToLowerInvariant();
+        if (aiProvider == "openai")
+            services.AddScoped<IAiVisionClient, OpenAiVisionClient>();
+        else
+            services.AddScoped<IAiVisionClient, OllamaVisionClient>();
+
         services.AddScoped<IAiAnalysisPipelineService, AiAnalysisPipelineService>();
 
         // ── Kategori bazlı kontrol profilleri / karşılaştırma stratejileri ──

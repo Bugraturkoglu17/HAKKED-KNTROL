@@ -24,3 +24,6 @@ WebViewData/
 # Windows
 Thumbs.db
 Desktop.ini
+
+# Publish/release çıktıları — GitHub'ın 100MB dosya limitini aşıyor, git'e girmez
+publish/

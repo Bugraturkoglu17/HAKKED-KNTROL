@@ -10,6 +10,9 @@ public interface IAiVisionClient
 {
     bool IsConfigured { get; }
 
+    /// <summary>UI'da gösterilecek sağlayıcı/model etiketi, örn. "OpenAI — Model: gpt-5.5" veya "Ollama (yerel) — Model: qwen2.5vl:7b".</summary>
+    string ProviderLabel { get; }
+
     /// <summary>extraInstruction verilirse, seçilen hakediş kategorisine özel yönerge genel sistem talimatına eklenir.</summary>
     Task<AiVisionCallResultDto> AnalyzePageAsync(byte[] pageImagePng, string? extraInstruction = null, CancellationToken cancellationToken = default);
 }

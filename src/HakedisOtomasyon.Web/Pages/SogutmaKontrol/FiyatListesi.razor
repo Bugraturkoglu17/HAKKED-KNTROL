@@ -89,7 +89,7 @@
             <MudTd DataLabel="Malzeme Adı">@context.MaterialName</MudTd>
             <MudTd DataLabel="Tip">@context.Spec</MudTd>
             <MudTd DataLabel="Birim">@context.Unit</MudTd>
-            <MudTd DataLabel="Fiyat" Style="font-weight:600">@context.Price.ToString("N4")</MudTd>
+            <MudTd DataLabel="Fiyat" Style="font-weight:600">@context.Price.ToString("#,##0.####")</MudTd>
             <MudTd DataLabel="Para Birimi">
                 <MudChip T="string" Size="Size.Small" Color="@(context.Currency == "EUR" ? Color.Info : Color.Default)">@context.Currency</MudChip>
             </MudTd>

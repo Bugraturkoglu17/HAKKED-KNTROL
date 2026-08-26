@@ -36,6 +36,7 @@ public class OpenAiVisionClient : IAiVisionClient
     }
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_apiKey);
+    public string ProviderLabel => $"OpenAI — Model: {_model}";
 
     public async Task<AiVisionCallResultDto> AnalyzePageAsync(byte[] pageImagePng, string? extraInstruction = null, CancellationToken cancellationToken = default)
     {
@@ -52,7 +53,7 @@ public class OpenAiVisionClient : IAiVisionClient
                 ResponseContentPart.CreateInputTextPart(
                     "Bu görsel bir soğutma servis/bakım formu sayfasıdır. Sistem talimatına göre analiz et " +
                     "ve yalnızca JSON şemasına uygun sonuç döndür."),
-                ResponseContentPart.CreateInputImagePart(BinaryData.FromBytes(pageImagePng), ResponseImageDetailLevel.High),
+                ResponseContentPart.CreateInputImagePart(BinaryData.FromBytes(pageImagePng, "image/png"), ResponseImageDetailLevel.High),
             };
 
             var systemInstruction = string.IsNullOrWhiteSpace(extraInstruction)

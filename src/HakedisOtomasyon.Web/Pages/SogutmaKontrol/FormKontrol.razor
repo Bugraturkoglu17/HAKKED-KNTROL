@@ -3,6 +3,7 @@
 @inject IProgressPaymentCheckService CheckService
 @inject SogutmaHakedisKontrol.Application.Interfaces.IFilePickerService FilePicker
 @inject IPdfPageRasterizer PdfRasterizer
+@inject IAiVisionClient VisionClient
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @inject NavigationManager Nav
@@ -90,7 +91,7 @@ else
                 <MudStack Row AlignItems="AlignItems.Center" Spacing="2">
                     <MudIcon Icon="@Icons.Material.Filled.SmartToy" Color="@OpenAiStatusColor" />
                     <div>
-                        <MudText Typo="Typo.subtitle2" Style="font-weight:600">OpenAI — Model: GPT-5.5</MudText>
+                        <MudText Typo="Typo.subtitle2" Style="font-weight:600">@VisionClient.ProviderLabel</MudText>
                         <MudText Typo="Typo.caption" Color="Color.Secondary">@OpenAiStatusLabel</MudText>
                     </div>
                 </MudStack>
@@ -111,7 +112,7 @@ else
             @if (_openAiConfigured == false)
             {
                 <MudAlert Severity="Severity.Error" Dense Class="mt-3">
-                    OpenAI API anahtarı yapılandırılmamış. Kontrol çalıştırılamaz.
+                    AI sağlayıcısı yapılandırılmamış. Kontrol çalıştırılamaz.
                 </MudAlert>
             }
         }
@@ -294,8 +295,7 @@ else
 
     private void DetectOpenAiConfigured()
     {
-        var key = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
-        _openAiConfigured = string.IsNullOrWhiteSpace(key) == false;
+        _openAiConfigured = VisionClient.IsConfigured;
     }
 
     private async Task LoadJobAsync()

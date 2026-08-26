@@ -4,7 +4,7 @@
     <TitleContent><MudText Typo="Typo.h6">Miktarı Düzelt</MudText></TitleContent>
     <DialogContent>
         <MudText Typo="Typo.body2" Class="mb-2">@MaterialName</MudText>
-        <MudNumericField T="decimal" @bind-Value="_value" Label="Miktar" Variant="Variant.Outlined" Format="N4" Autofocus />
+        <MudNumericField T="decimal" @bind-Value="_value" Label="Miktar" Variant="Variant.Outlined" Format="0.####" Autofocus />
         <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-1">
             Bu değişiklik denetim notuna işlenecektir.
         </MudText>

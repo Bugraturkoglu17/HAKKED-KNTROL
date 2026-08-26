@@ -28,4 +28,37 @@ public class PdfPageRasterizerService : IPdfPageRasterizer
     }
 
     public int GetPageCount(byte[] pdfBytes) => Conversion.GetPageCount(pdfBytes);
+
+    public List<byte[]> RasterizeDocumentToPngPages(byte[] fileBytes, string fileName, int dpi = 220)
+    {
+        if (IsImageFile(fileName, fileBytes))
+            return new List<byte[]> { ConvertToPng(fileBytes) };
+
+        return RasterizeToPngPages(fileBytes, dpi);
+    }
+
+    private static bool IsImageFile(string fileName, byte[] bytes)
+    {
+        var ext = Path.GetExtension(fileName).ToLowerInvariant();
+        if (ext is ".jpg" or ".jpeg" or ".png") return true;
+        if (ext == ".pdf") return false;
+
+        // Uzantı belirsiz/eksikse magic byte ile karar ver.
+        if (bytes.Length >= 4 && bytes[0] == 0x25 && bytes[1] == 0x50 && bytes[2] == 0x44 && bytes[3] == 0x46)
+            return false; // "%PDF"
+        if (bytes.Length >= 4 && bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47)
+            return true; // PNG
+        if (bytes.Length >= 3 && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF)
+            return true; // JPEG
+        return false;
+    }
+
+    private static byte[] ConvertToPng(byte[] imageBytes)
+    {
+        using var bitmap = SKBitmap.Decode(imageBytes)
+            ?? throw new InvalidOperationException("Görsel dosyası okunamadı veya bozuk.");
+        using var ms = new MemoryStream();
+        bitmap.Encode(ms, SKEncodedImageFormat.Png, 100);
+        return ms.ToArray();
+    }
 }

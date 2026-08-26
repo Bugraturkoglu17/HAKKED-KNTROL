@@ -70,7 +70,8 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
 
         if (!_visionClient.IsConfigured)
             throw new InvalidOperationException(
-                "OpenAI API anahtarı yapılandırılmamış (OPENAI_API_KEY). Lütfen ortam değişkenini ayarlayıp uygulamayı yeniden başlatın.");
+                "AI sağlayıcısı yapılandırılmamış. AI_PROVIDER=openai ise OPENAI_API_KEY'i .env dosyasına " +
+                "girin; AI_PROVIDER=ollama ise Ollama'nın çalıştığından ve modelin indirildiğinden emin olun.");
 
         Report(progress, AiJobStatus.Pending, "PDF hazırlanıyor...");
 
@@ -95,7 +96,7 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
         foreach (var (bytes, fileName) in validServiceForms)
         {
             var path = SavePdf(check, fileName, bytes);
-            var pages = _rasterizer.RasterizeToPngPages(bytes);
+            var pages = _rasterizer.RasterizeDocumentToPngPages(bytes, fileName);
             sourceDocuments.Add(new AiSourceDocument
             {
                 JobId = job.Id,
@@ -117,7 +118,9 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
         if (maintenanceFormsPdf is { Length: > 0 })
             job.MaintenanceFormsFilePath = SavePdf(check, maintenanceFormsFileName ?? "periyodik-bakim.pdf", maintenanceFormsPdf);
 
-        var maintenancePages = maintenanceFormsPdf is { Length: > 0 } ? _rasterizer.RasterizeToPngPages(maintenanceFormsPdf) : new List<byte[]>();
+        var maintenancePages = maintenanceFormsPdf is { Length: > 0 }
+            ? _rasterizer.RasterizeDocumentToPngPages(maintenanceFormsPdf, maintenanceFormsFileName ?? "periyodik-bakim.pdf")
+            : new List<byte[]>();
 
         job.TotalServiceFormPages = servicePages.Count;
         job.TotalMaintenancePages = maintenancePages.Count;
@@ -645,14 +648,16 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
                     .ToList();
                 if (pagesInDoc.Count == 0 || !File.Exists(doc.FilePath)) continue;
 
-                var allPages = _rasterizer.RasterizeToPngPages(await File.ReadAllBytesAsync(doc.FilePath, cancellationToken));
+                var allPages = _rasterizer.RasterizeDocumentToPngPages(await File.ReadAllBytesAsync(doc.FilePath, cancellationToken), doc.FileName);
                 var images = pagesInDoc.ToDictionary(p => p.Id, p => allPages[p.PageNumber - doc.PageOffset - 1]);
                 await AnalyzePagesAsync(job, pagesInDoc, images, $"Servis formları (retry) — {doc.FileName}", progress, cancellationToken, extraInstruction);
             }
         }
         if (byMaintenance.Count > 0 && job.MaintenanceFormsFilePath != null && File.Exists(job.MaintenanceFormsFilePath))
         {
-            var allPages = _rasterizer.RasterizeToPngPages(await File.ReadAllBytesAsync(job.MaintenanceFormsFilePath, cancellationToken));
+            var allPages = _rasterizer.RasterizeDocumentToPngPages(
+                await File.ReadAllBytesAsync(job.MaintenanceFormsFilePath, cancellationToken),
+                job.MaintenanceFormsFileName ?? "periyodik-bakim.pdf");
             var images = byMaintenance.ToDictionary(p => p.Id, p => allPages[p.PageNumber - 1]);
             await AnalyzePagesAsync(job, byMaintenance, images, "Periyodik bakım formları (retry)", progress, cancellationToken, extraInstruction);
         }

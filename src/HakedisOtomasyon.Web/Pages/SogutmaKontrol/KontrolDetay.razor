@@ -160,7 +160,7 @@ else
                         <MudText Typo="Typo.caption" Style="max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block">@context.MatchedMaterialName</MudText>
                     </MudTooltip>
                 </MudTd>
-                <MudTd>@context.Quantity.ToString("N2")</MudTd>
+                <MudTd>@context.Quantity.ToString("0.####")</MudTd>
                 <MudTd>@context.Unit</MudTd>
                 <MudTd>@(context.ApprovedUnitPriceTry?.ToString("N2") ?? "—")</MudTd>
                 <MudTd>@context.CompanyUnitPrice.ToString("N2")</MudTd>
