@@ -38,6 +38,14 @@ public class AiAnalysisJobDto
     public int RejectedServiceFeeCount { get; set; }
     public int ManHoursDiscrepancyCount { get; set; }
 
+    // ── Mağaza Eşleşmesi özeti (kategoriden bağımsız — bkz. StoreFormReconciliationBuilder) ──
+    public int ExceldekiMagazaCount { get; set; }
+    public int FormlardaBulunanMagazaCount { get; set; }
+    public int TamEslesenMagazaCount { get; set; }
+    public int EksikMagazaCount { get; set; }
+    public int FazlaYabanciMagazaCount { get; set; }
+    public int EslesmeyenFormCount { get; set; }
+
     public string StatusLabel => Status switch
     {
         AiJobStatus.Pending => "Bekliyor",
@@ -135,4 +143,12 @@ public class AiComparisonResultDto
     public string? HakedisValue { get; set; }
     public string Status { get; set; } = string.Empty;
     public string Explanation { get; set; } = string.Empty;
+}
+
+/// <summary>"Mağaza Eşleşmesi" kartının detay listesindeki tek bir 🔴 satırı.</summary>
+public class StoreReconciliationIssueDto
+{
+    public string StoreLabel { get; set; } = string.Empty;
+    public string IssueType { get; set; } = string.Empty;
+    public string Message { get; set; } = string.Empty;
 }

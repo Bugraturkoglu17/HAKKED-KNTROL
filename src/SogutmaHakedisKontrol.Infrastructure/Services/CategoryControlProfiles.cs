@@ -84,7 +84,9 @@ public sealed class AdditionalWorkProfile : CategoryControlProfileBase
     public override HakedisCategory Category => HakedisCategory.AdditionalWork;
     public override string AiInstructionSupplement =>
         "Bu bir İLAVE İŞLER hakedişi kontrolüdür. Servis formunda öncelikle şunları ara: " +
-        "yapılan ilave iş, malzeme, miktar, birim, adam × saat, çalışma açıklaması.";
+        "yapılan ilave iş, malzeme, miktar, birim, adam × saat, çalışma açıklaması. " +
+        "Ayrıca formda servis ziyaretinin ŞEHİRİÇİ mi ŞEHİRDIŞI mı olduğuna dair bir işaret varsa " +
+        "(mesafe, açıklama, form başlığı) onu work_performed_raw veya description_raw içinde belirt.";
 }
 
 /// <summary>Kategori seçilmemiş (eski kayıt) veya bilinmeyen durumlarda kullanılan boş/nötr profil — AI'ye ek yönerge eklemez.</summary>

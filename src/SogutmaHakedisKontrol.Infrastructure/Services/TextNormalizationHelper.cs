@@ -44,6 +44,15 @@ public static class TextNormalizationHelper
         return NonAlnumRegex.Replace(lowered.Replace("-", ""), "");
     }
 
+    /// <summary>Mağaza kimliği anahtarı: kod varsa normalize edilmiş kod, yoksa normalize edilmiş ad
+    /// kullanılır. Excel satırları (StoreCode/StoreName) ve AI'nin okuduğu ham mağaza bilgisi
+    /// (StoreCodeRaw/StoreNameRaw) arasında tutarlı karşılaştırma için tek bir yerden üretilir.</summary>
+    public static string StoreKey(string? code, string? name)
+    {
+        var normCode = NormalizeCode(code);
+        return !string.IsNullOrEmpty(normCode) ? normCode : NormalizeName(name);
+    }
+
     public static double SimilarityRatio(string a, string b)
     {
         if (a == b) return 1.0;

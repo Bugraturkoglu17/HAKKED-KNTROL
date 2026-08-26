@@ -22,6 +22,10 @@ public interface IAiAnalysisPipelineService
     Task<List<AiDocumentPageDto>> GetPagesAsync(int jobId);
     Task<List<AiComparisonResultDto>> GetComparisonResultsAsync(int jobId);
 
+    /// <summary>Kategoriden bağımsız mağaza/form eşleşme özetinin detay satırları (eksik mağaza,
+    /// fazla/yabancı mağaza, eşleşmeyen form) — sayısal özet <see cref="AiAnalysisJobDto"/> üzerinde.</summary>
+    Task<List<StoreReconciliationIssueDto>> GetStoreReconciliationIssuesAsync(int jobId);
+
     /// <summary>Kullanıcının manuel düzelttiği malzeme miktarını kaydeder (AI'nın orijinal değeri korunur).</summary>
     Task CorrectMaterialAsync(int materialId, decimal? correctedQuantity, string? correctedUnit, string? note);
 

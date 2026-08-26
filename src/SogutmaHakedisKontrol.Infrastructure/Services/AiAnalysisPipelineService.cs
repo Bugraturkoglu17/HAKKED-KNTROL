@@ -162,6 +162,7 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
         Report(progress, AiJobStatus.Comparing, "Malzeme ve servis ücreti kontrolleri yapılıyor...");
         await _db.SaveChangesAsync(cancellationToken);
         await _comparisonStrategies.Get(check.Category).BuildAsync(job, cancellationToken);
+        await StoreFormReconciliationBuilder.PersistMissingStoreRowsAsync(_db, job, cancellationToken);
         Report(progress, AiJobStatus.Comparing, "Hakediş karşılaştırması tamamlanıyor...");
 
         // ── Tamamlandı ────────────────────────────────────────────────────
@@ -401,12 +402,7 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
 
     /// <summary>Dış mağaza ana listesi kullanılmadığı için sayfadaki ham mağaza kodu/adını normalize ederek
     /// mağaza kimliği olarak kullanır — kod varsa öncelikli, yoksa ada düşer.</summary>
-    private static string RawStoreKey(AiDocumentPage p)
-    {
-        var code = TextNormalizationHelper.NormalizeCode(p.StoreCodeRaw ?? string.Empty);
-        if (!string.IsNullOrEmpty(code)) return code;
-        return TextNormalizationHelper.NormalizeName(p.StoreNameRaw ?? string.Empty);
-    }
+    private static string RawStoreKey(AiDocumentPage p) => TextNormalizationHelper.StoreKey(p.StoreCodeRaw, p.StoreNameRaw);
 
     // ------------------------------------------------------------------ //
     //  HAKEDİŞ KARŞILAŞTIRMASI — bkz. ICategoryComparisonStrategy (CategoryComparisonStrategies.cs)
@@ -437,6 +433,12 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
         var pages = await _db.AiDocumentPages.Where(p => p.JobId == jobId).ToListAsync();
         var results = await _db.AiComparisonResults.Where(r => r.JobId == jobId).ToListAsync();
 
+        var checkItems = await _db.ProgressPaymentCheckItems
+            .Where(i => i.ProgressPaymentCheckId == job.ProgressPaymentCheckId)
+            .ToListAsync();
+        var serviceFormPages = pages.Where(p => p.DocumentType == AiDocumentType.ServiceForm).ToList();
+        var reconciliation = StoreFormReconciliationBuilder.Compute(jobId, serviceFormPages, checkItems);
+
         return new AiAnalysisJobDto
         {
             Id = job.Id,
@@ -465,6 +467,12 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
             FazlaItemCount = results.Count(r => r.Status == AiComparisonStatus.Fazla),
             RejectedServiceFeeCount = results.Count(r => r.ItemType == AiComparisonItemType.ServiceFee && r.Status == AiComparisonStatus.UygunDegil),
             ManHoursDiscrepancyCount = results.Count(r => r.ItemType == AiComparisonItemType.ManHours && r.Status == AiComparisonStatus.UygunDegil),
+            ExceldekiMagazaCount = reconciliation.ExceldekiMagazaCount,
+            FormlardaBulunanMagazaCount = reconciliation.FormlardaBulunanMagazaCount,
+            TamEslesenMagazaCount = reconciliation.TamEslesenMagazaCount,
+            EksikMagazaCount = reconciliation.EksikMagazaCount,
+            FazlaYabanciMagazaCount = reconciliation.FazlaYabanciMagazaCount,
+            EslesmeyenFormCount = reconciliation.EslesmeyenFormCount,
         };
     }
 
@@ -575,6 +583,48 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
         }).ToList();
     }
 
+    public async Task<List<StoreReconciliationIssueDto>> GetStoreReconciliationIssuesAsync(int jobId)
+    {
+        var job = await _db.AiAnalysisJobs.FindAsync(jobId);
+        if (job is null) return new List<StoreReconciliationIssueDto>();
+
+        var pages = await _db.AiDocumentPages
+            .Where(p => p.JobId == jobId && p.DocumentType == AiDocumentType.ServiceForm)
+            .ToListAsync();
+        var checkItems = await _db.ProgressPaymentCheckItems
+            .Where(i => i.ProgressPaymentCheckId == job.ProgressPaymentCheckId)
+            .ToListAsync();
+
+        var reconciliation = StoreFormReconciliationBuilder.Compute(jobId, pages, checkItems);
+        var issues = new List<StoreReconciliationIssueDto>();
+
+        foreach (var m in reconciliation.EksikMagazalar)
+            issues.Add(new StoreReconciliationIssueDto
+            {
+                StoreLabel = m.StoreLabel,
+                IssueType = "Eksik Mağaza",
+                Message = $"{m.StoreLabel} — Hakedişte mevcut ancak servis formu bulunamadı.",
+            });
+
+        foreach (var m in reconciliation.FazlaYabanciMagazalar)
+            issues.Add(new StoreReconciliationIssueDto
+            {
+                StoreLabel = m.StoreLabel,
+                IssueType = "Fazla/Yabancı Mağaza",
+                Message = $"{m.StoreLabel} — Servis formu yüklenmiş ancak hakediş Excelinde bu mağazaya ait kayıt bulunamadı.",
+            });
+
+        foreach (var f in reconciliation.EslesmeyenFormlar)
+            issues.Add(new StoreReconciliationIssueDto
+            {
+                StoreLabel = f.StoreLabel,
+                IssueType = "Eşleşmeyen Form",
+                Message = f.Error.Explanation,
+            });
+
+        return issues;
+    }
+
     // ------------------------------------------------------------------ //
     //  MANUEL DÜZELTME
     // ------------------------------------------------------------------ //
@@ -613,6 +663,7 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
         var check = job is null ? null : await _db.ProgressPaymentChecks.FindAsync(job.ProgressPaymentCheckId);
         if (job is null || check is null) return;
         await _comparisonStrategies.Get(check.Category).BuildAsync(job, CancellationToken.None);
+        await StoreFormReconciliationBuilder.PersistMissingStoreRowsAsync(_db, job, CancellationToken.None);
     }
 
     // ------------------------------------------------------------------ //
@@ -666,6 +717,7 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
         {
             await ApplyBusinessRulesAsync(job, cancellationToken);
             await _comparisonStrategies.Get(check.Category).BuildAsync(job, cancellationToken);
+            await StoreFormReconciliationBuilder.PersistMissingStoreRowsAsync(_db, job, cancellationToken);
         }
 
         var refreshedPages = await _db.AiDocumentPages.Where(p => p.JobId == job.Id).ToListAsync(cancellationToken);

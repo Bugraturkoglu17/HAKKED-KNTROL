@@ -399,6 +399,180 @@ public class GasUsageComparisonStrategy : ICategoryComparisonStrategy
     }
 }
 
+/// <summary>
+/// İLAVE İŞLER hakedişi için özel karşılaştırma: malzeme ve adam-saat kontrolü
+/// <see cref="DefaultCategoryComparisonStrategy"/> ile aynıdır, ancak servis ücreti kuralları farklıdır —
+/// her servis ziyareti için Şehiriçi/Şehirdışı Servis Ücreti ZORUNLUDUR (yoksa "Servis Ücreti Eksik") ve
+/// aynı ziyarette (aynı form no + aynı mağaza/tarih) birden fazla servis ücreti MÜKERRERDİR. Farklı
+/// tarihli gerçek ayrı ziyaretlerin servis ücretleri birbirini etkilemez (her biri kendi FormNumberMatcher
+/// grubunda ayrı değerlendirilir). Eşleştirme FormNumberMatcher ile form numarası üzerinden yapılır.
+/// </summary>
+public class AdditionalWorkComparisonStrategy : ICategoryComparisonStrategy
+{
+    private const decimal ManHoursTolerance = 0.1m;
+    private const decimal MaterialQuantityTolerance = 0.01m;
+
+    private readonly AppDbContext _db;
+    public AdditionalWorkComparisonStrategy(AppDbContext db) => _db = db;
+
+    public HakedisCategory? Category => HakedisCategory.AdditionalWork;
+
+    public async Task BuildAsync(AiAnalysisJob job, CancellationToken cancellationToken)
+    {
+        var existing = await _db.AiComparisonResults.Where(r => r.JobId == job.Id).ToListAsync(cancellationToken);
+        _db.AiComparisonResults.RemoveRange(existing);
+
+        var pages = await _db.AiDocumentPages
+            .Where(p => p.JobId == job.Id && p.DocumentType == AiDocumentType.ServiceForm)
+            .Include(p => p.Materials)
+            .ToListAsync(cancellationToken);
+
+        var checkItems = await _db.ProgressPaymentCheckItems
+            .Where(i => i.ProgressPaymentCheckId == job.ProgressPaymentCheckId)
+            .ToListAsync(cancellationToken);
+
+        var results = new List<AiComparisonResult>();
+
+        foreach (var page in pages)
+        {
+            var (sameVisit, error) = FormNumberMatcher.Match(job.Id, page, checkItems);
+            if (error != null) { results.Add(error); continue; }
+
+            var first = sameVisit![0];
+            var storeLabel = first.StoreName ?? first.StoreCode ?? "Bilinmeyen Mağaza";
+
+            // ── Malzeme: form → hakediş (eşleşme / uygun değil / eksik) ──
+            var matchedHakedisMaterialIds = new HashSet<int>();
+            foreach (var mat in page.Materials)
+            {
+                var effectiveQty = mat.UserCorrectedQuantity ?? mat.Quantity;
+                var searchName = TextNormalizationHelper.NormalizeName(mat.NormalizedName ?? mat.RawName);
+
+                var candidate = sameVisit
+                    .Where(i => !i.IsServiceItem)
+                    .Select(i => (Item: i, Score: TextNormalizationHelper.SimilarityRatio(searchName, TextNormalizationHelper.NormalizeName(i.OriginalMaterialName))))
+                    .OrderByDescending(x => x.Score)
+                    .FirstOrDefault();
+
+                if (candidate.Item != null && candidate.Score >= 0.6)
+                {
+                    matchedHakedisMaterialIds.Add(candidate.Item.Id);
+                    var hakedisQty = candidate.Item.Quantity;
+                    var formStr = effectiveQty.HasValue ? $"{effectiveQty.Value:0.##} {mat.UserCorrectedUnit ?? mat.Unit}" : "Okunamadı";
+                    var hakedisStr = $"{hakedisQty:0.##} {candidate.Item.Unit}";
+
+                    if (!effectiveQty.HasValue || mat.RequiresManualReview)
+                    {
+                        results.Add(ComparisonResultFactory.New(job.Id, page, storeLabel, AiComparisonItemType.Material, mat.NormalizedName ?? mat.RawName,
+                            formStr, hakedisStr, AiComparisonStatus.ManuelKontrol,
+                            $"\"{mat.RawName}\" için okunan miktar belirsiz — manuel kontrol edilmeli.", candidate.Item.Id));
+                    }
+                    else if (Math.Abs(effectiveQty.Value - hakedisQty) <= MaterialQuantityTolerance)
+                    {
+                        results.Add(ComparisonResultFactory.New(job.Id, page, storeLabel, AiComparisonItemType.Material, mat.NormalizedName ?? mat.RawName,
+                            formStr, hakedisStr, AiComparisonStatus.Uygun, "Servis formu ile hakediş miktarı uyumlu.", candidate.Item.Id));
+                    }
+                    else
+                    {
+                        results.Add(ComparisonResultFactory.New(job.Id, page, storeLabel, AiComparisonItemType.Material, mat.NormalizedName ?? mat.RawName,
+                            formStr, hakedisStr, AiComparisonStatus.UygunDegil,
+                            $"Servis formunda {formStr}, hakedişte {hakedisStr} girilmiş.", candidate.Item.Id));
+                    }
+                }
+                else
+                {
+                    var formStr = effectiveQty.HasValue ? $"{effectiveQty.Value:0.##} {mat.UserCorrectedUnit ?? mat.Unit}" : "Okunamadı";
+                    results.Add(ComparisonResultFactory.New(job.Id, page, storeLabel, AiComparisonItemType.Material, mat.NormalizedName ?? mat.RawName,
+                        formStr, "—", AiComparisonStatus.Eksik,
+                        $"Servis formunda \"{mat.RawName}\" bulunuyor ancak hakedişte bu kaleme rastlanmadı."));
+                }
+            }
+
+            // ── Malzeme: hakediş → form (fazla / formda bulunamadı) ──────
+            foreach (var item in sameVisit.Where(i => !i.IsServiceItem && !matchedHakedisMaterialIds.Contains(i.Id)))
+            {
+                results.Add(ComparisonResultFactory.New(job.Id, page, storeLabel, AiComparisonItemType.Material, item.OriginalMaterialName,
+                    "—", $"{item.Quantity:0.##} {item.Unit}", AiComparisonStatus.Fazla,
+                    $"Hakedişte \"{item.OriginalMaterialName}\" bulunuyor fakat servis formunda bulunamadı.", item.Id));
+            }
+
+            // ── Adam-saat ──────────────────────────────────────────────
+            if (page.PayableManHours.HasValue)
+            {
+                var hakedisManHours = sameVisit
+                    .Where(i => i.IsServiceItem && TextNormalizationHelper.NormalizeName(i.OriginalMaterialName).Contains("adamsaat"))
+                    .Sum(i => i.Quantity);
+
+                var formStr = $"{page.PayableManHours.Value:0.##} saat";
+                var hakedisStr = $"{hakedisManHours:0.##} saat";
+                if (Math.Abs(page.PayableManHours.Value - hakedisManHours) <= ManHoursTolerance)
+                {
+                    results.Add(ComparisonResultFactory.New(job.Id, page, storeLabel, AiComparisonItemType.ManHours, "Adam-Saat",
+                        formStr, hakedisStr, AiComparisonStatus.Uygun, "Formdaki çalışma sürelerine göre hesaplanan adam-saat hakedişle uyumlu."));
+                }
+                else
+                {
+                    results.Add(ComparisonResultFactory.New(job.Id, page, storeLabel, AiComparisonItemType.ManHours, "Adam-Saat",
+                        formStr, hakedisStr, AiComparisonStatus.UygunDegil,
+                        $"Formdaki çalışma sürelerine göre toplam {page.CalculatedManHours:0.##} adam-saat oluşmaktadır. " +
+                        $"Kural gereği 4 saat düşülerek en fazla {page.PayableManHours:0.##} adam-saat ödenebilir."));
+                }
+            }
+            else if (page.DocumentType == AiDocumentType.ServiceForm && sameVisit.Any(i => i.IsServiceItem &&
+                     TextNormalizationHelper.NormalizeName(i.OriginalMaterialName).Contains("adamsaat")))
+            {
+                results.Add(ComparisonResultFactory.New(job.Id, page, storeLabel, AiComparisonItemType.ManHours, "Adam-Saat",
+                    "Okunamadı", null, AiComparisonStatus.ManuelKontrol,
+                    "Hakedişte adam-saat kalemi var ancak servis formunda personel/çalışma saati bilgisi bulunamadı — tahmin edilmedi."));
+            }
+
+            // ── Servis ücreti (şehiriçi/şehirdışı) — İLAVE İŞLER'e özel kurallar ──
+            // Her servis ziyareti için servis ücreti ZORUNLUDUR; aynı ziyarette (aynı form no +
+            // aynı mağaza/tarih grubu — bkz. FormNumberMatcher adım 2) birden fazlası MÜKERRERDİR.
+            var serviceFeeItems = sameVisit.Where(i => i.IsServiceItem &&
+                (TextNormalizationHelper.NormalizeName(i.OriginalMaterialName).Contains("sehirici") ||
+                 TextNormalizationHelper.NormalizeName(i.OriginalMaterialName).Contains("sehirdisi"))).ToList();
+
+            if (serviceFeeItems.Count == 0)
+            {
+                var tarihStr = page.ServiceDate.HasValue ? page.ServiceDate.Value.ToString("dd.MM.yyyy") : "bilinmeyen tarihli";
+                results.Add(ComparisonResultFactory.New(job.Id, page, storeLabel, AiComparisonItemType.ServiceFee, "Servis Ücreti Eksik",
+                    "—", "—", AiComparisonStatus.Eksik,
+                    $"\"{page.FormNumber}\" numaralı {tarihStr} servis formunun karşılığında hakedişte Şehiriçi/Şehirdışı Servis Ücreti bulunamadı."));
+            }
+            else if (serviceFeeItems.Count > 1)
+            {
+                foreach (var fee in serviceFeeItems)
+                {
+                    results.Add(ComparisonResultFactory.New(job.Id, page, storeLabel, AiComparisonItemType.ServiceFee, "Mükerrer Servis Ücreti",
+                        fee.OriginalMaterialName, $"{fee.Quantity:0.##} adet", AiComparisonStatus.UygunDegil,
+                        "Aynı mağaza ve aynı servis tarihi için birden fazla servis ücreti talep edilmiştir.", fee.Id));
+                }
+            }
+            else
+            {
+                var fee = serviceFeeItems[0];
+                if (page.ServiceFeeRejectedDueToMaintenance)
+                {
+                    results.Add(ComparisonResultFactory.New(job.Id, page, storeLabel, AiComparisonItemType.ServiceFee, fee.OriginalMaterialName,
+                        "Periyodik bakım mevcut", $"{fee.Quantity:0.##} adet", AiComparisonStatus.UygunDegil,
+                        $"{page.ServiceDate:dd.MM.yyyy} tarihinde bu mağazada periyodik bakım bulunmaktadır. " +
+                        "Aynı tarih için ayrıca şehir içi/şehir dışı servis ücreti ödenemez.", fee.Id));
+                }
+                else
+                {
+                    results.Add(ComparisonResultFactory.New(job.Id, page, storeLabel, AiComparisonItemType.ServiceFee, fee.OriginalMaterialName,
+                        "Servis ziyareti mevcut", $"{fee.Quantity:0.##} adet", AiComparisonStatus.Uygun,
+                        "Servis ücreti mevcut ve uygundur.", fee.Id));
+                }
+            }
+        }
+
+        _db.AiComparisonResults.AddRange(results);
+        await _db.SaveChangesAsync(cancellationToken);
+    }
+}
+
 /// <summary>Kategoriye göre karşılaştırma stratejisini seçer; eşleşme yoksa genel/varsayılan stratejiye düşer.</summary>
 public class CategoryComparisonStrategyRegistry : ICategoryComparisonStrategyRegistry
 {

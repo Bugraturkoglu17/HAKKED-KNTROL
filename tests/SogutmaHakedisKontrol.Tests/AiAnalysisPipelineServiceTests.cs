@@ -48,6 +48,7 @@ public class AiAnalysisPipelineServiceTests
         var comparisonStrategies = new CategoryComparisonStrategyRegistry(new ICategoryComparisonStrategy[]
         {
             new DefaultCategoryComparisonStrategy(db), new GasUsageComparisonStrategy(db),
+            new AdditionalWorkComparisonStrategy(db),
         });
         return new AiAnalysisPipelineService(db, vision, rasterizer, manHours, usage, appPath, categoryProfiles, comparisonStrategies);
     }
@@ -336,9 +337,13 @@ public class AiAnalysisPipelineServiceTests
         var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
         var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
 
-        var result = Assert.Single(await pipeline.GetComparisonResultsAsync(job.Id));
+        var results = await pipeline.GetComparisonResultsAsync(job.Id);
+        var result = results.Single(r => r.ItemType == "Material" && r.Description == "Form Hakedişte Bulunamadı");
         Assert.Equal("Eksik", result.Status);
-        Assert.Equal("Form Hakedişte Bulunamadı", result.Description);
+
+        // Form no hiç Excel'de bulunamadığı için hangi Excel satırının buna karşılık geldiği belli değil —
+        // dolayısıyla tek Excel satırı (form 15527) da ayrıca "Eksik Mağaza" (formu yok) olarak işaretlenir.
+        Assert.Contains(results, r => r.ItemType == "StoreMatch" && r.Description == "Mağaza Eşleşmesi");
     }
 
     [Fact] // TEST 3 — Form numarası okunamıyor
@@ -354,9 +359,13 @@ public class AiAnalysisPipelineServiceTests
         var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
         var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
 
-        var result = Assert.Single(await pipeline.GetComparisonResultsAsync(job.Id));
+        var results = await pipeline.GetComparisonResultsAsync(job.Id);
+        var result = results.Single(r => r.ItemType == "Material" && r.Description == "Form Numarası Okunamadı");
         Assert.Equal("ManuelKontrol", result.Status);
-        Assert.Equal("Form Numarası Okunamadı", result.Description);
+
+        // Form no okunamadığı için hangi Excel satırına ait olduğu belli değil — tek Excel satırı
+        // (form 15527) da ayrıca "Eksik Mağaza" (formu yok) olarak işaretlenir.
+        Assert.Contains(results, r => r.ItemType == "StoreMatch" && r.Description == "Mağaza Eşleşmesi");
     }
 
     [Fact] // TEST 4 — Form no eşleşti ama mağaza kodu farklı

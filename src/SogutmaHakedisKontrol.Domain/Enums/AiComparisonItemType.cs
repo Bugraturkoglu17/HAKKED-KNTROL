@@ -6,4 +6,5 @@ public enum AiComparisonItemType
     ManHours = 2,
     ServiceFee = 3,
     GasUsage = 4,
+    StoreMatch = 5,
 }

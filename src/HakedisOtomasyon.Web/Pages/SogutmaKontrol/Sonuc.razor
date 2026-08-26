@@ -169,7 +169,8 @@ else
         _showAll ? _items : _items.Where(i => i.ControlStatus != CheckItemControlStatus.Uygun).ToList();
 
     private List<AiComparisonResultDto> FormRows =>
-        _showAll ? _formResults : _formResults.Where(r => r.Status != "Uygun").ToList();
+        (_showAll ? _formResults : _formResults.Where(r => r.Status != "Uygun"))
+        .OrderBy(r => r.StoreLabel).ThenBy(r => r.VisitDate).ToList();
 
     private string FormMismatchCount => _job?.UygunDegilItemCount.ToString() ?? "0";
     private string FormMissingCount => _job != null ? (_job.EksikItemCount + _job.FazlaItemCount).ToString() : "0";

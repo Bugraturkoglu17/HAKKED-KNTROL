@@ -140,6 +140,29 @@ else
             <MudItem xs="6" md="2"><KpiStat Label="Reddedilen Servis Ücreti" Value="@RejectedServiceFeeCountLabel" Color="Color.Error" /></MudItem>
         </MudGrid>
 
+        <MudPaper Elevation="1" Class="pa-3 mb-3">
+            <MudText Typo="Typo.subtitle1" Class="mb-2" Style="font-weight:600">Mağaza Eşleşmesi</MudText>
+            <MudGrid Spacing="1" Class="mb-2">
+                <MudItem xs="6" md="2"><KpiStat Label="Exceldeki Mağaza" Value="@_job.ExceldekiMagazaCount.ToString()" /></MudItem>
+                <MudItem xs="6" md="2"><KpiStat Label="Formlarda Bulunan" Value="@_job.FormlardaBulunanMagazaCount.ToString()" /></MudItem>
+                <MudItem xs="6" md="2"><KpiStat Label="Tam Eşleşen" Value="@_job.TamEslesenMagazaCount.ToString()" Color="Color.Success" /></MudItem>
+                <MudItem xs="6" md="2"><KpiStat Label="Eksik Mağaza" Value="@_job.EksikMagazaCount.ToString()" Color="@(_job.EksikMagazaCount > 0 ? Color.Error : Color.Default)" /></MudItem>
+                <MudItem xs="6" md="2"><KpiStat Label="Fazla/Yabancı Mağaza" Value="@_job.FazlaYabanciMagazaCount.ToString()" Color="@(_job.FazlaYabanciMagazaCount > 0 ? Color.Error : Color.Default)" /></MudItem>
+                <MudItem xs="6" md="2"><KpiStat Label="Eşleşmeyen Form" Value="@_job.EslesmeyenFormCount.ToString()" Color="@(_job.EslesmeyenFormCount > 0 ? Color.Error : Color.Default)" /></MudItem>
+            </MudGrid>
+            @if (_storeIssues.Count > 0)
+            {
+                @foreach (var issue in _storeIssues)
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Error" Class="d-block">🔴 @issue.Message</MudText>
+                }
+            }
+            else
+            {
+                <MudText Typo="Typo.caption" Color="Color.Success">Tüm mağazalar için form eşleşmesi tam.</MudText>
+            }
+        </MudPaper>
+
         @if (_manualReviewPages.Count > 0)
         {
             <MudAlert Severity="Severity.Warning" Class="mb-3">
@@ -161,7 +184,7 @@ else
         }
 
         <MudPaper Elevation="1" Style="overflow-x:auto;max-width:100%">
-            <MudTable Items="@_results" Dense Hover Filter="@TableFilter" RowsPerPage="25">
+            <MudTable Items="@SortedResults" Dense Hover Filter="@TableFilter" RowsPerPage="25">
                 <ToolBarContent>
                     <MudGrid Spacing="1" AlignItems="AlignItems.Center">
                         <MudItem xs="12" md="4">
@@ -245,6 +268,7 @@ else
     private List<AiDocumentPageDto> _pages = new();
     private List<AiDocumentPageDto> _manualReviewPages = new();
     private List<AiComparisonResultDto> _results = new();
+    private List<StoreReconciliationIssueDto> _storeIssues = new();
 
     private bool _running;
     private string _progressMessage = string.Empty;
@@ -305,7 +329,10 @@ else
         _pages = await Pipeline.GetPagesAsync(_job.Id);
         _manualReviewPages = _pages.Where(p => p.RequiresManualReview).ToList();
         _results = await Pipeline.GetComparisonResultsAsync(_job.Id);
+        _storeIssues = await Pipeline.GetStoreReconciliationIssuesAsync(_job.Id);
     }
+
+    private IEnumerable<AiComparisonResultDto> SortedResults => _results.OrderBy(r => r.StoreLabel).ThenBy(r => r.VisitDate);
 
     private bool CanProceedToAnalysis => _files.Count > 0 && _files.All(f => !f.HasError);
     private bool AnalyzeButtonDisabled => !CanProceedToAnalysis || !_openAiConfigured;
