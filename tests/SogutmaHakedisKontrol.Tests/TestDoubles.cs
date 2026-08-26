@@ -15,6 +15,7 @@ internal class FakeAiVisionClient : IAiVisionClient
     private readonly ConcurrentDictionary<(int, byte), int> _callCountByPage = new();
 
     public bool IsConfigured => true;
+    public string ProviderLabel => "Fake — Test";
     public int CallCountForPage(int pageIndex, byte source = 0) => _callCountByPage.GetValueOrDefault((pageIndex, source));
 
     /// <summary>resolve(pageIndex içindeki-PDF'e-göre-0-tabanlı, sourceMarker) — sourceMarker,
@@ -48,6 +49,9 @@ internal class FakePdfPageRasterizer : IPdfPageRasterizer
     }
 
     public int GetPageCount(byte[] pdfBytes) => _pageCount;
+
+    public List<byte[]> RasterizeDocumentToPngPages(byte[] fileBytes, string fileName, int dpi = 220)
+        => RasterizeToPngPages(fileBytes, dpi);
 }
 
 internal class FakeAppPathService : IAppPathService
