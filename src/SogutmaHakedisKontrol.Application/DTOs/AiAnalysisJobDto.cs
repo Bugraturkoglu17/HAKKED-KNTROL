@@ -38,13 +38,12 @@ public class AiAnalysisJobDto
     public int RejectedServiceFeeCount { get; set; }
     public int ManHoursDiscrepancyCount { get; set; }
 
-    // ── Mağaza Eşleşmesi özeti (kategoriden bağımsız — bkz. StoreFormReconciliationBuilder) ──
-    public int ExceldekiMagazaCount { get; set; }
-    public int FormlardaBulunanMagazaCount { get; set; }
-    public int TamEslesenMagazaCount { get; set; }
-    public int EksikMagazaCount { get; set; }
-    public int FazlaYabanciMagazaCount { get; set; }
-    public int EslesmeyenFormCount { get; set; }
+    // ── Form Mutabakatı özeti (kategoriden bağımsız, FORM granülaritesinde — bkz. StoreFormReconciliationBuilder) ──
+    public int BeklenenFormSayisi { get; set; }
+    public int EslesenFormSayisi { get; set; }
+    public int EksikFormSayisi { get; set; }
+    public int FazlaFormSayisi { get; set; }
+    public int MukerrerZiyaretSayisi { get; set; }
 
     public string StatusLabel => Status switch
     {

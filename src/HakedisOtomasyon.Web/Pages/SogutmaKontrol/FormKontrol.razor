@@ -154,7 +154,7 @@ else
                 }
                 else
                 {
-                    <MudText Typo="Typo.caption" Color="Color.Success">Tüm mağazalar için form eşleşmesi tam.</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Success">Tüm formlar için mutabakat tam.</MudText>
                 }
             }
         </MudPaper>
@@ -218,8 +218,7 @@ else
                     <MudTh>Tarih</MudTh>
                     <MudTh>Form No</MudTh>
                     <MudTh>Kontrol Kalemi</MudTh>
-                    <MudTh>Form Değeri</MudTh>
-                    <MudTh>Hakediş Değeri</MudTh>
+                    <MudTh>Değer</MudTh>
                     <MudTh>Sonuç</MudTh>
                     <MudTh>Açıklama</MudTh>
                     <MudTh>İşlem</MudTh>
@@ -229,11 +228,23 @@ else
                     <MudTd>@VisitDateLabel(context)</MudTd>
                     <MudTd>@FormReferenceLabel(context)</MudTd>
                     <MudTd>@context.Description</MudTd>
-                    <MudTd>@context.FormValue</MudTd>
-                    <MudTd>@context.HakedisValue</MudTd>
+                    <MudTd>
+                        @if (string.IsNullOrEmpty(context.FormValue) || context.FormValue == context.HakedisValue)
+                        {
+                            <MudText Typo="Typo.body2" Color="@ValueColor(context)">@ValueDisplay(context)</MudText>
+                        }
+                        else
+                        {
+                            <MudTooltip Text="@($"Servis Formu: {context.FormValue}")">
+                                <MudText Typo="Typo.body2" Color="@ValueColor(context)" Style="cursor:help;border-bottom:1px dotted currentColor;display:inline-block">
+                                    @ValueDisplay(context)
+                                </MudText>
+                            </MudTooltip>
+                        }
+                    </MudTd>
                     <MudTd>
                         <MudStack Row Spacing="1" AlignItems="AlignItems.Center">
-                            <MudChip T="string" Size="Size.Small" Color="@ResultColor(context.Status)">@ResultLabel(context.Status)</MudChip>
+                            <MudText Typo="Typo.body2">@ResultIcon(context.Status) @ResultLabel(context.Status)</MudText>
                             @if (context.UserOverridden)
                             {
                                 <MudTooltip Text="@($"AI sonucu: {ResultLabel(context.OriginalStatusLabel ?? string.Empty)}")">
@@ -372,7 +383,15 @@ else
         _storeIssues = await Pipeline.GetStoreReconciliationIssuesAsync(_job.Id);
     }
 
-    private IEnumerable<AiComparisonResultDto> SortedResults => _results.OrderBy(r => r.StoreLabel).ThenBy(r => r.VisitDate);
+    // Form numarası hiç okunamadı/Excel'de bulunamadı/mükerrer türü hatalar belirli bir hakediş satırına
+    // bağlı DEĞİLDİR (checkItemId yok) — bu yüzden detay tablosunda değil, yalnızca üst Form Mutabakatı
+    // özetinde gösterilir (bkz. FormNumberMatcher.PageOnlyErrorDescriptions ile aynı liste, senkron tutulmalı).
+    private static readonly string[] PageOnlyErrorDescriptions =
+        { "Form Numarası Okunamadı", "Form Hakedişte Bulunamadı", "Mükerrer Form Numarası" };
+
+    private IEnumerable<AiComparisonResultDto> SortedResults => _results
+        .Where(r => !PageOnlyErrorDescriptions.Contains(r.Description))
+        .OrderBy(r => r.StoreLabel).ThenBy(r => r.VisitDate);
 
     private bool CanProceedToAnalysis => _files.Count > 0 && _files.All(f => !f.HasError);
     private bool AnalyzeButtonDisabled => !CanProceedToAnalysis || !_openAiConfigured;
@@ -564,7 +583,7 @@ else
     private string EksikCountLabel => _job?.EksikItemCount.ToString() ?? "0";
     private string ManuelKontrolCountLabel => _results.Count(r => r.Status == ManuelKontrolFilterValue).ToString();
 
-    private int StoreMatchProblemCount => _job == null ? 0 : _job.EksikMagazaCount + _job.FazlaYabanciMagazaCount + _job.EslesmeyenFormCount;
+    private int StoreMatchProblemCount => _job == null ? 0 : _job.EksikFormSayisi + _job.FazlaFormSayisi + _job.MukerrerZiyaretSayisi;
     private Color StoreMatchColor => StoreMatchProblemCount > 0 ? Color.Warning : Color.Success;
     private string StoreMatchIcon => StoreMatchProblemCount > 0 ? Icons.Material.Filled.WarningAmber : Icons.Material.Filled.CheckCircle;
     private string StoreMatchSummaryLabel
@@ -572,7 +591,7 @@ else
         get
         {
             if (_job == null) return string.Empty;
-            var baseLabel = $"Mağaza Eşleşmesi: {_job.TamEslesenMagazaCount}/{_job.ExceldekiMagazaCount} eşleşti";
+            var baseLabel = $"Form Mutabakatı: {_job.EslesenFormSayisi}/{_job.BeklenenFormSayisi} form eşleşti";
             return StoreMatchProblemCount > 0 ? $"{baseLabel} · {StoreMatchProblemCount} sorun" : baseLabel;
         }
     }
@@ -593,12 +612,18 @@ else
         }
     }
 
-    private static Color ResultColor(string status) => status switch
+    // Değer kolonu: Excel referans değeri (HakedisValue) tek renkli metin olarak gösterilir — Uygun ise
+    // yeşil, değilse kırmızı; formdaki değer (FormValue) farklıysa yalnızca tooltip'te görünür (bkz. §11-12).
+    private static Color ValueColor(AiComparisonResultDto r) => r.Status == "Uygun" ? Color.Success : Color.Error;
+    private static string ValueDisplay(AiComparisonResultDto r) => !string.IsNullOrEmpty(r.HakedisValue) ? r.HakedisValue : (r.FormValue ?? "—");
+
+    private static string ResultIcon(string status) => status switch
     {
-        "Uygun" => Color.Success,
-        "UygunDegil" => Color.Error,
-        "Eksik" or "Fazla" or "ManuelKontrol" => Color.Warning,
-        _ => Color.Warning,
+        "Uygun" => "✅",
+        "UygunDegil" => "🔴",
+        "Eksik" or "Fazla" => "🟠",
+        "ManuelKontrol" => "🟡",
+        _ => "",
     };
 
     private static string ResultLabel(string status) => status switch

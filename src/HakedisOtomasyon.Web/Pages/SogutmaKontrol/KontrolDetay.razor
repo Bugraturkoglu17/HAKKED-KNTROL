@@ -1,6 +1,5 @@
 @page "/discipline/sogutma/kontrol/{Id:int}"
 @inject IProgressPaymentCheckService CheckService
-@inject SogutmaHakedisKontrol.Application.Interfaces.IDesktopFileService DesktopFile
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
 @inject NavigationManager Nav
@@ -44,17 +43,6 @@ else
                 <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.PriceCheck"
                            OnClick="BulkCorrectPricesAsync">
                     Tüm Kesin Birim Fiyat Hatalarını Düzelt (@_bulkCorrectableCount)
-                </MudButton>
-            }
-            <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Download"
-                       OnClick="ExportAsync">
-                Kontrol Edilmiş Excel'i İndir
-            </MudButton>
-            @if (_check.Status != ProgressPaymentCheckStatus.Tamamlandi)
-            {
-                <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.CheckCircle"
-                           Disabled="@(_pendingCount > 0)" OnClick="FinalizeAsync">
-                    Kontrolü Tamamla
                 </MudButton>
             }
         </MudStack>
@@ -404,13 +392,6 @@ else
         Snackbar.Add($"{applied} satırda birim fiyat düzeltmesi uygulandı.", Severity.Success);
     }
 
-    private async Task FinalizeAsync()
-    {
-        await CheckService.FinalizeAsync(Id);
-        await LoadAsync();
-        Snackbar.Add("Kontrol tamamlandı.", Severity.Success);
-    }
-
     private async Task ProceedToFormReviewAsync()
     {
         var unresolved = await CheckService.GetUnresolvedPriceItemCountAsync(Id);
@@ -424,20 +405,6 @@ else
 
         await CheckService.SetStageAsync(Id, HakedisControlStage.PriceReviewCompleted);
         Nav.NavigateTo($"/discipline/sogutma/kontrol/{Id}/form");
-    }
-
-    private async Task ExportAsync()
-    {
-        try
-        {
-            var path = await CheckService.ExportControlledExcelAsync(Id);
-            Snackbar.Add("Kontrol edilmiş Excel oluşturuldu.", Severity.Success);
-            DesktopFile.OpenFile(path);
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Add($"Export hatası: {ex.Message}", Severity.Error);
-        }
     }
 
     private static string FarkStyle(decimal? diff) => diff switch

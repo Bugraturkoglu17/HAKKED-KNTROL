@@ -26,10 +26,23 @@ else
                 @(_check.CategoryLabel ?? "Belirtilmemiş") — @_check.CompanyName · @_check.Region · @_check.PeriodLabel
             </MudText>
         </div>
-        <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.ArrowBack"
-                   Href="@($"/discipline/sogutma/kontrol/{Id}/form")">
-            Form Kontrolüne Dön
-        </MudButton>
+        <MudStack Row Spacing="1">
+            <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.ArrowBack"
+                       Href="@($"/discipline/sogutma/kontrol/{Id}/form")">
+                Form Kontrolüne Dön
+            </MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Download"
+                       OnClick="ExportAsync">
+                Kontrol Edilmiş Excel'i İndir
+            </MudButton>
+            @if (_check.Status != ProgressPaymentCheckStatus.Tamamlandi)
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.CheckCircle"
+                           OnClick="FinalizeAsync">
+                    Kontrolü Tamamla
+                </MudButton>
+            }
+        </MudStack>
     </MudStack>
     <MudDivider Class="my-3" />
 
@@ -215,5 +228,12 @@ else
         {
             Snackbar.Add($"Export hatası: {ex.Message}", Severity.Error);
         }
+    }
+
+    private async Task FinalizeAsync()
+    {
+        await CheckService.FinalizeAsync(Id);
+        _check = await CheckService.GetByIdAsync(Id);
+        Snackbar.Add("Kontrol tamamlandı.", Severity.Success);
     }
 }

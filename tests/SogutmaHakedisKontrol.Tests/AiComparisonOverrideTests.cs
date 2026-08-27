@@ -115,7 +115,12 @@ public class AiComparisonOverrideTests
         var result = Assert.Single(await pipeline.GetComparisonResultsAsync(job!.Id));
         await pipeline.OverrideResultStatusAsync(result.Id, note: null);
 
-        await pipeline.RevertOverrideAsync(result.Id);
+        // OverrideResultStatusAsync artık sonunda RecomputeComparisonForJobAsync çalıştırır — bu, jobun
+        // tüm AiComparisonResult satırlarını siler ve yeniden üretir, dolayısıyla satırın Id'si değişir
+        // (gerçek kullanımda da UI her aksiyondan sonra LoadJobAsync ile listeyi tazeler). Revert için
+        // güncel Id'yi yeniden okumak gerekir.
+        var overridden = Assert.Single(await pipeline.GetComparisonResultsAsync(job.Id));
+        await pipeline.RevertOverrideAsync(overridden.Id);
 
         var results = await pipeline.GetComparisonResultsAsync(job.Id);
         var reverted = Assert.Single(results);

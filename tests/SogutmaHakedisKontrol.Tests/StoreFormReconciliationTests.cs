@@ -9,8 +9,10 @@ using Xunit;
 
 namespace SogutmaHakedisKontrol.Tests;
 
-/// <summary>Kategoriden bağımsız "Mağaza Eşleşmesi" özeti — Excel'deki mağazalardan hangilerinin
-/// formu var/yok, formlardaki hangi mağazaların Excel karşılığı yok (bkz. StoreFormReconciliationBuilder).</summary>
+/// <summary>Kategoriden bağımsız, FORM granülaritesinde çalışan "Form Mutabakatı" özeti — Excel'deki her
+/// form numarası "beklenen kayıt"tır (bkz. StoreFormReconciliationBuilder). Bu özet TAMAMEN persisted
+/// veriden hesaplanır, bu yüzden kullanıcının "Onay ver" ile düzelttiği eski hatalar burada anında güncel
+/// görünmelidir — bkz. özellikle Override_MagazaUyusmazligiKurtarilincaGercekSonucUreturVeOzetTemizlenir.</summary>
 public class StoreFormReconciliationTests
 {
     private const string Company = "TESTFIRMA";
@@ -35,7 +37,10 @@ public class StoreFormReconciliationTests
         return new AiAnalysisPipelineService(db, vision, rasterizer, manHours, usage, appPath, categoryProfiles, comparisonStrategies);
     }
 
-    private static byte[] BuildTwoStoreWorkbook()
+    /// <summary>Her satır bir hakediş kalemi (bir "beklenen form") üretir; malzeme sabit "TEST MALZEME"
+    /// 1 adet 100 TL — fiyat/malzeme tarafı zaten uygun olsun ki testler saf olarak form/mağaza
+    /// mutabakatını ölçsün.</summary>
+    private static byte[] BuildWorkbook(params (string Code, string Name, DateTime Date, string FormNo)[] rows)
     {
         using var wb = new XLWorkbook();
         var ws = wb.AddWorksheet("NİSAN");
@@ -48,21 +53,26 @@ public class StoreFormReconciliationTests
         ws.Cell(1, 7).Value = "FİYAT";
         ws.Cell(1, 8).Value = "TOPLAM";
 
-        ws.Cell(2, 1).Value = "1001"; ws.Cell(2, 2).Value = "Ankara MM"; ws.Cell(2, 3).Value = new DateTime(2026, 4, 23);
-        ws.Cell(2, 4).Value = "15527"; ws.Cell(2, 5).Value = "TEST MALZEME"; ws.Cell(2, 6).Value = 1;
-        ws.Cell(2, 7).Value = 100; ws.Cell(2, 8).Value = 100;
-
-        ws.Cell(3, 1).Value = "2002"; ws.Cell(3, 2).Value = "İzmir MM"; ws.Cell(3, 3).Value = new DateTime(2026, 4, 24);
-        ws.Cell(3, 4).Value = "16001"; ws.Cell(3, 5).Value = "TEST MALZEME"; ws.Cell(3, 6).Value = 1;
-        ws.Cell(3, 7).Value = 100; ws.Cell(3, 8).Value = 100;
+        for (int i = 0; i < rows.Length; i++)
+        {
+            var r = 2 + i;
+            var (code, name, date, formNo) = rows[i];
+            ws.Cell(r, 1).Value = code; ws.Cell(r, 2).Value = name; ws.Cell(r, 3).Value = date;
+            ws.Cell(r, 4).Value = formNo; ws.Cell(r, 5).Value = "TEST MALZEME"; ws.Cell(r, 6).Value = 1;
+            ws.Cell(r, 7).Value = 100; ws.Cell(r, 8).Value = 100;
+        }
 
         using var ms = new MemoryStream();
         wb.SaveAs(ms);
         return ms.ToArray();
     }
 
-    private static async Task<(ProgressPaymentCheckService checkSvc, AppDbContext db, ProgressPaymentCheckDto check)> SeedTwoStoreCheckAsync(
-        HakedisCategory category = HakedisCategory.PeriodicMaintenance)
+    private static byte[] BuildTwoStoreWorkbook() => BuildWorkbook(
+        ("1001", "Ankara MM", new DateTime(2026, 4, 23), "15527"),
+        ("2002", "İzmir MM", new DateTime(2026, 4, 24), "16001"));
+
+    private static async Task<(ProgressPaymentCheckService checkSvc, AppDbContext db, ProgressPaymentCheckDto check)> SeedCheckAsync(
+        byte[] workbookBytes, HakedisCategory category = HakedisCategory.PeriodicMaintenance)
     {
         var db = TestDbFactory.Create();
         var matching = new MaterialMatchingService(db);
@@ -82,13 +92,11 @@ public class StoreFormReconciliationTests
         });
         await db.SaveChangesAsync();
 
-        var bytes = BuildTwoStoreWorkbook();
-        using var stream = new MemoryStream(bytes);
+        using var stream = new MemoryStream(workbookBytes);
         var parsed = ProgressPaymentExcelParser.Parse(stream, "test.xlsx");
-        Assert.Equal(2, parsed.Items.Count);
 
         var draft = await checkSvc.CreateDraftCheckAsync(list.Id, Company, Region, category);
-        var check = await checkSvc.AttachExcelAsync(draft.Id, "SABİT FİYAT", 2026, 4, "Nisan 2026", "test.xlsx", bytes, null, parsed);
+        var check = await checkSvc.AttachExcelAsync(draft.Id, "SABİT FİYAT", 2026, 4, "Nisan 2026", "test.xlsx", workbookBytes, null, parsed);
         return (checkSvc, db, check);
     }
 
@@ -99,13 +107,11 @@ public class StoreFormReconciliationTests
     };
 
     [Fact]
-    public async Task EksikMagaza_FormuOlmayanMagazaTespitEdilirVeExportNotuYazilir()
+    public async Task EksikForm_FormuOlmayanKayitTespitEdilirVeExportNotuYazilir()
     {
-        var (checkSvc, db, check) = await SeedTwoStoreCheckAsync();
+        var (checkSvc, db, check) = await SeedCheckAsync(BuildTwoStoreWorkbook());
 
-        // Yalnızca Ankara MM (form 15527) için form yükleniyor; İzmir MM'nin (16001) hiç formu yok.
-        // Malzeme de forma dahil edilir ki satır 2'nin notsuz kalması saf mağaza/form eşleşmesini test etsin
-        // (malzeme eşleşmesi ayrı bir kontrol boyutu — burada onu da Uygun yapıp gürültüyü önlüyoruz).
+        // Yalnızca Ankara MM'nin (form 15527) servis formu yükleniyor; İzmir MM'nin (16001) hiç formu yok.
         var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
         {
             DocumentType = "SERVICE_FORM", FormNumber = "15527", FormNumberConfidence = 0.95m,
@@ -118,12 +124,12 @@ public class StoreFormReconciliationTests
         var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
         var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
 
-        Assert.Equal(2, job.ExceldekiMagazaCount);
-        Assert.Equal(1, job.TamEslesenMagazaCount);
-        Assert.Equal(1, job.EksikMagazaCount);
+        Assert.Equal(2, job.BeklenenFormSayisi);
+        Assert.Equal(1, job.EslesenFormSayisi);
+        Assert.Equal(1, job.EksikFormSayisi);
 
         var issues = await pipeline.GetStoreReconciliationIssuesAsync(job.Id);
-        Assert.Contains(issues, i => i.IssueType == "Eksik Mağaza" && i.StoreLabel.Contains("İzmir"));
+        Assert.Contains(issues, i => i.IssueType == "Form Eksik" && i.StoreLabel.Contains("İzmir"));
 
         var outPath = await checkSvc.ExportControlledExcelAsync(check.Id);
         using var outWb = new XLWorkbook(outPath);
@@ -136,9 +142,9 @@ public class StoreFormReconciliationTests
     }
 
     [Fact]
-    public async Task FazlaYabanciMagaza_ExceldeKarsiligiOlmayanFormTespitEdilir()
+    public async Task FazlaForm_ExceldeKarsiligiOlmayanFormTespitEdilirVeHicBirFormEslesmez()
     {
-        var (_, db, check) = await SeedTwoStoreCheckAsync();
+        var (_, db, check) = await SeedCheckAsync(BuildTwoStoreWorkbook());
 
         var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
         {
@@ -148,12 +154,130 @@ public class StoreFormReconciliationTests
         var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
         var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
 
-        Assert.Equal(1, job.FazlaYabanciMagazaCount);
-        Assert.Equal(1, job.EslesmeyenFormCount);
-        Assert.Equal(0, job.TamEslesenMagazaCount);
-        Assert.Equal(2, job.EksikMagazaCount); // hiçbir excel mağazası eşleşmedi
+        Assert.Equal(1, job.FazlaFormSayisi);
+        Assert.Equal(2, job.BeklenenFormSayisi);
+        Assert.Equal(0, job.EslesenFormSayisi);
+        Assert.Equal(2, job.EksikFormSayisi); // yüklenen tek form hiçbir excel formuyla eşleşmedi, ikisi de "Form Eksik"
+
+        // "Fazla form" yalnızca özet panelinde tekil sayı olarak görünür — mağaza bazlı satır üretmez
+        // (bkz. plan §9: "Fazla formlardan dolayı hakediş Excelinde herhangi bir satıra hata yazma").
+        var issues = await pipeline.GetStoreReconciliationIssuesAsync(job.Id);
+        Assert.Contains(issues, i => i.IssueType == "Fazla Form" && i.Message.Contains("1 adet"));
+    }
+
+    [Fact]
+    public async Task EksikForm_AyniMagazaninIkinciFormuYuklenmeseBileEksikGorunur()
+    {
+        // Ankara MM'nin 2 ayrı formu var (15527, 15528, farklı tarihlerde); yalnızca 15527 yükleniyor.
+        // Form granülaritesi mağaza granülaritesinden farklı olduğu için mağaza "kısmen eşleşti" olsa
+        // bile 15528 ayrı bir "Form Eksik" satırı üretmelidir.
+        var workbook = BuildWorkbook(
+            ("1001", "Ankara MM", new DateTime(2026, 4, 23), "15527"),
+            ("1001", "Ankara MM", new DateTime(2026, 4, 25), "15528"),
+            ("2002", "İzmir MM", new DateTime(2026, 4, 24), "16001"));
+        var (_, db, check) = await SeedCheckAsync(workbook);
+
+        var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
+        {
+            DocumentType = "SERVICE_FORM", FormNumber = "15527", FormNumberConfidence = 0.95m,
+            Store = new AiStoreCandidateDto { CodeRaw = "1001", Confidence = 0.9m }, ServiceDate = "2026-04-23",
+            Materials = new List<AiMaterialExtractionDto>
+            {
+                new() { RawName = "TEST MALZEME", NormalizedName = "test malzeme", Quantity = 1, Unit = "adet", Confidence = 0.9m },
+            },
+        }));
+        var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
+        var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
+
+        Assert.Equal(3, job.BeklenenFormSayisi);
+        Assert.Equal(1, job.EslesenFormSayisi);
+        Assert.Equal(2, job.EksikFormSayisi); // 15528 (Ankara'nın kendi eksik formu) + 16001 (İzmir)
 
         var issues = await pipeline.GetStoreReconciliationIssuesAsync(job.Id);
-        Assert.Contains(issues, i => i.IssueType == "Fazla/Yabancı Mağaza" && i.StoreLabel.Contains("Bilinmeyen"));
+        Assert.Contains(issues, i => i.IssueType == "Form Eksik" && i.Message.Contains("15528"));
+    }
+
+    [Fact]
+    public async Task MukerrerZiyaret_AyniMagazaAyniTarihFarkliFormNumarasiUyariUretir()
+    {
+        // Excel'in kendi iç tutarlılığı: aynı mağaza + aynı tarihe bağlı 2 FARKLI form numarası varsa
+        // uyarı üretilmeli — yüklenen formlarla ilgisi yok, salt Excel verisi üzerinden hesaplanır.
+        var workbook = BuildWorkbook(
+            ("1001", "Ankara MM", new DateTime(2026, 4, 23), "17790"),
+            ("1001", "Ankara MM", new DateTime(2026, 4, 23), "17805"));
+        var (_, db, check) = await SeedCheckAsync(workbook);
+
+        var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
+        {
+            DocumentType = "SERVICE_FORM", FormNumber = "17790", FormNumberConfidence = 0.95m,
+            Store = new AiStoreCandidateDto { CodeRaw = "1001", Confidence = 0.9m }, ServiceDate = "2026-04-23",
+            Materials = new List<AiMaterialExtractionDto>
+            {
+                new() { RawName = "TEST MALZEME", NormalizedName = "test malzeme", Quantity = 1, Unit = "adet", Confidence = 0.9m },
+            },
+        }));
+        var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
+        var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
+
+        Assert.Equal(1, job.MukerrerZiyaretSayisi);
+        var issues = await pipeline.GetStoreReconciliationIssuesAsync(job.Id);
+        Assert.Contains(issues, i => i.IssueType == "Mükerrer Ziyaret" && i.Message.Contains("17790") && i.Message.Contains("17805"));
+    }
+
+    /// <summary>Kullanıcının şikayetinin kökü: bir "Mağaza Uyuşmazlığı" hatası "Onay ver" ile düzeltildiğinde
+    /// (a) kategori kontrolü artık gerçek bir sonuç üretmeli (form/mağaza kapısı kalıcı olarak açılmalı,
+    /// sadece hata Uygun'a boyanmamalı) ve (b) üst mutabakat özeti (ComputeSummaryAsync/GetStoreReconciliationIssuesAsync)
+    /// bu eski hatayı ARTIK hiç göstermemeli — ör. "20732 mağaza uyuşmazlığı" örneği.</summary>
+    [Fact]
+    public async Task Override_MagazaUyusmazligiKurtarilincaGercekSonucUreturVeOzetTemizlenir()
+    {
+        // Mağaza adı bilerek yalnızca "Ankara MM" DEĞİL — bu ikisi de FormNumberMatcher'ın gürültü kelime
+        // listesinde ("mm", "ankara") olduğu için normalize edilince boşa düşer ve isim karşılaştırması
+        // atlanıp Mağaza Doğrulanamadı (Durum 6) üretilir. "Sincan" gürültü kelimesi olmadığı için isim
+        // karşılaştırılabilir kalır ve gerçek bir Durum 4 (Mağaza Uyuşmazlığı) elde edilir.
+        var workbook = BuildWorkbook(("1001", "Sincan MM", new DateTime(2026, 4, 23), "15527"));
+        var (_, db, check) = await SeedCheckAsync(workbook);
+
+        // Form no ve tarih doğru okunmuş ama mağaza kodu VE adı tamamen farklı bir mağazayı işaret ediyor
+        // (Durum 4 — kod da isim de belirgin şekilde farklı) → "Mağaza Uyuşmazlığı", kategori kontrolü
+        // hiç çalışmaz (gate bloklar).
+        var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
+        {
+            DocumentType = "SERVICE_FORM", FormNumber = "15527", FormNumberConfidence = 0.95m,
+            Store = new AiStoreCandidateDto { CodeRaw = "9999", NameRaw = "Zeytinburnu Şubesi", Confidence = 0.9m },
+            ServiceDate = "2026-04-23",
+            Materials = new List<AiMaterialExtractionDto>
+            {
+                new() { RawName = "TEST MALZEME", NormalizedName = "test malzeme", Quantity = 1, Unit = "adet", Confidence = 0.9m },
+            },
+        }));
+        var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
+        var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
+
+        var beforeResults = await pipeline.GetComparisonResultsAsync(job.Id);
+        // Gate mağazada bloklandığı için kategori kontrolü (malzeme karşılaştırması) hiç çalışmamış olmalı —
+        // tek sonuç, gate hatasının kendisi olmalı.
+        var mismatch = Assert.Single(beforeResults);
+        Assert.Equal("Mağaza Uyuşmazlığı", mismatch.Description);
+        Assert.Equal("UygunDegil", mismatch.Status);
+
+        var beforeIssues = await pipeline.GetStoreReconciliationIssuesAsync(job.Id);
+        Assert.Contains(beforeIssues, i => i.IssueType == "Mağaza Uyuşmazlığı");
+
+        await pipeline.OverrideResultStatusAsync(mismatch.Id, note: "Doğru mağaza, kod OCR hatası.");
+
+        var afterResults = await pipeline.GetComparisonResultsAsync(job.Id);
+        // Gate artık açık: gerçek bir malzeme karşılaştırması üretilmiş olmalı (TEST MALZEME → Uygun).
+        Assert.Contains(afterResults, r => r.ItemType == "Material" && r.Status == "Uygun");
+        // Eski "Mağaza Uyuşmazlığı" hatası artık hiç üretilmiyor (gate override ile geçildiği için).
+        Assert.DoesNotContain(afterResults, r => r.Description == "Mağaza Uyuşmazlığı" && r.Status != "Uygun");
+
+        var afterIssues = await pipeline.GetStoreReconciliationIssuesAsync(job.Id);
+        Assert.DoesNotContain(afterIssues, i => i.IssueType == "Mağaza Uyuşmazlığı");
+
+        var afterJob = await pipeline.GetJobAsync(job.Id);
+        Assert.Equal(1, afterJob!.BeklenenFormSayisi);
+        Assert.Equal(1, afterJob.EslesenFormSayisi);
+        Assert.Equal(0, afterJob.EksikFormSayisi);
     }
 }

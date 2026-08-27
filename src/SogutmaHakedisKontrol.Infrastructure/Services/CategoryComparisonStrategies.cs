@@ -28,6 +28,13 @@ internal static class ComparisonResultFactory
         Explanation = explanation,
         CreatedAt = DateTime.Now,
     };
+
+    /// <summary>Bir sonucun kaynağına (sayfa/hakediş kalemi/kalem türü/açıklama) bağlı kalıcı anahtarı —
+    /// kullanıcı onayının (AiComparisonOverride) hangi sonuca ait olduğunu, sonuç her recompute'ta silinip
+    /// yeniden üretilse bile tanımak için kullanılır. Tek kaynak — hem AiAnalysisPipelineService'in
+    /// override yazma/okuma metodları hem de FormNumberMatcher'ın override-farkında kurtarma mantığı bunu kullanır.</summary>
+    public static string ComputeMatchKey(AiComparisonResult r) =>
+        $"{r.SourcePageId?.ToString() ?? "-"}|{r.ProgressPaymentCheckItemId?.ToString() ?? "-"}|{r.ItemType}|{r.Description}";
 }
 
 /// <summary>
@@ -50,8 +57,15 @@ internal static class FormNumberMatcher
         "mm", "mmm", "migros", "mah", "mahallesi", "sk", "sok", "ankara",
     };
 
+    /// <summary>
+    /// <paramref name="overriddenMatchKeys"/>: kullanıcının "Onay ver" ile Uygun'a çevirdiği sonuçların
+    /// kalıcı anahtarları (bkz. ComparisonResultFactory.ComputeMatchKey). Adım 3/4'te (mağaza/tarih)
+    /// üretilecek hata bu sette varsa, hata döndürmek yerine eşleşti kabul edilir (group, null) — kullanıcı
+    /// zaten "bu doğru mağaza/tarih" demiştir, kategori kontrolünün gerçek bir sonuç üretmesi sağlanır.
+    /// Adım 1/2'de (form no okunamadı/Excel'de yok/mükerrer) kurtarma yoktur — eşleşecek bir aday satır yok.
+    /// </summary>
     public static (List<ProgressPaymentCheckItem>? Matched, AiComparisonResult? Error) Match(
-        int jobId, AiDocumentPage page, List<ProgressPaymentCheckItem> checkItems)
+        int jobId, AiDocumentPage page, List<ProgressPaymentCheckItem> checkItems, HashSet<string> overriddenMatchKeys)
     {
         var label = StoreLabelFallback(page);
 
@@ -93,18 +107,24 @@ internal static class FormNumberMatcher
         var first = group[0];
         var hakedisStoreLabel = first.StoreName ?? first.StoreCode ?? "Bilinmeyen Mağaza";
 
+        // Kullanıcı bu formun mağaza/tarih uyuşmazlığını "Onay ver" ile zaten düzeltmişse (bkz.
+        // AiComparisonOverride), hata döndürmek yerine eşleşti kabul edip kategori kontrolünün normal
+        // şekilde çalışmasına (gerçek bir sonuç üretmesine) izin verilir.
+        (List<ProgressPaymentCheckItem>? Matched, AiComparisonResult? Error) RecoverableError(AiComparisonResult candidateError) =>
+            overriddenMatchKeys.Contains(ComparisonResultFactory.ComputeMatchKey(candidateError)) ? (group, null) : (null, candidateError);
+
         // 3) Mağaza doğrulama — kod varsa öncelikli/kesin kriter, yoksa isim benzerliğine (sınırlı) düşülür.
         var storeCheck = CompareStore(page, first);
         if (storeCheck == StoreCheck.Mismatch)
         {
-            return (null, ComparisonResultFactory.New(jobId, page, hakedisStoreLabel, AiComparisonItemType.Material,
+            return RecoverableError(ComparisonResultFactory.New(jobId, page, hakedisStoreLabel, AiComparisonItemType.Material,
                 "Mağaza Uyuşmazlığı", page.StoreCodeRaw ?? page.StoreNameRaw, hakedisStoreLabel, AiComparisonStatus.UygunDegil,
                 $"\"{page.FormNumber}\" numaralı form üzerindeki mağaza {(page.StoreCodeRaw ?? page.StoreNameRaw)} olarak okunmuştur " +
                 $"ancak hakediş Excelindeki aynı form numarası farklı mağazaya ({hakedisStoreLabel}) aittir.", first.Id));
         }
         if (storeCheck == StoreCheck.Inconclusive)
         {
-            return (null, ComparisonResultFactory.New(jobId, page, hakedisStoreLabel, AiComparisonItemType.Material,
+            return RecoverableError(ComparisonResultFactory.New(jobId, page, hakedisStoreLabel, AiComparisonItemType.Material,
                 "Mağaza Doğrulanamadı", page.StoreCodeRaw ?? page.StoreNameRaw, hakedisStoreLabel, AiComparisonStatus.ManuelKontrol,
                 $"\"{page.FormNumber}\" numaralı formdaki mağaza bilgisi hakediş kaydıyla yeterli güvenle karşılaştırılamadı — manuel kontrol edilmelidir.", first.Id));
         }
@@ -112,7 +132,7 @@ internal static class FormNumberMatcher
         // 4) Tarih doğrulama — ikisi de doluyken farklıysa hata; biri boşsa (yetersiz veri) engelleme.
         if (page.ServiceDate.HasValue && first.VisitDate.HasValue && page.ServiceDate.Value.Date != first.VisitDate.Value.Date)
         {
-            return (null, ComparisonResultFactory.New(jobId, page, hakedisStoreLabel, AiComparisonItemType.Material,
+            return RecoverableError(ComparisonResultFactory.New(jobId, page, hakedisStoreLabel, AiComparisonItemType.Material,
                 "Tarih Uyuşmazlığı", page.ServiceDate.Value.ToString("dd.MM.yyyy"), first.VisitDate.Value.ToString("dd.MM.yyyy"),
                 AiComparisonStatus.UygunDegil,
                 $"Servis formu tarihi {page.ServiceDate:dd.MM.yyyy}, hakediş Excelindeki tarih {first.VisitDate:dd.MM.yyyy} olarak görülmektedir.", first.Id));
@@ -198,6 +218,22 @@ internal static class FormNumberMatcher
     }
 
     private static string StoreLabelFallback(AiDocumentPage page) => page.StoreNameRaw ?? page.StoreCodeRaw ?? "Bilinmeyen Mağaza";
+
+    /// <summary>Bu sınıfın ürettiği 5 hata türünün Description etiketleri — tek kaynak, hem detay
+    /// tablosunun bu satırları filtrelemesi (bkz. FormKontrol.razor) hem de mutabakat özetinin (bkz.
+    /// FormReconciliationBuilder) bunları okuması için kullanılır.</summary>
+    public static readonly string[] GateErrorDescriptions =
+    {
+        "Form Numarası Okunamadı", "Form Hakedişte Bulunamadı", "Mükerrer Form Numarası",
+        "Mağaza Uyuşmazlığı", "Mağaza Doğrulanamadı", "Tarih Uyuşmazlığı",
+    };
+
+    /// <summary>Bunlardan hiçbirinin bağlı olduğu belirli bir hakediş satırı yoktur (checkItemId=null) —
+    /// bu yüzden detay tablosunda gösterilmez, yalnızca üst mutabakat özetinde bilgi amaçlı yer alır.</summary>
+    public static readonly string[] PageOnlyErrorDescriptions =
+    {
+        "Form Numarası Okunamadı", "Form Hakedişte Bulunamadı", "Mükerrer Form Numarası",
+    };
 }
 
 /// <summary>
@@ -237,11 +273,18 @@ public class DefaultCategoryComparisonStrategy : ICategoryComparisonStrategy
             .Where(i => i.ProgressPaymentCheckId == job.ProgressPaymentCheckId)
             .ToListAsync(cancellationToken);
 
+        // Kullanıcının daha önce onayladığı (Uygun'a çevirdiği) sonuçlar — mağaza/tarih uyuşmazlığı
+        // onaylanmışsa FormNumberMatcher bunu eşleşti sayıp kategori kontrolünün çalışmasına izin verir.
+        var overriddenKeys = (await _db.AiComparisonOverrides
+            .Where(o => o.JobId == job.Id)
+            .Select(o => o.MatchKey)
+            .ToListAsync(cancellationToken)).ToHashSet();
+
         var results = new List<AiComparisonResult>();
 
         foreach (var page in pages)
         {
-            var (sameVisit, error) = FormNumberMatcher.Match(job.Id, page, checkItems);
+            var (sameVisit, error) = FormNumberMatcher.Match(job.Id, page, checkItems, overriddenKeys);
             if (error != null) { results.Add(error); continue; }
 
             var first = sameVisit![0];
@@ -386,11 +429,18 @@ public class GasUsageComparisonStrategy : ICategoryComparisonStrategy
             .Where(i => i.ProgressPaymentCheckId == job.ProgressPaymentCheckId)
             .ToListAsync(cancellationToken);
 
+        // Kullanıcının daha önce onayladığı (Uygun'a çevirdiği) sonuçlar — mağaza/tarih uyuşmazlığı
+        // onaylanmışsa FormNumberMatcher bunu eşleşti sayıp kategori kontrolünün çalışmasına izin verir.
+        var overriddenKeys = (await _db.AiComparisonOverrides
+            .Where(o => o.JobId == job.Id)
+            .Select(o => o.MatchKey)
+            .ToListAsync(cancellationToken)).ToHashSet();
+
         var results = new List<AiComparisonResult>();
 
         foreach (var page in pages)
         {
-            var (sameVisit, error) = FormNumberMatcher.Match(job.Id, page, checkItems);
+            var (sameVisit, error) = FormNumberMatcher.Match(job.Id, page, checkItems, overriddenKeys);
             if (error != null) { results.Add(error); continue; }
 
             var first = sameVisit![0];
@@ -494,11 +544,18 @@ public class GlycolUsageComparisonStrategy : ICategoryComparisonStrategy
             .Where(i => i.ProgressPaymentCheckId == job.ProgressPaymentCheckId)
             .ToListAsync(cancellationToken);
 
+        // Kullanıcının daha önce onayladığı (Uygun'a çevirdiği) sonuçlar — mağaza/tarih uyuşmazlığı
+        // onaylanmışsa FormNumberMatcher bunu eşleşti sayıp kategori kontrolünün çalışmasına izin verir.
+        var overriddenKeys = (await _db.AiComparisonOverrides
+            .Where(o => o.JobId == job.Id)
+            .Select(o => o.MatchKey)
+            .ToListAsync(cancellationToken)).ToHashSet();
+
         var results = new List<AiComparisonResult>();
 
         foreach (var page in pages)
         {
-            var (sameVisit, error) = FormNumberMatcher.Match(job.Id, page, checkItems);
+            var (sameVisit, error) = FormNumberMatcher.Match(job.Id, page, checkItems, overriddenKeys);
             if (error != null) { results.Add(error); continue; }
 
             var first = sameVisit![0];
@@ -599,11 +656,18 @@ public class AdditionalWorkComparisonStrategy : ICategoryComparisonStrategy
             .Where(i => i.ProgressPaymentCheckId == job.ProgressPaymentCheckId)
             .ToListAsync(cancellationToken);
 
+        // Kullanıcının daha önce onayladığı (Uygun'a çevirdiği) sonuçlar — mağaza/tarih uyuşmazlığı
+        // onaylanmışsa FormNumberMatcher bunu eşleşti sayıp kategori kontrolünün çalışmasına izin verir.
+        var overriddenKeys = (await _db.AiComparisonOverrides
+            .Where(o => o.JobId == job.Id)
+            .Select(o => o.MatchKey)
+            .ToListAsync(cancellationToken)).ToHashSet();
+
         var results = new List<AiComparisonResult>();
 
         foreach (var page in pages)
         {
-            var (sameVisit, error) = FormNumberMatcher.Match(job.Id, page, checkItems);
+            var (sameVisit, error) = FormNumberMatcher.Match(job.Id, page, checkItems, overriddenKeys);
             if (error != null) { results.Add(error); continue; }
 
             var first = sameVisit![0];

@@ -342,8 +342,8 @@ public class AiAnalysisPipelineServiceTests
         Assert.Equal("Eksik", result.Status);
 
         // Form no hiç Excel'de bulunamadığı için hangi Excel satırının buna karşılık geldiği belli değil —
-        // dolayısıyla tek Excel satırı (form 15527) da ayrıca "Eksik Mağaza" (formu yok) olarak işaretlenir.
-        Assert.Contains(results, r => r.ItemType == "StoreMatch" && r.Description == "Mağaza Eşleşmesi");
+        // dolayısıyla tek Excel satırı (form 15527) da ayrıca "Form Eksik" olarak işaretlenir.
+        Assert.Contains(results, r => r.ItemType == "StoreMatch" && r.Description == "Form Eksik");
     }
 
     [Fact] // TEST 3 — Form numarası okunamıyor
@@ -364,8 +364,8 @@ public class AiAnalysisPipelineServiceTests
         Assert.Equal("ManuelKontrol", result.Status);
 
         // Form no okunamadığı için hangi Excel satırına ait olduğu belli değil — tek Excel satırı
-        // (form 15527) da ayrıca "Eksik Mağaza" (formu yok) olarak işaretlenir.
-        Assert.Contains(results, r => r.ItemType == "StoreMatch" && r.Description == "Mağaza Eşleşmesi");
+        // (form 15527) da ayrıca "Form Eksik" olarak işaretlenir.
+        Assert.Contains(results, r => r.ItemType == "StoreMatch" && r.Description == "Form Eksik");
     }
 
     [Fact] // TEST 4 — Form no eşleşti ama mağaza kodu VE adı da açıkça farklı (Durum 4)

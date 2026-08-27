@@ -162,7 +162,7 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
         Report(progress, AiJobStatus.Comparing, "Malzeme ve servis ücreti kontrolleri yapılıyor...");
         await _db.SaveChangesAsync(cancellationToken);
         await _comparisonStrategies.Get(check.Category).BuildAsync(job, cancellationToken);
-        await StoreFormReconciliationBuilder.PersistMissingStoreRowsAsync(_db, job, cancellationToken);
+        await StoreFormReconciliationBuilder.PersistMissingFormRowsAsync(_db, job, cancellationToken);
         await ApplyOverridesAsync(job.Id, cancellationToken);
         Report(progress, AiJobStatus.Comparing, "Hakediş karşılaştırması tamamlanıyor...");
 
@@ -415,11 +415,8 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
     // ------------------------------------------------------------------ //
     //  MANUEL ONAY/GERİ AL — bkz. AiComparisonOverride. Sonuçlar her recompute'ta silinip yeniden
     //  üretildiği için onay doğrudan satıra değil, kaynağa bağlı bu kalıcı anahtara yazılır ve her
-    //  BuildAsync sonrası (kategori stratejisi + mağaza eşleşmesi tamamlandıktan sonra) yeniden uygulanır.
+    //  BuildAsync sonrası (kategori stratejisi + form mutabakatı tamamlandıktan sonra) yeniden uygulanır.
     // ------------------------------------------------------------------ //
-    private static string ComputeMatchKey(AiComparisonResult r) =>
-        $"{r.SourcePageId?.ToString() ?? "-"}|{r.ProgressPaymentCheckItemId?.ToString() ?? "-"}|{r.ItemType}|{r.Description}";
-
     private async Task ApplyOverridesAsync(int jobId, CancellationToken cancellationToken)
     {
         var overrides = await _db.AiComparisonOverrides.Where(o => o.JobId == jobId).ToListAsync(cancellationToken);
@@ -429,7 +426,7 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
         var results = await _db.AiComparisonResults.Where(r => r.JobId == jobId).ToListAsync(cancellationToken);
         foreach (var r in results)
         {
-            if (!overrideByKey.TryGetValue(ComputeMatchKey(r), out var ov)) continue;
+            if (!overrideByKey.TryGetValue(ComparisonResultFactory.ComputeMatchKey(r), out var ov)) continue;
             r.OriginalStatus ??= r.Status; // AI'nin gerçek sonucu yalnızca ilk override anında saklanır
             r.Status = ov.OverrideStatus;
             r.UserOverridden = true;
@@ -438,48 +435,40 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
         await _db.SaveChangesAsync(cancellationToken);
     }
 
+    /// <summary>Onay kalıcı olarak kaydedilip HEMEN ardından tam bir recompute tetiklenir — bu sayede
+    /// bir Mağaza/Tarih uyuşmazlığı onaylandığında, FormNumberMatcher'ın override-kurtarma mantığı
+    /// (bkz. CategoryComparisonStrategies.cs) devreye girip kategori kontrolünün GERÇEK bir sonuç
+    /// üretmesi "anında" sağlanır — kullanıcı ayrıca AI'yi yeniden çalıştırmak zorunda kalmaz.</summary>
     public async Task OverrideResultStatusAsync(int resultId, string? note)
     {
         var result = await _db.AiComparisonResults.FindAsync(resultId)
             ?? throw new InvalidOperationException("Karşılaştırma sonucu bulunamadı.");
+        var jobId = result.JobId;
+        var matchKey = ComparisonResultFactory.ComputeMatchKey(result);
 
-        var matchKey = ComputeMatchKey(result);
-        var existing = await _db.AiComparisonOverrides
-            .Where(o => o.JobId == result.JobId && o.MatchKey == matchKey)
-            .ToListAsync();
+        var existing = await _db.AiComparisonOverrides.Where(o => o.JobId == jobId && o.MatchKey == matchKey).ToListAsync();
         _db.AiComparisonOverrides.RemoveRange(existing);
         _db.AiComparisonOverrides.Add(new AiComparisonOverride
         {
-            JobId = result.JobId,
-            MatchKey = matchKey,
-            OverrideStatus = AiComparisonStatus.Uygun,
-            Note = note,
-            CreatedAt = DateTime.Now,
+            JobId = jobId, MatchKey = matchKey, OverrideStatus = AiComparisonStatus.Uygun, Note = note, CreatedAt = DateTime.Now,
         });
-
-        result.OriginalStatus ??= result.Status;
-        result.Status = AiComparisonStatus.Uygun;
-        result.UserOverridden = true;
-        result.OverrideNote = note;
         await _db.SaveChangesAsync();
+
+        await RecomputeComparisonForJobAsync(jobId);
     }
 
     public async Task RevertOverrideAsync(int resultId)
     {
         var result = await _db.AiComparisonResults.FindAsync(resultId)
             ?? throw new InvalidOperationException("Karşılaştırma sonucu bulunamadı.");
+        var jobId = result.JobId;
+        var matchKey = ComparisonResultFactory.ComputeMatchKey(result);
 
-        var matchKey = ComputeMatchKey(result);
-        var existing = await _db.AiComparisonOverrides
-            .Where(o => o.JobId == result.JobId && o.MatchKey == matchKey)
-            .ToListAsync();
+        var existing = await _db.AiComparisonOverrides.Where(o => o.JobId == jobId && o.MatchKey == matchKey).ToListAsync();
         _db.AiComparisonOverrides.RemoveRange(existing);
-
-        result.Status = result.OriginalStatus ?? result.Status;
-        result.OriginalStatus = null;
-        result.UserOverridden = false;
-        result.OverrideNote = null;
         await _db.SaveChangesAsync();
+
+        await RecomputeComparisonForJobAsync(jobId);
     }
 
     // ------------------------------------------------------------------ //
@@ -504,11 +493,7 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
         var pages = await _db.AiDocumentPages.Where(p => p.JobId == jobId).ToListAsync();
         var results = await _db.AiComparisonResults.Where(r => r.JobId == jobId).ToListAsync();
 
-        var checkItems = await _db.ProgressPaymentCheckItems
-            .Where(i => i.ProgressPaymentCheckId == job.ProgressPaymentCheckId)
-            .ToListAsync();
-        var serviceFormPages = pages.Where(p => p.DocumentType == AiDocumentType.ServiceForm).ToList();
-        var reconciliation = StoreFormReconciliationBuilder.Compute(jobId, serviceFormPages, checkItems);
+        var reconciliation = await StoreFormReconciliationBuilder.ComputeSummaryAsync(_db, jobId, job.ProgressPaymentCheckId, default);
 
         return new AiAnalysisJobDto
         {
@@ -538,12 +523,11 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
             FazlaItemCount = results.Count(r => r.Status == AiComparisonStatus.Fazla),
             RejectedServiceFeeCount = results.Count(r => r.ItemType == AiComparisonItemType.ServiceFee && r.Status == AiComparisonStatus.UygunDegil),
             ManHoursDiscrepancyCount = results.Count(r => r.ItemType == AiComparisonItemType.ManHours && r.Status == AiComparisonStatus.UygunDegil),
-            ExceldekiMagazaCount = reconciliation.ExceldekiMagazaCount,
-            FormlardaBulunanMagazaCount = reconciliation.FormlardaBulunanMagazaCount,
-            TamEslesenMagazaCount = reconciliation.TamEslesenMagazaCount,
-            EksikMagazaCount = reconciliation.EksikMagazaCount,
-            FazlaYabanciMagazaCount = reconciliation.FazlaYabanciMagazaCount,
-            EslesmeyenFormCount = reconciliation.EslesmeyenFormCount,
+            BeklenenFormSayisi = reconciliation.BeklenenFormSayisi,
+            EslesenFormSayisi = reconciliation.EslesenFormSayisi,
+            EksikFormSayisi = reconciliation.EksikFormSayisi,
+            FazlaFormSayisi = reconciliation.FazlaFormSayisi,
+            MukerrerZiyaretSayisi = reconciliation.MukerrerZiyaretSayisi,
         };
     }
 
@@ -672,43 +656,37 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
         }).ToList();
     }
 
+    /// <summary>Tamamen persisted veriden hesaplanır (bkz. StoreFormReconciliationBuilder.ComputeSummaryAsync
+    /// üstündeki açıklama) — bu yüzden kullanıcının "Onay ver" ile düzelttiği eski hatalar burada artık
+    /// otomatik güncel görünür, ayrı bir yenileme/override-farkında mantık gerekmez.</summary>
     public async Task<List<StoreReconciliationIssueDto>> GetStoreReconciliationIssuesAsync(int jobId)
     {
         var job = await _db.AiAnalysisJobs.FindAsync(jobId);
         if (job is null) return new List<StoreReconciliationIssueDto>();
 
-        var pages = await _db.AiDocumentPages
-            .Where(p => p.JobId == jobId && p.DocumentType == AiDocumentType.ServiceForm)
-            .ToListAsync();
-        var checkItems = await _db.ProgressPaymentCheckItems
-            .Where(i => i.ProgressPaymentCheckId == job.ProgressPaymentCheckId)
-            .ToListAsync();
-
-        var reconciliation = StoreFormReconciliationBuilder.Compute(jobId, pages, checkItems);
+        var reconciliation = await StoreFormReconciliationBuilder.ComputeSummaryAsync(_db, jobId, job.ProgressPaymentCheckId, default);
         var issues = new List<StoreReconciliationIssueDto>();
 
-        foreach (var m in reconciliation.EksikMagazalar)
-            issues.Add(new StoreReconciliationIssueDto
-            {
-                StoreLabel = m.StoreLabel,
-                IssueType = "Eksik Mağaza",
-                Message = $"{m.StoreLabel} — Hakedişte mevcut ancak servis formu bulunamadı.",
-            });
-
-        foreach (var m in reconciliation.FazlaYabanciMagazalar)
-            issues.Add(new StoreReconciliationIssueDto
-            {
-                StoreLabel = m.StoreLabel,
-                IssueType = "Fazla/Yabancı Mağaza",
-                Message = $"{m.StoreLabel} — Servis formu yüklenmiş ancak hakediş Excelinde bu mağazaya ait kayıt bulunamadı.",
-            });
-
-        foreach (var f in reconciliation.EslesmeyenFormlar)
+        foreach (var f in reconciliation.EksikFormlar)
             issues.Add(new StoreReconciliationIssueDto
             {
                 StoreLabel = f.StoreLabel,
-                IssueType = "Eşleşmeyen Form",
-                Message = f.Error.Explanation,
+                IssueType = "Form Eksik",
+                Message = $"{f.StoreLabel} — Form {f.FormNo} hakedişte mevcut ancak servis formu bulunamadı.",
+            });
+
+        foreach (var msg in reconciliation.MukerrerZiyaretMesajlari)
+            issues.Add(new StoreReconciliationIssueDto { StoreLabel = string.Empty, IssueType = "Mükerrer Ziyaret", Message = msg });
+
+        foreach (var s in reconciliation.DigerSorunlar)
+            issues.Add(new StoreReconciliationIssueDto { StoreLabel = s.StoreLabel, IssueType = s.Description, Message = s.Explanation });
+
+        if (reconciliation.FazlaFormSayisi > 0)
+            issues.Add(new StoreReconciliationIssueDto
+            {
+                StoreLabel = string.Empty,
+                IssueType = "Fazla Form",
+                Message = $"{reconciliation.FazlaFormSayisi} adet servis formu fazladır (hakedişte karşılığı yok, kontrol dışıdır).",
             });
 
         return issues;
@@ -752,7 +730,7 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
         var check = job is null ? null : await _db.ProgressPaymentChecks.FindAsync(job.ProgressPaymentCheckId);
         if (job is null || check is null) return;
         await _comparisonStrategies.Get(check.Category).BuildAsync(job, CancellationToken.None);
-        await StoreFormReconciliationBuilder.PersistMissingStoreRowsAsync(_db, job, CancellationToken.None);
+        await StoreFormReconciliationBuilder.PersistMissingFormRowsAsync(_db, job, CancellationToken.None);
         await ApplyOverridesAsync(job.Id, CancellationToken.None);
     }
 
@@ -807,7 +785,7 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
         {
             await ApplyBusinessRulesAsync(job, cancellationToken);
             await _comparisonStrategies.Get(check.Category).BuildAsync(job, cancellationToken);
-            await StoreFormReconciliationBuilder.PersistMissingStoreRowsAsync(_db, job, cancellationToken);
+            await StoreFormReconciliationBuilder.PersistMissingFormRowsAsync(_db, job, cancellationToken);
             await ApplyOverridesAsync(job.Id, cancellationToken);
         }
 
