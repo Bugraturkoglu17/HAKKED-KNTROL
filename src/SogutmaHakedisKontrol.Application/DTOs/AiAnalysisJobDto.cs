@@ -143,6 +143,9 @@ public class AiComparisonResultDto
     public string? HakedisValue { get; set; }
     public string Status { get; set; } = string.Empty;
     public string Explanation { get; set; } = string.Empty;
+
+    public bool UserOverridden { get; set; }
+    public string? OriginalStatusLabel { get; set; }
 }
 
 /// <summary>"Mağaza Eşleşmesi" kartının detay listesindeki tek bir 🔴 satırı.</summary>

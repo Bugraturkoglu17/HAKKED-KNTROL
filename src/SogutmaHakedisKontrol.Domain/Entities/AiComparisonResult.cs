@@ -26,6 +26,12 @@ public class AiComparisonResult
     public AiComparisonStatus Status { get; set; }
     public string Explanation { get; set; } = string.Empty;
 
+    // ── Kullanıcı manuel onayı (bkz. AiComparisonOverride) — recompute'ta bu satır silinip yeniden
+    // üretildiğinde AiAnalysisPipelineService.ApplyOverridesAsync tarafından yeniden uygulanır. ──
+    public bool UserOverridden { get; set; }
+    public AiComparisonStatus? OriginalStatus { get; set; }
+    public string? OverrideNote { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.Now;
 
     public AiAnalysisJob Job { get; set; } = null!;

@@ -124,60 +124,64 @@ else
     }
     else
     {
-        <MudGrid Spacing="1" Class="mb-3">
-            <MudItem xs="6" md="2"><KpiStat Label="Toplam Kontrol" Value="@TotalResultsLabel" /></MudItem>
-            <MudItem xs="6" md="2"><KpiStat Label="Uygun" Value="@UygunCountLabel" Color="Color.Success" /></MudItem>
-            <MudItem xs="6" md="2"><KpiStat Label="Uygun Değil" Value="@UygunDegilCountLabel" Color="Color.Error" /></MudItem>
-            <MudItem xs="6" md="2"><KpiStat Label="Manuel Kontrol" Value="@ManuelKontrolCountLabel" Color="Color.Warning" /></MudItem>
-            <MudItem xs="6" md="2"><KpiStat Label="Eksik / Fazla" Value="@EksikFazlaCountLabel" Color="Color.Warning" /></MudItem>
-        </MudGrid>
+        <MudPaper Class="pa-3 mb-3" Outlined>
+            <MudStack Row Wrap="Wrap.Wrap" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Spacing="3">
+                <MudStack Row Wrap="Wrap.Wrap" Spacing="2" AlignItems="AlignItems.Center">
+                    <MudChip T="string" Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Variant="Variant.Text" Size="Size.Small">@UygunCountLabel Uygun</MudChip>
+                    <MudChip T="string" Icon="@Icons.Material.Filled.Cancel" Color="Color.Error" Variant="Variant.Text" Size="Size.Small">@UygunDegilCountLabel Uygun Değil</MudChip>
+                    <MudChip T="string" Icon="@Icons.Material.Filled.RemoveCircleOutline" Color="Color.Warning" Variant="Variant.Text" Size="Size.Small">@EksikCountLabel Eksik</MudChip>
+                    <MudChip T="string" Icon="@Icons.Material.Filled.HelpOutline" Color="Color.Warning" Variant="Variant.Text" Size="Size.Small">@ManuelKontrolCountLabel Manuel Kontrol</MudChip>
+                </MudStack>
+                <MudStack Row Spacing="1" AlignItems="AlignItems.Center">
+                    <MudIcon Icon="@StoreMatchIcon" Color="@StoreMatchColor" Size="Size.Small" />
+                    <MudText Typo="Typo.body2">@StoreMatchSummaryLabel</MudText>
+                    <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="@(() => _showStoreDetails = !_showStoreDetails)">
+                        @(_showStoreDetails ? "Gizle" : "Detaylar")
+                    </MudButton>
+                </MudStack>
+            </MudStack>
 
-        <MudGrid Spacing="1" Class="mb-3">
-            <MudItem xs="6" md="2"><KpiStat Label="Servis Formu (AI)" Value="@ServiceFormPageCountLabel" /></MudItem>
-            <MudItem xs="6" md="2"><KpiStat Label="Bakım Formu (AI)" Value="@MaintenancePageCountLabel" /></MudItem>
-            <MudItem xs="6" md="2"><KpiStat Label="İcmal / Özet Sayfası" Value="@SummaryPageCountLabel" /></MudItem>
-            <MudItem xs="6" md="2"><KpiStat Label="Sınıflandırılamadı" Value="@UnknownPageCountLabel" Color="@UnknownPageColor" /></MudItem>
-            <MudItem xs="6" md="2"><KpiStat Label="Reddedilen Servis Ücreti" Value="@RejectedServiceFeeCountLabel" Color="Color.Error" /></MudItem>
-        </MudGrid>
-
-        <MudPaper Elevation="1" Class="pa-3 mb-3">
-            <MudText Typo="Typo.subtitle1" Class="mb-2" Style="font-weight:600">Mağaza Eşleşmesi</MudText>
-            <MudGrid Spacing="1" Class="mb-2">
-                <MudItem xs="6" md="2"><KpiStat Label="Exceldeki Mağaza" Value="@_job.ExceldekiMagazaCount.ToString()" /></MudItem>
-                <MudItem xs="6" md="2"><KpiStat Label="Formlarda Bulunan" Value="@_job.FormlardaBulunanMagazaCount.ToString()" /></MudItem>
-                <MudItem xs="6" md="2"><KpiStat Label="Tam Eşleşen" Value="@_job.TamEslesenMagazaCount.ToString()" Color="Color.Success" /></MudItem>
-                <MudItem xs="6" md="2"><KpiStat Label="Eksik Mağaza" Value="@_job.EksikMagazaCount.ToString()" Color="@(_job.EksikMagazaCount > 0 ? Color.Error : Color.Default)" /></MudItem>
-                <MudItem xs="6" md="2"><KpiStat Label="Fazla/Yabancı Mağaza" Value="@_job.FazlaYabanciMagazaCount.ToString()" Color="@(_job.FazlaYabanciMagazaCount > 0 ? Color.Error : Color.Default)" /></MudItem>
-                <MudItem xs="6" md="2"><KpiStat Label="Eşleşmeyen Form" Value="@_job.EslesmeyenFormCount.ToString()" Color="@(_job.EslesmeyenFormCount > 0 ? Color.Error : Color.Default)" /></MudItem>
-            </MudGrid>
-            @if (_storeIssues.Count > 0)
+            @if (_showStoreDetails)
             {
-                @foreach (var issue in _storeIssues)
+                <MudDivider Class="my-2" />
+                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block mb-1">@PageBreakdownLabel</MudText>
+                @if (_storeIssues.Count > 0)
                 {
-                    <MudText Typo="Typo.caption" Color="Color.Error" Class="d-block">🔴 @issue.Message</MudText>
+                    @foreach (var issue in _storeIssues)
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Error" Class="d-block">🔴 @issue.Message</MudText>
+                    }
                 }
-            }
-            else
-            {
-                <MudText Typo="Typo.caption" Color="Color.Success">Tüm mağazalar için form eşleşmesi tam.</MudText>
+                else
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Success">Tüm mağazalar için form eşleşmesi tam.</MudText>
+                }
             }
         </MudPaper>
 
         @if (_manualReviewPages.Count > 0)
         {
-            <MudAlert Severity="Severity.Warning" Class="mb-3">
-                <MudText Typo="Typo.body2" Style="font-weight:600" Class="mb-1">@ManualReviewHeaderLabel</MudText>
-                @foreach (var p in _manualReviewPages)
+            <MudAlert Severity="Severity.Warning" Class="mb-3" Dense>
+                <MudStack Row AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                    <MudText Typo="Typo.body2" Style="font-weight:600">@ManualReviewHeaderLabel</MudText>
+                    <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="@(() => _showManualReview = !_showManualReview)">
+                        @(_showManualReview ? "Gizle" : "Göster")
+                    </MudButton>
+                </MudStack>
+                @if (_showManualReview)
                 {
-                    <MudStack Row AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-1">
-                        <MudText Typo="Typo.caption">@ManualReviewPageLabel(p)</MudText>
-                    </MudStack>
-                    @foreach (var m in ManualReviewMaterials(p))
+                    @foreach (var p in _manualReviewPages)
                     {
-                        <MudStack Row AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="ml-4 mb-1">
-                            <MudText Typo="Typo.caption" Color="Color.Secondary">@ManualReviewMaterialLabel(m)</MudText>
-                            <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => CorrectMaterialAsync(m))">Düzelt</MudButton>
+                        <MudStack Row AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-1 mt-2">
+                            <MudText Typo="Typo.caption">@ManualReviewPageLabel(p)</MudText>
                         </MudStack>
+                        @foreach (var m in ManualReviewMaterials(p))
+                        {
+                            <MudStack Row AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="ml-4 mb-1">
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">@ManualReviewMaterialLabel(m)</MudText>
+                                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => CorrectMaterialAsync(m))">Düzelt</MudButton>
+                            </MudStack>
+                        }
                     }
                 }
             </MudAlert>
@@ -218,6 +222,7 @@ else
                     <MudTh>Hakediş Değeri</MudTh>
                     <MudTh>Sonuç</MudTh>
                     <MudTh>Açıklama</MudTh>
+                    <MudTh>İşlem</MudTh>
                 </HeaderContent>
                 <RowTemplate>
                     <MudTd>@context.StoreLabel</MudTd>
@@ -226,13 +231,31 @@ else
                     <MudTd>@context.Description</MudTd>
                     <MudTd>@context.FormValue</MudTd>
                     <MudTd>@context.HakedisValue</MudTd>
-                    <MudTd><MudChip T="string" Size="Size.Small" Color="@ResultColor(context.Status)">@ResultLabel(context.Status)</MudChip></MudTd>
+                    <MudTd>
+                        <MudChip T="string" Size="Size.Small" Color="@ResultColor(context.Status)">@ResultLabel(context.Status)</MudChip>
+                        @if (context.UserOverridden)
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block">AI: @ResultLabel(context.OriginalStatusLabel ?? "")</MudText>
+                        }
+                    </MudTd>
                     <MudTd>
                         <MudTooltip Text="@context.Explanation">
                             <MudText Typo="Typo.caption" Style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block">
                                 @context.Explanation
                             </MudText>
                         </MudTooltip>
+                    </MudTd>
+                    <MudTd>
+                        @if (context.UserOverridden)
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.Undo" Size="Size.Small" Title="Geri al"
+                                           OnClick="@(() => RevertOverrideAsync(context))" />
+                        }
+                        else if (context.Status != UygunFilterValue)
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.CheckCircleOutline" Size="Size.Small" Color="Color.Success"
+                                           Title="Uygun olarak onayla" OnClick="@(() => OverrideResultAsync(context))" />
+                        }
                     </MudTd>
                 </RowTemplate>
                 <PagerContent><MudTablePager /></PagerContent>
@@ -269,6 +292,8 @@ else
     private List<AiDocumentPageDto> _manualReviewPages = new();
     private List<AiComparisonResultDto> _results = new();
     private List<StoreReconciliationIssueDto> _storeIssues = new();
+    private bool _showStoreDetails;
+    private bool _showManualReview;
 
     private bool _running;
     private string _progressMessage = string.Empty;
@@ -466,6 +491,20 @@ else
         Snackbar.Add("Malzeme güncellendi.", Severity.Success);
     }
 
+    private async Task OverrideResultAsync(AiComparisonResultDto result)
+    {
+        await Pipeline.OverrideResultStatusAsync(result.Id, note: null);
+        await LoadJobAsync();
+        Snackbar.Add("Uygun olarak onaylandı.", Severity.Success);
+    }
+
+    private async Task RevertOverrideAsync(AiComparisonResultDto result)
+    {
+        await Pipeline.RevertOverrideAsync(result.Id);
+        await LoadJobAsync();
+        Snackbar.Add("Onay geri alındı.", Severity.Info);
+    }
+
     private void OnStatusFilterChanged(string? value) => _statusFilter = value ?? AllFilterValue;
 
     private Func<AiComparisonResultDto, bool> TableFilter => FilterResult;
@@ -496,17 +535,39 @@ else
 
     private string ManualReviewHeaderLabel => $"Manuel kontrol gereken belgeler ({_manualReviewPages.Count})";
 
-    private string TotalResultsLabel => _results.Count.ToString();
     private string UygunCountLabel => _job?.UygunItemCount.ToString() ?? "0";
     private string UygunDegilCountLabel => _job?.UygunDegilItemCount.ToString() ?? "0";
+    private string EksikCountLabel => _job?.EksikItemCount.ToString() ?? "0";
     private string ManuelKontrolCountLabel => _results.Count(r => r.Status == ManuelKontrolFilterValue).ToString();
-    private string EksikFazlaCountLabel => _job != null ? (_job.EksikItemCount + _job.FazlaItemCount).ToString() : "0";
-    private string ServiceFormPageCountLabel => _job?.ClassifiedServiceFormPageCount.ToString() ?? "0";
-    private string MaintenancePageCountLabel => _job?.ClassifiedMaintenancePageCount.ToString() ?? "0";
-    private string SummaryPageCountLabel => _job?.SummaryPageCount.ToString() ?? "0";
-    private string UnknownPageCountLabel => _job?.UnknownPageCount.ToString() ?? "0";
-    private Color UnknownPageColor => _job != null && _job.UnknownPageCount > 0 ? Color.Error : Color.Default;
-    private string RejectedServiceFeeCountLabel => _job?.RejectedServiceFeeCount.ToString() ?? "0";
+
+    private int StoreMatchProblemCount => _job == null ? 0 : _job.EksikMagazaCount + _job.FazlaYabanciMagazaCount + _job.EslesmeyenFormCount;
+    private Color StoreMatchColor => StoreMatchProblemCount > 0 ? Color.Warning : Color.Success;
+    private string StoreMatchIcon => StoreMatchProblemCount > 0 ? Icons.Material.Filled.WarningAmber : Icons.Material.Filled.CheckCircle;
+    private string StoreMatchSummaryLabel
+    {
+        get
+        {
+            if (_job == null) return string.Empty;
+            var baseLabel = $"Mağaza Eşleşmesi: {_job.TamEslesenMagazaCount}/{_job.ExceldekiMagazaCount} eşleşti";
+            return StoreMatchProblemCount > 0 ? $"{baseLabel} · {StoreMatchProblemCount} sorun" : baseLabel;
+        }
+    }
+
+    // AI sayfa dağılımı + reddedilen servis ücreti — "Detaylar" genişletilince gösterilen tek satır özet.
+    private string PageBreakdownLabel
+    {
+        get
+        {
+            if (_job == null) return string.Empty;
+            var parts = new List<string> { $"{_job.ClassifiedServiceFormPageCount} servis formu" };
+            if (_job.ClassifiedMaintenancePageCount > 0) parts.Add($"{_job.ClassifiedMaintenancePageCount} bakım formu");
+            if (_job.SummaryPageCount > 0) parts.Add($"{_job.SummaryPageCount} icmal atlandı");
+            if (_job.UnknownPageCount > 0) parts.Add($"{_job.UnknownPageCount} sınıflandırılamadı");
+            var label = $"{_job.TotalPages} sayfa analiz edildi — {string.Join(", ", parts)}";
+            if (_job.RejectedServiceFeeCount > 0) label += $" · {_job.RejectedServiceFeeCount} reddedilen servis ücreti";
+            return label;
+        }
+    }
 
     private static Color ResultColor(string status) => status switch
     {

@@ -32,6 +32,14 @@ public interface IAiAnalysisPipelineService
     /// <summary>Belirsiz mağaza eşleşmesini kullanıcı elle onaylar/düzeltir.</summary>
     Task CorrectPageStoreAsync(int pageId, int storeId);
 
+    /// <summary>Kullanıcı, AI'nin "Uygun" dışı verdiği bir sonucu manuel inceleme sonrası "Uygun" olarak
+    /// onaylar — kalıcıdır (AiComparisonOverride), sonuç recompute ile silinip yeniden üretilse bile
+    /// tekrar uygulanır. Export'ta bu satır artık "Uygun" sayıldığı için kontrol notu almaz.</summary>
+    Task OverrideResultStatusAsync(int resultId, string? note);
+
+    /// <summary>Manuel onayı geri alır — sonucu AI'nin ürettiği orijinal duruma döndürür.</summary>
+    Task RevertOverrideAsync(int resultId);
+
     /// <summary>Yalnızca başarısız/manuel-kontrol sayfalarını yeniden dener.</summary>
     Task<AiAnalysisJobDto> RetryFailedPagesAsync(int jobId, IProgress<AiJobProgressUpdate>? progress, CancellationToken cancellationToken = default);
 }

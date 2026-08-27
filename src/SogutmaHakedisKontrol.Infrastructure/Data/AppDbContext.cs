@@ -22,6 +22,7 @@ public class AppDbContext : DbContext
     public DbSet<AiPageEmployee> AiPageEmployees => Set<AiPageEmployee>();
     public DbSet<AiPageMaterial> AiPageMaterials => Set<AiPageMaterial>();
     public DbSet<AiComparisonResult> AiComparisonResults => Set<AiComparisonResult>();
+    public DbSet<AiComparisonOverride> AiComparisonOverrides => Set<AiComparisonOverride>();
     public DbSet<AiUsageLog> AiUsageLogs => Set<AiUsageLog>();
     public DbSet<AiSourceDocument> AiSourceDocuments => Set<AiSourceDocument>();
 
@@ -248,10 +249,25 @@ public class AppDbContext : DbContext
             e.Property(x => x.Explanation).HasMaxLength(1000).IsRequired();
             e.Property(x => x.ItemType).HasConversion<int>();
             e.Property(x => x.Status).HasConversion<int>();
+            e.Property(x => x.OriginalStatus).HasConversion<int?>();
+            e.Property(x => x.OverrideNote).HasMaxLength(500);
             e.HasIndex(x => x.JobId);
 
             e.HasOne(x => x.Job)
                 .WithMany(j => j.ComparisonResults)
+                .HasForeignKey(x => x.JobId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<AiComparisonOverride>(e =>
+        {
+            e.Property(x => x.MatchKey).HasMaxLength(600).IsRequired();
+            e.Property(x => x.OverrideStatus).HasConversion<int>();
+            e.Property(x => x.Note).HasMaxLength(500);
+            e.HasIndex(x => new { x.JobId, x.MatchKey });
+
+            e.HasOne(x => x.Job)
+                .WithMany()
                 .HasForeignKey(x => x.JobId)
                 .OnDelete(DeleteBehavior.Cascade);
         });

@@ -163,6 +163,7 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
         await _db.SaveChangesAsync(cancellationToken);
         await _comparisonStrategies.Get(check.Category).BuildAsync(job, cancellationToken);
         await StoreFormReconciliationBuilder.PersistMissingStoreRowsAsync(_db, job, cancellationToken);
+        await ApplyOverridesAsync(job.Id, cancellationToken);
         Report(progress, AiJobStatus.Comparing, "Hakediş karşılaştırması tamamlanıyor...");
 
         // ── Tamamlandı ────────────────────────────────────────────────────
@@ -412,6 +413,76 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
         => progress?.Report(new AiJobProgressUpdate { Status = status, Message = message, Current = current, Total = total });
 
     // ------------------------------------------------------------------ //
+    //  MANUEL ONAY/GERİ AL — bkz. AiComparisonOverride. Sonuçlar her recompute'ta silinip yeniden
+    //  üretildiği için onay doğrudan satıra değil, kaynağa bağlı bu kalıcı anahtara yazılır ve her
+    //  BuildAsync sonrası (kategori stratejisi + mağaza eşleşmesi tamamlandıktan sonra) yeniden uygulanır.
+    // ------------------------------------------------------------------ //
+    private static string ComputeMatchKey(AiComparisonResult r) =>
+        $"{r.SourcePageId?.ToString() ?? "-"}|{r.ProgressPaymentCheckItemId?.ToString() ?? "-"}|{r.ItemType}|{r.Description}";
+
+    private async Task ApplyOverridesAsync(int jobId, CancellationToken cancellationToken)
+    {
+        var overrides = await _db.AiComparisonOverrides.Where(o => o.JobId == jobId).ToListAsync(cancellationToken);
+        if (overrides.Count == 0) return;
+
+        var overrideByKey = overrides.ToDictionary(o => o.MatchKey);
+        var results = await _db.AiComparisonResults.Where(r => r.JobId == jobId).ToListAsync(cancellationToken);
+        foreach (var r in results)
+        {
+            if (!overrideByKey.TryGetValue(ComputeMatchKey(r), out var ov)) continue;
+            r.OriginalStatus ??= r.Status; // AI'nin gerçek sonucu yalnızca ilk override anında saklanır
+            r.Status = ov.OverrideStatus;
+            r.UserOverridden = true;
+            r.OverrideNote = ov.Note;
+        }
+        await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task OverrideResultStatusAsync(int resultId, string? note)
+    {
+        var result = await _db.AiComparisonResults.FindAsync(resultId)
+            ?? throw new InvalidOperationException("Karşılaştırma sonucu bulunamadı.");
+
+        var matchKey = ComputeMatchKey(result);
+        var existing = await _db.AiComparisonOverrides
+            .Where(o => o.JobId == result.JobId && o.MatchKey == matchKey)
+            .ToListAsync();
+        _db.AiComparisonOverrides.RemoveRange(existing);
+        _db.AiComparisonOverrides.Add(new AiComparisonOverride
+        {
+            JobId = result.JobId,
+            MatchKey = matchKey,
+            OverrideStatus = AiComparisonStatus.Uygun,
+            Note = note,
+            CreatedAt = DateTime.Now,
+        });
+
+        result.OriginalStatus ??= result.Status;
+        result.Status = AiComparisonStatus.Uygun;
+        result.UserOverridden = true;
+        result.OverrideNote = note;
+        await _db.SaveChangesAsync();
+    }
+
+    public async Task RevertOverrideAsync(int resultId)
+    {
+        var result = await _db.AiComparisonResults.FindAsync(resultId)
+            ?? throw new InvalidOperationException("Karşılaştırma sonucu bulunamadı.");
+
+        var matchKey = ComputeMatchKey(result);
+        var existing = await _db.AiComparisonOverrides
+            .Where(o => o.JobId == result.JobId && o.MatchKey == matchKey)
+            .ToListAsync();
+        _db.AiComparisonOverrides.RemoveRange(existing);
+
+        result.Status = result.OriginalStatus ?? result.Status;
+        result.OriginalStatus = null;
+        result.UserOverridden = false;
+        result.OverrideNote = null;
+        await _db.SaveChangesAsync();
+    }
+
+    // ------------------------------------------------------------------ //
     //  OKUMA
     // ------------------------------------------------------------------ //
     public async Task<AiAnalysisJobDto?> GetJobAsync(int jobId) => await BuildJobDtoAsync(jobId);
@@ -580,6 +651,8 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
             HakedisValue = r.HakedisValue,
             Status = r.Status.ToString(),
             Explanation = r.Explanation,
+            UserOverridden = r.UserOverridden,
+            OriginalStatusLabel = r.UserOverridden ? r.OriginalStatus?.ToString() : null,
         }).ToList();
     }
 
@@ -664,6 +737,7 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
         if (job is null || check is null) return;
         await _comparisonStrategies.Get(check.Category).BuildAsync(job, CancellationToken.None);
         await StoreFormReconciliationBuilder.PersistMissingStoreRowsAsync(_db, job, CancellationToken.None);
+        await ApplyOverridesAsync(job.Id, CancellationToken.None);
     }
 
     // ------------------------------------------------------------------ //
@@ -718,6 +792,7 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
             await ApplyBusinessRulesAsync(job, cancellationToken);
             await _comparisonStrategies.Get(check.Category).BuildAsync(job, cancellationToken);
             await StoreFormReconciliationBuilder.PersistMissingStoreRowsAsync(_db, job, cancellationToken);
+            await ApplyOverridesAsync(job.Id, cancellationToken);
         }
 
         var refreshedPages = await _db.AiDocumentPages.Where(p => p.JobId == job.Id).ToListAsync(cancellationToken);
