@@ -67,6 +67,48 @@ public class ProgressPaymentCheckService : IProgressPaymentCheckService
         => Task.FromResult(ProgressPaymentExcelParser.Parse(stream, fileName));
 
     // ------------------------------------------------------------------ //
+    //  SİLME — geçmiş kontrolleri temizlemek için
+    // ------------------------------------------------------------------ //
+    public async Task DeleteCheckAsync(int checkId)
+    {
+        var check = await _db.ProgressPaymentChecks.FindAsync(checkId);
+        if (check is null) return;
+
+        TryDeleteFile(check.OriginalFilePath);
+        TryDeleteFile(check.ControlledFilePath);
+
+        var jobs = await _db.AiAnalysisJobs.Where(j => j.ProgressPaymentCheckId == checkId).ToListAsync();
+        if (jobs.Count > 0)
+        {
+            var jobIds = jobs.Select(j => j.Id).ToList();
+            foreach (var job in jobs) TryDeleteFile(job.MaintenanceFormsFilePath);
+
+            var sourceDocs = await _db.AiSourceDocuments.Where(d => jobIds.Contains(d.JobId)).ToListAsync();
+            foreach (var doc in sourceDocs) TryDeleteFile(doc.FilePath);
+
+            // AiUsageLog/CheckItemActionLog EF ilişkisi (nav property) tanımlanmadığı için cascade
+            // devreye girmez — silinmezse yetim kayıt olarak kalırlar, burada elle temizlenir.
+            var usageLogs = await _db.AiUsageLogs.Where(l => jobIds.Contains(l.JobId)).ToListAsync();
+            _db.AiUsageLogs.RemoveRange(usageLogs);
+        }
+
+        var actionLogs = await _db.CheckItemActionLogs.Where(a => a.ProgressPaymentCheckId == checkId).ToListAsync();
+        _db.CheckItemActionLogs.RemoveRange(actionLogs);
+
+        // Kalemler, AI job'ları (+ sayfalar/malzemeler/personel/karşılaştırma sonuçları) ve
+        // AiSourceDocument kayıtları FK cascade ile otomatik silinir (bkz. AppDbContext).
+        _db.ProgressPaymentChecks.Remove(check);
+        await _db.SaveChangesAsync();
+    }
+
+    private static void TryDeleteFile(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return;
+        try { if (File.Exists(path)) File.Delete(path); }
+        catch { /* dosya kilitli/zaten silinmiş olabilir — kritik değil, DB kaydı asıl referans */ }
+    }
+
+    // ------------------------------------------------------------------ //
     //  OLUŞTURMA + OTOMATİK EŞLEŞTİRME
     // ------------------------------------------------------------------ //
     public async Task<ProgressPaymentCheckDto> CreateDraftCheckAsync(int unitPriceListId, string companyName, string region, HakedisCategory category)

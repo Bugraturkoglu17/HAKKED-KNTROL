@@ -9,6 +9,11 @@ public interface IProgressPaymentCheckService
     Task<ProgressPaymentCheckDto?> GetByIdAsync(int id);
     Task<List<ProgressPaymentCheckItemDto>> GetItemsAsync(int checkId);
 
+    /// <summary>Kontrol kaydını ve tüm bağlı verilerini (kalemler, AI analiz job'ları/sayfaları/
+    /// karşılaştırma sonuçları, denetim izi) kalıcı olarak siler; diskteki ilişkili dosyaları
+    /// (orijinal/kontrol edilmiş Excel, yüklenen AI PDF'leri) best-effort temizler. Geri alınamaz.</summary>
+    Task DeleteCheckAsync(int checkId);
+
     Task<ProgressPaymentImportPreviewDto> ParseExcelAsync(Stream stream, string fileName, int unitPriceListId);
 
     /// <summary>Yeni hakediş akışının 1. adımı: kategori seçilir seçilmez, Excel yüklenmeden önce, boş bir

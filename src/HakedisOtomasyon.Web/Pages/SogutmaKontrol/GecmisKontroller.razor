@@ -1,6 +1,8 @@
 @page "/discipline/sogutma/kontrol/gecmis-kontroller"
 @inject IProgressPaymentCheckService CheckService
 @inject NavigationManager Nav
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
 
 <PageTitle>Hakediş Kontrol Geçmişi</PageTitle>
 
@@ -23,6 +25,7 @@
             <MudTh>Kontrol Toplamı</MudTh>
             <MudTh>Fark</MudTh>
             <MudTh>Durum</MudTh>
+            <MudTh Style="width:1%"></MudTh>
         </HeaderContent>
         <RowTemplate>
             <MudTd DataLabel="Dönem">@context.PeriodLabel</MudTd>
@@ -35,6 +38,10 @@
             <MudTd DataLabel="Fark" Style="@(FarkStyle(context.Difference))">@context.Difference.ToString("N2") TL</MudTd>
             <MudTd DataLabel="Durum">
                 <MudChip T="string" Size="Size.Small" Color="@StatusColor(context.Status)">@context.StatusLabel</MudChip>
+            </MudTd>
+            <MudTd DataLabel="" @onclick:stopPropagation="true">
+                <MudIconButton Icon="@Icons.Material.Filled.DeleteOutline" Size="Size.Small" Color="Color.Error"
+                               Title="Bu kontrolü sil" OnClick="@(() => DeleteAsync(context))" />
             </MudTd>
         </RowTemplate>
         <PagerContent><MudTablePager /></PagerContent>
@@ -50,6 +57,21 @@
     {
         _checks = await CheckService.GetHistoryAsync();
         _loading = false;
+    }
+
+    private async Task DeleteAsync(ProgressPaymentCheckDto check)
+    {
+        var confirm = await DialogService.ShowMessageBox(
+            "Kontrolü Sil",
+            $"\"{check.CompanyName} — {check.PeriodLabel}\" kontrolü ve buna bağlı tüm kalemler, AI analiz sonuçları " +
+            "kalıcı olarak silinecek. Bu işlem geri alınamaz. Devam edilsin mi?",
+            yesText: "Evet, Sil",
+            cancelText: "İptal");
+        if (confirm != true) return;
+
+        await CheckService.DeleteCheckAsync(check.Id);
+        _checks.Remove(check);
+        Snackbar.Add("Kontrol silindi.", Severity.Success);
     }
 
     private static string FarkStyle(decimal diff) => diff switch
