@@ -40,7 +40,15 @@ internal static class ComparisonResultFactory
 internal static class FormNumberMatcher
 {
     private const decimal MinFormNumberConfidence = 0.4m;
-    private const double MinStoreNameSimilarity = 0.75;
+    private const double MinStoreNameSimilarity = 0.5;
+
+    // Mağaza adı karşılaştırmasında anlamsız gürültü sayılan, karar üzerinde etkisi olmaması gereken
+    // kelimeler (zincir/format ekleri, il adı, adres bağlaçları) — yalnızca mağaza eşleştirmede kullanılır,
+    // TextNormalizationHelper.NormalizeName'e eklenmez çünkü malzeme adı gibi başka karşılaştırmaları bozar.
+    private static readonly HashSet<string> StoreNameNoiseWords = new()
+    {
+        "mm", "mmm", "migros", "mah", "mahallesi", "sk", "sok", "ankara",
+    };
 
     public static (List<ProgressPaymentCheckItem>? Matched, AiComparisonResult? Error) Match(
         int jobId, AiDocumentPage page, List<ProgressPaymentCheckItem> checkItems)
@@ -115,19 +123,63 @@ internal static class FormNumberMatcher
 
     private enum StoreCheck { Matched, Mismatch, Inconclusive }
 
+    /// <summary>
+    /// Amaç OCR'ın mağaza kodunu birebir doğru okumasını beklemek DEĞİLDİR — form numarasıyla bulunan
+    /// hakediş kaydının, formdaki mağaza bilgileriyle makul şekilde aynı mağazaya ait olup olmadığını
+    /// belirlemektir. El yazısı mağaza kodu OCR hatası (ör. 7956→7856) tek başına uyuşmazlık sebebi
+    /// sayılmaz — mağaza adı yeterli benzerlikteyse (kısaltılmış/eksik yazılmış olsa bile) eşleşme kabul
+    /// edilir. Karar tablosu (Durum 1-6):
+    ///  1) Kod eşleşiyor → Eşleşti (isim kısaltılmış/eksik olsa da önemsiz).
+    ///  2/5) Kod farklı/okunamıyor ama isim benzerliği ≥ %50 → Eşleşti (kod OCR hatası varsayılır).
+    ///  4) Her iki kod da mevcut ve farklı, isimler de karşılaştırılabilir ve belirgin şekilde farklı → Uyuşmazlık.
+    ///  6) Ne kod (güvenilir eşleşme) ne isim (yeterli benzerlik) doğrulanabiliyor → Manuel Kontrol.
+    /// </summary>
     private static StoreCheck CompareStore(AiDocumentPage page, ProgressPaymentCheckItem item)
     {
         var formCode = TextNormalizationHelper.NormalizeCode(page.StoreCodeRaw ?? string.Empty);
         var itemCode = TextNormalizationHelper.NormalizeCode(item.StoreCode ?? string.Empty);
-        if (!string.IsNullOrEmpty(formCode) && !string.IsNullOrEmpty(itemCode))
-            return formCode == itemCode ? StoreCheck.Matched : StoreCheck.Mismatch;
+        if (!string.IsNullOrEmpty(formCode) && !string.IsNullOrEmpty(itemCode) && formCode == itemCode)
+            return StoreCheck.Matched; // Durum 1/3
 
-        var formName = TextNormalizationHelper.NormalizeName(page.StoreNameRaw ?? string.Empty);
-        var itemName = TextNormalizationHelper.NormalizeName(item.StoreName ?? string.Empty);
-        if (string.IsNullOrEmpty(formName) || string.IsNullOrEmpty(itemName)) return StoreCheck.Inconclusive;
+        var formNameCore = NormalizeStoreNameCore(page.StoreNameRaw);
+        var itemNameCore = NormalizeStoreNameCore(item.StoreName);
+        var namesComparable = !string.IsNullOrEmpty(formNameCore) && !string.IsNullOrEmpty(itemNameCore);
 
-        return TextNormalizationHelper.SimilarityRatio(formName, itemName) >= MinStoreNameSimilarity
-            ? StoreCheck.Matched : StoreCheck.Mismatch;
+        if (namesComparable && StoreNameSimilarity(formNameCore, itemNameCore) >= MinStoreNameSimilarity)
+        {
+            // Kod farklıysa (ör. 7956→7856) burada sessizce görmezden geliniyor — iç log niteliğinde:
+            // "Mağaza kodu OCR sonucu farklı ancak mağaza adı ve form numarası eşleşti." Kullanıcıya
+            // hata olarak GÖSTERİLMEZ (Match başarıyla döner, hiçbir AiComparisonResult üretilmez).
+            return StoreCheck.Matched; // Durum 2/5
+        }
+
+        var codesBothPresentAndDifferent = !string.IsNullOrEmpty(formCode) && !string.IsNullOrEmpty(itemCode);
+        if (codesBothPresentAndDifferent && namesComparable)
+            return StoreCheck.Mismatch; // Durum 4 — kod da isim de belirgin şekilde farklı
+
+        return StoreCheck.Inconclusive; // Durum 6 — ne kod ne isim güvenilir şekilde doğrulanabiliyor
+    }
+
+    /// <summary>Mağaza adı benzerliği — kısaltılmış adları kabul eder: normalize edilmiş (gürültü
+    /// kelimeleri atılmış) isimlerden biri diğerinin içinde geçiyorsa (ör. "sincan" ⊂ "selin sincan")
+    /// tam eşleşme sayılır, aksi halde Levenshtein tabanlı oran kullanılır.</summary>
+    private static double StoreNameSimilarity(string coreA, string coreB)
+    {
+        if (coreA == coreB) return 1.0;
+        if (coreA.Contains(coreB) || coreB.Contains(coreA)) return 1.0;
+        return TextNormalizationHelper.SimilarityRatio(coreA, coreB);
+    }
+
+    /// <summary>Mağaza adını normalize edip zincir/format/adres gürültü kelimelerini (MM, MİGROS, MAH.,
+    /// SK., ANKARA vb.) atarak yalnızca mağazayı belirleyen esas kelimeleri (ör. "YUKARI DİKMEN",
+    /// "SİNCAN") bırakır. Yalnızca mağaza eşleştirmede kullanılır.</summary>
+    private static string NormalizeStoreNameCore(string? name)
+    {
+        var normalized = TextNormalizationHelper.NormalizeName(name);
+        if (string.IsNullOrEmpty(normalized)) return string.Empty;
+        var tokens = normalized.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Where(t => !StoreNameNoiseWords.Contains(t));
+        return string.Join(' ', tokens);
     }
 
     private static string StoreLabelFallback(AiDocumentPage page) => page.StoreNameRaw ?? page.StoreCodeRaw ?? "Bilinmeyen Mağaza";

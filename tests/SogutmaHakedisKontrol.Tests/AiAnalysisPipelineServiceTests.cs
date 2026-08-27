@@ -368,14 +368,14 @@ public class AiAnalysisPipelineServiceTests
         Assert.Contains(results, r => r.ItemType == "StoreMatch" && r.Description == "Mağaza Eşleşmesi");
     }
 
-    [Fact] // TEST 4 — Form no eşleşti ama mağaza kodu farklı
-    public async Task FormNo_EslestiAmaMagazaKoduFarkliysa_MagazaUyusmazligiUretir()
+    [Fact] // TEST 4 — Form no eşleşti ama mağaza kodu VE adı da açıkça farklı (Durum 4)
+    public async Task FormNo_EslestiAmaMagazaKoduVeAdiDaAcikcaFarkliysa_MagazaUyusmazligiUretir()
     {
-        var (db, check) = await SeedFormMatchCheckAsync(formNo: "15527", storeCode: "1205", storeName: "Ankara MM");
+        var (db, check) = await SeedFormMatchCheckAsync(formNo: "15527", storeCode: "1205", storeName: "Kızılay Ankara MM");
         var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
         {
             DocumentType = "SERVICE_FORM", FormNumber = "15527", FormNumberConfidence = 0.95m,
-            Store = new AiStoreCandidateDto { CodeRaw = "1001", NameRaw = "Ankara MM", Confidence = 0.9m }, ServiceDate = "2026-04-23",
+            Store = new AiStoreCandidateDto { CodeRaw = "1001", NameRaw = "Bahçelievler Ankara MM", Confidence = 0.9m }, ServiceDate = "2026-04-23",
         }));
         var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
         var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);

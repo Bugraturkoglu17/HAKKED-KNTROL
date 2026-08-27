@@ -125,13 +125,15 @@ public class GlycolUsageComparisonStrategyTests
     {
         using var db = TestDbFactory.Create();
         var (_, check) = SeedCheck(db);
-        db.ProgressPaymentCheckItems.Add(GlycolItem(check.Id, "20730", "1205", "Mağaza X", new DateTime(2026, 4, 2), 25));
+        db.ProgressPaymentCheckItems.Add(GlycolItem(check.Id, "20730", "1205", "Kızılay Ankara MM", new DateTime(2026, 4, 2), 25));
         db.SaveChanges();
 
         var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
         {
             DocumentType = "SERVICE_FORM", FormNumber = "20730", FormNumberConfidence = 0.95m,
-            Store = new AiStoreCandidateDto { CodeRaw = "1001", Confidence = 0.9m }, ServiceDate = "2026-04-02",
+            // Kod da isim de açıkça farklı (Durum 4) — kod tek başına farklı olsaydı (isim benzerse)
+            // OCR hatası varsayılıp eşleşme kabul edilirdi, bkz. FormNumberMatcher.CompareStore.
+            Store = new AiStoreCandidateDto { CodeRaw = "1001", NameRaw = "Bahçelievler Ankara MM", Confidence = 0.9m }, ServiceDate = "2026-04-02",
             Materials = new List<AiMaterialExtractionDto> { GlycolMaterial(25) },
         }));
         var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
