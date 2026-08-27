@@ -232,11 +232,16 @@ else
                     <MudTd>@context.FormValue</MudTd>
                     <MudTd>@context.HakedisValue</MudTd>
                     <MudTd>
-                        <MudChip T="string" Size="Size.Small" Color="@ResultColor(context.Status)">@ResultLabel(context.Status)</MudChip>
-                        @if (context.UserOverridden)
-                        {
-                            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block">AI: @ResultLabel(context.OriginalStatusLabel ?? "")</MudText>
-                        }
+                        <MudStack Row Spacing="1" AlignItems="AlignItems.Center">
+                            <MudChip T="string" Size="Size.Small" Color="@ResultColor(context.Status)">@ResultLabel(context.Status)</MudChip>
+                            @if (context.UserOverridden)
+                            {
+                                <MudTooltip Text="@($"AI sonucu: {ResultLabel(context.OriginalStatusLabel ?? string.Empty)}")">
+                                    <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Color="Color.Info"
+                                             Icon="@Icons.Material.Filled.Verified">Kontrol Edildi</MudChip>
+                                </MudTooltip>
+                            }
+                        </MudStack>
                     </MudTd>
                     <MudTd>
                         <MudTooltip Text="@context.Explanation">
@@ -248,13 +253,17 @@ else
                     <MudTd>
                         @if (context.UserOverridden)
                         {
-                            <MudIconButton Icon="@Icons.Material.Filled.Undo" Size="Size.Small" Title="Geri al"
-                                           OnClick="@(() => RevertOverrideAsync(context))" />
+                            <MudTooltip Text="Onayı geri al">
+                                <MudIconButton Icon="@Icons.Material.Filled.Undo" Size="Size.Small" Variant="Variant.Outlined"
+                                               Color="Color.Default" OnClick="@(() => RevertOverrideAsync(context))" />
+                            </MudTooltip>
                         }
                         else if (context.Status != UygunFilterValue)
                         {
-                            <MudIconButton Icon="@Icons.Material.Filled.CheckCircleOutline" Size="Size.Small" Color="Color.Success"
-                                           Title="Uygun olarak onayla" OnClick="@(() => OverrideResultAsync(context))" />
+                            <MudTooltip Text="Kontrol ettim, uygun olarak onayla">
+                                <MudIconButton Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small" Variant="Variant.Filled"
+                                               Color="Color.Success" OnClick="@(() => OverrideResultAsync(context))" />
+                            </MudTooltip>
                         }
                     </MudTd>
                 </RowTemplate>
@@ -521,14 +530,30 @@ else
     private static string VisitDateLabel(AiComparisonResultDto r) => r.VisitDate?.ToString("dd.MM.yyyy") ?? "-";
     private static string FormReferenceLabel(AiComparisonResultDto r) => r.FormReference ?? "-";
 
-    private static IEnumerable<AiPageMaterialDto> ManualReviewMaterials(AiDocumentPageDto p) => p.Materials.Where(m => m.RequiresManualReview);
+    // Glikol Kullanım'da yalnızca glikol ödemesi doğrulanır (bkz. GlycolUsageComparisonStrategy) —
+    // diğer malzemelerin (maşon, dirsek vb.) el yazısı belirsizliği kullanıcıya uyarı olarak gösterilmez.
+    private IEnumerable<AiPageMaterialDto> ManualReviewMaterials(AiDocumentPageDto p)
+    {
+        var materials = p.Materials.Where(m => m.RequiresManualReview);
+        if (_check?.Category != HakedisCategory.GlycolUsage) return materials;
+        return materials.Where(m => IsGlycolMaterial(m.RawName) || IsGlycolMaterial(m.NormalizedName));
+    }
 
+    private static bool IsGlycolMaterial(string? name) =>
+        !string.IsNullOrEmpty(name) && (name.Contains("glikol", StringComparison.OrdinalIgnoreCase) || name.Contains("antifriz", StringComparison.OrdinalIgnoreCase));
+
+    // Form numarası güçlü bir anahtar olduğu için mağaza adı önce hakedişten (ResolvedStoreLabel)
+    // çözülmeye çalışılır — formdaki mağaza yazısı el yazısıyla belirsiz olsa bile kullanıcı hangi
+    // mağazaya bakması gerektiğini "Sayfa X" yerine doğrudan mağaza adından görür.
     private static string ManualReviewPageLabel(AiDocumentPageDto p)
     {
+        var store = p.ResolvedStoreLabel ?? p.StoreNameRaw ?? p.StoreCodeRaw ?? "Mağaza tespit edilemedi";
         var docType = DocTypeLabel(p.DocumentType);
         var source = p.SourceFileName ?? (p.SourceKind == "ServiceForm" ? "Servis Formu Dosyası" : "Bakım Formu Dosyası");
-        var store = p.StoreNameRaw ?? p.StoreCodeRaw ?? "Mağaza tespit edilemedi";
-        return $"{docType} — {source} Sayfa {p.PageNumber} — {store} — {p.ManualReviewReason}";
+        var storeNote = p.ResolvedStoreLabel != null && string.IsNullOrWhiteSpace(p.StoreNameRaw) && string.IsNullOrWhiteSpace(p.StoreCodeRaw)
+            ? " (form no ile hakedişten bulundu — formda mağaza bilgisi kısmen okunamadı)"
+            : string.Empty;
+        return $"{store}{storeNote} — {docType}, {source} Sayfa {p.PageNumber} — {p.ManualReviewReason}";
     }
 
     private static string ManualReviewMaterialLabel(AiPageMaterialDto m) => $"{m.RawName} miktarı manuel kontrol edilmeli";

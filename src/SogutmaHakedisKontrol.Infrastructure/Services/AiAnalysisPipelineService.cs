@@ -570,6 +570,21 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
             _ => null,
         };
 
+        // Form üzerindeki mağaza adı/kodu el yazısıyla belirsiz okunmuş olsa bile, form numarası
+        // güçlü bir anahtardır — hakediş Excelinde aynı form numarasına bağlı satırın gerçek mağaza
+        // adını bularak manuel kontrol listesinde "Sayfa X" yerine mağaza adını gösterebiliriz.
+        var checkItems = job is null
+            ? new List<ProgressPaymentCheckItem>()
+            : await _db.ProgressPaymentCheckItems.Where(i => i.ProgressPaymentCheckId == job.ProgressPaymentCheckId).ToListAsync();
+        string? ResolveStoreLabelFromFormNumber(AiDocumentPage p)
+        {
+            var formNo = TextNormalizationHelper.NormalizeCode(p.FormNumber ?? string.Empty);
+            if (string.IsNullOrEmpty(formNo)) return null;
+            var match = checkItems.FirstOrDefault(i =>
+                !string.IsNullOrWhiteSpace(i.MaintenanceFormNo) && TextNormalizationHelper.NormalizeCode(i.MaintenanceFormNo) == formNo);
+            return match is null ? null : (match.StoreName ?? match.StoreCode);
+        }
+
         return pages.Select(p => new AiDocumentPageDto
         {
             Id = p.Id,
@@ -581,6 +596,7 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
             DocumentType = p.DocumentType.ToString(),
             StoreCodeRaw = p.StoreCodeRaw,
             StoreNameRaw = p.StoreNameRaw,
+            ResolvedStoreLabel = ResolveStoreLabelFromFormNumber(p),
             StoreConfidence = p.StoreConfidence,
             MatchedStoreId = p.MatchedStoreId,
             MatchedStoreLabel = p.MatchedStoreId.HasValue && stores.TryGetValue(p.MatchedStoreId.Value, out var s) ? $"{s.Code} — {s.Name}" : null,

@@ -81,6 +81,9 @@ public class AiDocumentPageDto
 
     public string? StoreCodeRaw { get; set; }
     public string? StoreNameRaw { get; set; }
+    /// <summary>Form numarası üzerinden hakediş Excelinde bulunan gerçek mağaza adı — formdaki mağaza
+    /// adı/kodu el yazısıyla belirsiz okunmuş olsa bile, form no eşleşmişse bu alan dolu olur.</summary>
+    public string? ResolvedStoreLabel { get; set; }
     public decimal? StoreConfidence { get; set; }
     public int? MatchedStoreId { get; set; }
     public string? MatchedStoreLabel { get; set; }

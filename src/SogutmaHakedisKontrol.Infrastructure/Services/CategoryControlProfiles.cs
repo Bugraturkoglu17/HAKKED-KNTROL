@@ -30,8 +30,15 @@ public sealed class GlycolUsageProfile : CategoryControlProfileBase
         "tablosunda ÖNCELİKLE \"GLİKOL\" (veya açıkça glikolü ifade eden \"antifriz\" gibi kayıtları) ara. " +
         "Glikol miktarını malzeme listesine \"glikol\" adıyla ve kg biriminde ekle ki otomatik karşılaştırma " +
         "yapılabilsin — formda kg değil litre yazıyorsa birimi olduğu gibi (litre) belirt, kendiliğinden kg'a " +
-        "çevirme. Diğer ilgisiz malzemeleri (gaz, filtre, dryer, vana, boru, flex, sensör, yağ vb.) de listele " +
-        "ama glikol miktarı alanını asla boş bırakma — formda yoksa materials listesine ekleme, tahmin etme.";
+        "çevirme. Diğer ilgisiz malzemeleri (gaz, filtre, dryer, vana, boru, flex, sensör, yağ, maşon, dirsek vb.) " +
+        "de listele ama glikol miktarı alanını asla boş bırakma — formda yoksa materials listesine ekleme, tahmin etme.\n" +
+        "ÖNEMLİ — MANUEL KONTROL YALNIZCA GLİKOL/MAĞAZA/TARİH İÇİN: bu kategoride yalnızca glikol ödemesi " +
+        "doğrulanıyor. Glikol dışındaki malzemelerin (maşon, dirsek, gaz, filtre vb.) miktarının el yazısıyla " +
+        "net okunamaması, personel isimlerinin veya çalışma saatlerinin belirsiz olması, ya da iş açıklaması " +
+        "metninin kısmen okunamaması TEK BAŞINA requires_manual_review'i true yapma sebebi DEĞİLDİR — bu " +
+        "alanlar için materials[].requires_manual_review'i false bırak ve warnings'e ekleme. Yalnızca ŞUNLARDAN " +
+        "biri belirsizse manuel kontrol işaretle: form numarası, mağaza kodu/adı, servis tarihi veya glikol " +
+        "miktarının kendisi.";
 }
 
 public sealed class EvapReplacementProfile : CategoryControlProfileBase
