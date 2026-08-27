@@ -98,6 +98,32 @@ public class StoreMatchingToleranceTests
         Assert.Contains(results, r => r.Description == "TEST MALZEME" && r.Status == "Uygun");
     }
 
+    /// <summary>Gerçek vaka: form "19983" — Excel kodu 7699, form kodu el yazısı OCR ile 7669 olarak
+    /// yanlış okunmuş (tek rakam karışıklığı) VE mağaza adı sırası formda ("AKSARAY PARK SİTE MİGROS")
+    /// ile Excel'de ("PARK SİTE AKSARAY MM MİGROS") farklı. Kelime sırası farklı olsa da ortak kelimeler
+    /// (aksaray, park, site) tam örtüştüğü için eşleşmeli — Mağaza Uyuşmazlığı ÜRETİLMEMELİ.</summary>
+    [Fact]
+    public async Task GercekVaka_KodYanlisVeAdSirasiFarkliOlsaDaOrtakKelimelerEslesirse_Eslesir()
+    {
+        var (db, check) = SeedCheckWithItem("7699", "PARK SİTE AKSARAY MM MİGROS");
+        var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
+        {
+            DocumentType = "SERVICE_FORM", FormNumber = "20732", FormNumberConfidence = 0.95m,
+            Store = new AiStoreCandidateDto { CodeRaw = "7669", NameRaw = "AKSARAY PARK SİTE MİGROS", Confidence = 0.7m },
+            ServiceDate = "2026-04-02",
+            Materials = new List<AiMaterialExtractionDto>
+            {
+                new() { RawName = "TEST MALZEME", NormalizedName = "test malzeme", Quantity = 1, Unit = "adet", Confidence = 0.9m },
+            },
+        }));
+        var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
+        var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
+
+        var results = await pipeline.GetComparisonResultsAsync(job.Id);
+        Assert.DoesNotContain(results, r => r.Description is "Mağaza Uyuşmazlığı" or "Mağaza Doğrulanamadı");
+        Assert.Contains(results, r => r.Description == "TEST MALZEME" && r.Status == "Uygun");
+    }
+
     /// <summary>Durum 3 — spec örneği: form kısaltılmış mağaza adı yazmış ("SİNCAN MM") ama mağaza kodu
     /// ("7845") Excel ile birebir aynı → tek başına kod eşleşmesi yeterli, isim kısa olsa da eşleşmeli.</summary>
     [Fact]

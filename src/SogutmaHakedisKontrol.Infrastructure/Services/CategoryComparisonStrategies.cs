@@ -160,14 +160,29 @@ internal static class FormNumberMatcher
         return StoreCheck.Inconclusive; // Durum 6 — ne kod ne isim güvenilir şekilde doğrulanabiliyor
     }
 
-    /// <summary>Mağaza adı benzerliği — kısaltılmış adları kabul eder: normalize edilmiş (gürültü
-    /// kelimeleri atılmış) isimlerden biri diğerinin içinde geçiyorsa (ör. "sincan" ⊂ "selin sincan")
-    /// tam eşleşme sayılır, aksi halde Levenshtein tabanlı oran kullanılır.</summary>
+    /// <summary>
+    /// Mağaza adı benzerliği — SIRA BAĞIMSIZ karşılaştırır: formdaki serbest metin (ör. "İŞİN YERİ"
+    /// alanı) ile Excel'deki resmi mağaza adının kelime sırası farklı olabilir (ör. form "AKSARAY PARK
+    /// SİTE MİGROS", Excel "PARK SİTE AKSARAY MM MİGROS") — bu durum kısaltılmış adlarda olduğu gibi
+    /// hata sayılmamalıdır. Önce tam içerme (kısaltılmış ad), sonra ortak kelime oranı (sıra bağımsız),
+    /// en son Levenshtein tabanlı karakter oranı (yazım/OCR farklılıkları için) denenir — en yükseği alınır.
+    /// </summary>
     private static double StoreNameSimilarity(string coreA, string coreB)
     {
         if (coreA == coreB) return 1.0;
         if (coreA.Contains(coreB) || coreB.Contains(coreA)) return 1.0;
-        return TextNormalizationHelper.SimilarityRatio(coreA, coreB);
+
+        var tokensA = coreA.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToHashSet();
+        var tokensB = coreB.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToHashSet();
+        var tokenOverlap = 0.0;
+        if (tokensA.Count > 0 && tokensB.Count > 0)
+        {
+            var shared = tokensA.Intersect(tokensB).Count();
+            var smaller = Math.Min(tokensA.Count, tokensB.Count); // kısa tarafın tüm kelimeleri karşılıkta varsa tam eşleşme sayılır
+            tokenOverlap = (double)shared / smaller;
+        }
+
+        return Math.Max(tokenOverlap, TextNormalizationHelper.SimilarityRatio(coreA, coreB));
     }
 
     /// <summary>Mağaza adını normalize edip zincir/format/adres gürültü kelimelerini (MM, MİGROS, MAH.,
