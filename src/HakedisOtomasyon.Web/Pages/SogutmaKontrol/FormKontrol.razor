@@ -361,7 +361,13 @@ else
         _job = await Pipeline.GetLatestJobForCheckAsync(Id);
         if (_job == null) return;
         _pages = await Pipeline.GetPagesAsync(_job.Id);
-        _manualReviewPages = _pages.Where(p => p.RequiresManualReview).ToList();
+        // Gaz Kullanım / Glikol Kullanım'da yalnızca tek bir kalem (gaz kg / glikol kg) + form no/mağaza/
+        // tarih doğrulanır — bu serbest metin uyarı listesi AI'nin ham OCR-kalite notlarından geliyor ve
+        // ilgisiz alanları (personel adı, diğer malzemeler) da içerebiliyor; kategoriye özel gerçek
+        // sorunların hepsi zaten aşağıdaki karşılaştırma tablosunda kendi açıklamasıyla görünüyor, bu
+        // yüzden bu iki kategoride ayrı bir "manuel kontrol" uyarı kutusu gösterilmez.
+        var isSingleItemCategory = _check?.Category is HakedisCategory.GasUsage or HakedisCategory.GlycolUsage;
+        _manualReviewPages = isSingleItemCategory ? new List<AiDocumentPageDto>() : _pages.Where(p => p.RequiresManualReview).ToList();
         _results = await Pipeline.GetComparisonResultsAsync(_job.Id);
         _storeIssues = await Pipeline.GetStoreReconciliationIssuesAsync(_job.Id);
     }
@@ -530,17 +536,10 @@ else
     private static string VisitDateLabel(AiComparisonResultDto r) => r.VisitDate?.ToString("dd.MM.yyyy") ?? "-";
     private static string FormReferenceLabel(AiComparisonResultDto r) => r.FormReference ?? "-";
 
-    // Glikol Kullanım'da yalnızca glikol ödemesi doğrulanır (bkz. GlycolUsageComparisonStrategy) —
-    // diğer malzemelerin (maşon, dirsek vb.) el yazısı belirsizliği kullanıcıya uyarı olarak gösterilmez.
-    private IEnumerable<AiPageMaterialDto> ManualReviewMaterials(AiDocumentPageDto p)
-    {
-        var materials = p.Materials.Where(m => m.RequiresManualReview);
-        if (_check?.Category != HakedisCategory.GlycolUsage) return materials;
-        return materials.Where(m => IsGlycolMaterial(m.RawName) || IsGlycolMaterial(m.NormalizedName));
-    }
-
-    private static bool IsGlycolMaterial(string? name) =>
-        !string.IsNullOrEmpty(name) && (name.Contains("glikol", StringComparison.OrdinalIgnoreCase) || name.Contains("antifriz", StringComparison.OrdinalIgnoreCase));
+    // Not: Gaz Kullanım/Glikol Kullanım'da manuel kontrol listesi zaten LoadJobAsync'te tamamen
+    // boşaltılıyor (yalnızca tek kalem önemli, bkz. yukarısı) — bu yüzden burada kategoriye özel
+    // filtreye gerek yok, _manualReviewPages o kategorilerde hiç dolmuyor.
+    private static IEnumerable<AiPageMaterialDto> ManualReviewMaterials(AiDocumentPageDto p) => p.Materials.Where(m => m.RequiresManualReview);
 
     // Form numarası güçlü bir anahtar olduğu için mağaza adı önce hakedişten (ResolvedStoreLabel)
     // çözülmeye çalışılır — formdaki mağaza yazısı el yazısıyla belirsiz olsa bile kullanıcı hangi
