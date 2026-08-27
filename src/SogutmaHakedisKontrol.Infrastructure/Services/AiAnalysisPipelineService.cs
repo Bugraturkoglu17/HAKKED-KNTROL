@@ -161,8 +161,9 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
         job.Status = AiJobStatus.Comparing;
         Report(progress, AiJobStatus.Comparing, "Malzeme ve servis ücreti kontrolleri yapılıyor...");
         await _db.SaveChangesAsync(cancellationToken);
-        await _comparisonStrategies.Get(check.Category).BuildAsync(job, cancellationToken);
-        await StoreFormReconciliationBuilder.PersistMissingFormRowsAsync(_db, job, cancellationToken);
+        var strategy = _comparisonStrategies.Get(check.Category);
+        await strategy.BuildAsync(job, cancellationToken);
+        await StoreFormReconciliationBuilder.PersistMissingFormRowsAsync(_db, job, strategy.SingleItemLabel, cancellationToken);
         await ApplyOverridesAsync(job.Id, cancellationToken);
         Report(progress, AiJobStatus.Comparing, "Hakediş karşılaştırması tamamlanıyor...");
 
@@ -423,14 +424,37 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
         if (overrides.Count == 0) return;
 
         var overrideByKey = overrides.ToDictionary(o => o.MatchKey);
+
+        // Mağaza/Tarih (gate) override'ları tam anahtarla HATANIN KENDİSİNE yazılmıştır (bkz.
+        // OverrideResultStatusAsync). Ama override sonrası FormNumberMatcher gate'i açıp kategori kontrolü
+        // GERÇEK bir sonuç ürettiğinde (ör. "Glikol Miktarı (kg)") bu yeni satırın Description'ı artık
+        // farklıdır — tam anahtar bir daha hiç eşleşmez, gate hata satırı da bir daha üretilmez. Bu satırın
+        // "Kontrol Edildi" rozetini ve geri al imkanını koruması için, aynı sayfa+kalem çiftine ait bir gate
+        // override'ı varsa bunu ayrıca (sayfa+kalem bazında, Description'dan bağımsız) yakalıyoruz — durum
+        // DEĞİŞTİRİLMEZ (kategori kontrolünün kendi gerçek sonucu/UygunDegil'i bile korunur), yalnızca
+        // "manuel onaylanmış mağaza/tarih" bilgisi taşınır.
+        var gateOverrideByPageItem = overrides
+            .Where(o => FormNumberMatcher.GateErrorDescriptions.Contains(o.MatchKey.Split('|').LastOrDefault() ?? string.Empty))
+            .GroupBy(o => ComparisonResultFactory.PageItemKeyFromMatchKey(o.MatchKey))
+            .ToDictionary(g => g.Key, g => g.First());
+
         var results = await _db.AiComparisonResults.Where(r => r.JobId == jobId).ToListAsync(cancellationToken);
         foreach (var r in results)
         {
-            if (!overrideByKey.TryGetValue(ComparisonResultFactory.ComputeMatchKey(r), out var ov)) continue;
-            r.OriginalStatus ??= r.Status; // AI'nin gerçek sonucu yalnızca ilk override anında saklanır
-            r.Status = ov.OverrideStatus;
-            r.UserOverridden = true;
-            r.OverrideNote = ov.Note;
+            if (overrideByKey.TryGetValue(ComparisonResultFactory.ComputeMatchKey(r), out var ov))
+            {
+                r.OriginalStatus ??= r.Status; // AI'nin gerçek sonucu yalnızca ilk override anında saklanır
+                r.Status = ov.OverrideStatus;
+                r.UserOverridden = true;
+                r.OverrideNote = ov.Note;
+                continue;
+            }
+
+            if (gateOverrideByPageItem.TryGetValue(ComparisonResultFactory.ComputePageItemKey(r), out var gateOv))
+            {
+                r.UserOverridden = true;
+                r.OverrideNote = gateOv.Note;
+            }
         }
         await _db.SaveChangesAsync(cancellationToken);
     }
@@ -465,6 +489,16 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
         var matchKey = ComparisonResultFactory.ComputeMatchKey(result);
 
         var existing = await _db.AiComparisonOverrides.Where(o => o.JobId == jobId && o.MatchKey == matchKey).ToListAsync();
+        if (existing.Count == 0)
+        {
+            // Bu satırın kendi tam eşleşen override kaydı yok — muhtemelen bir gate (Mağaza/Tarih) override'ının
+            // kurtardığı GERÇEK kategori sonucu (bkz. ApplyOverridesAsync). Aynı sayfa+kalem çiftine ait gate
+            // override'ını bulup onu geri alıyoruz — bu, gate'i tekrar kapatır ve orijinal Mağaza/Tarih hatasını
+            // geri getirir.
+            var pageItemKey = ComparisonResultFactory.ComputePageItemKey(result);
+            var candidates = await _db.AiComparisonOverrides.Where(o => o.JobId == jobId).ToListAsync();
+            existing = candidates.Where(o => ComparisonResultFactory.PageItemKeyFromMatchKey(o.MatchKey) == pageItemKey).ToList();
+        }
         _db.AiComparisonOverrides.RemoveRange(existing);
         await _db.SaveChangesAsync();
 
@@ -729,8 +763,9 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
         var job = await _db.AiAnalysisJobs.FindAsync(jobId);
         var check = job is null ? null : await _db.ProgressPaymentChecks.FindAsync(job.ProgressPaymentCheckId);
         if (job is null || check is null) return;
-        await _comparisonStrategies.Get(check.Category).BuildAsync(job, CancellationToken.None);
-        await StoreFormReconciliationBuilder.PersistMissingFormRowsAsync(_db, job, CancellationToken.None);
+        var strategy = _comparisonStrategies.Get(check.Category);
+        await strategy.BuildAsync(job, CancellationToken.None);
+        await StoreFormReconciliationBuilder.PersistMissingFormRowsAsync(_db, job, strategy.SingleItemLabel, CancellationToken.None);
         await ApplyOverridesAsync(job.Id, CancellationToken.None);
     }
 
@@ -784,8 +819,9 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
         if (check != null)
         {
             await ApplyBusinessRulesAsync(job, cancellationToken);
-            await _comparisonStrategies.Get(check.Category).BuildAsync(job, cancellationToken);
-            await StoreFormReconciliationBuilder.PersistMissingFormRowsAsync(_db, job, cancellationToken);
+            var strategy = _comparisonStrategies.Get(check.Category);
+            await strategy.BuildAsync(job, cancellationToken);
+            await StoreFormReconciliationBuilder.PersistMissingFormRowsAsync(_db, job, strategy.SingleItemLabel, cancellationToken);
             await ApplyOverridesAsync(job.Id, cancellationToken);
         }
 

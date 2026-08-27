@@ -35,6 +35,20 @@ internal static class ComparisonResultFactory
     /// override yazma/okuma metodları hem de FormNumberMatcher'ın override-farkında kurtarma mantığı bunu kullanır.</summary>
     public static string ComputeMatchKey(AiComparisonResult r) =>
         $"{r.SourcePageId?.ToString() ?? "-"}|{r.ProgressPaymentCheckItemId?.ToString() ?? "-"}|{r.ItemType}|{r.Description}";
+
+    /// <summary>MatchKey'in ilk iki alanı (sayfa+hakediş kalemi) — ItemType/Description'dan bağımsız,
+    /// "aynı kaynağa ait" satırları tanımak için kullanılır (bkz. AiAnalysisPipelineService.ApplyOverridesAsync:
+    /// bir gate/mağaza-tarih override'ının, gate açıldıktan sonra üretilen GERÇEK kategori sonucuna da
+    /// "Kontrol Edildi" rozetini taşıması).</summary>
+    public static string ComputePageItemKey(AiComparisonResult r) =>
+        $"{r.SourcePageId?.ToString() ?? "-"}|{r.ProgressPaymentCheckItemId?.ToString() ?? "-"}";
+
+    /// <summary>Kalıcı bir MatchKey dizesinden PageItemKey'i (ilk iki alan) çıkarır.</summary>
+    public static string PageItemKeyFromMatchKey(string matchKey)
+    {
+        var parts = matchKey.Split('|');
+        return parts.Length >= 2 ? $"{parts[0]}|{parts[1]}" : matchKey;
+    }
 }
 
 /// <summary>
@@ -258,6 +272,7 @@ public class DefaultCategoryComparisonStrategy : ICategoryComparisonStrategy
     public DefaultCategoryComparisonStrategy(AppDbContext db) => _db = db;
 
     public HakedisCategory? Category => null;
+    public string? SingleItemLabel => null; // çok kalemli (malzeme listesi) kategori — tekil etiket yok
 
     public async Task BuildAsync(AiAnalysisJob job, CancellationToken cancellationToken)
     {
@@ -414,6 +429,7 @@ public class GasUsageComparisonStrategy : ICategoryComparisonStrategy
     public GasUsageComparisonStrategy(AppDbContext db) => _db = db;
 
     public HakedisCategory? Category => HakedisCategory.GasUsage;
+    public string? SingleItemLabel => "Gaz Miktarı (kg)";
 
     public async Task BuildAsync(AiAnalysisJob job, CancellationToken cancellationToken)
     {
@@ -529,6 +545,7 @@ public class GlycolUsageComparisonStrategy : ICategoryComparisonStrategy
     public GlycolUsageComparisonStrategy(AppDbContext db) => _db = db;
 
     public HakedisCategory? Category => HakedisCategory.GlycolUsage;
+    public string? SingleItemLabel => "Glikol Miktarı (kg)";
 
     public async Task BuildAsync(AiAnalysisJob job, CancellationToken cancellationToken)
     {
@@ -641,6 +658,7 @@ public class AdditionalWorkComparisonStrategy : ICategoryComparisonStrategy
     public AdditionalWorkComparisonStrategy(AppDbContext db) => _db = db;
 
     public HakedisCategory? Category => HakedisCategory.AdditionalWork;
+    public string? SingleItemLabel => null; // çok kalemli (iş kalemi listesi) kategori — tekil etiket yok
 
     public async Task BuildAsync(AiAnalysisJob job, CancellationToken cancellationToken)
     {

@@ -32,15 +32,16 @@ public class StoreFormReconciliationTests
         var comparisonStrategies = new CategoryComparisonStrategyRegistry(new ICategoryComparisonStrategy[]
         {
             new DefaultCategoryComparisonStrategy(db), new GasUsageComparisonStrategy(db),
-            new AdditionalWorkComparisonStrategy(db),
+            new AdditionalWorkComparisonStrategy(db), new GlycolUsageComparisonStrategy(db),
         });
         return new AiAnalysisPipelineService(db, vision, rasterizer, manHours, usage, appPath, categoryProfiles, comparisonStrategies);
     }
 
-    /// <summary>Her satır bir hakediş kalemi (bir "beklenen form") üretir; malzeme sabit "TEST MALZEME"
-    /// 1 adet 100 TL — fiyat/malzeme tarafı zaten uygun olsun ki testler saf olarak form/mağaza
-    /// mutabakatını ölçsün.</summary>
-    private static byte[] BuildWorkbook(params (string Code, string Name, DateTime Date, string FormNo)[] rows)
+    /// <summary>Her satır bir hakediş kalemi (bir "beklenen form") üretir; malzeme varsayılan olarak
+    /// "TEST MALZEME" 1 adet 100 TL — fiyat/malzeme tarafı zaten uygun olsun ki testler saf olarak
+    /// form/mağaza mutabakatını ölçsün. <paramref name="materialName"/> ile (ör. Glikol kategorisi
+    /// testleri için) değiştirilebilir.</summary>
+    private static byte[] BuildWorkbook(string materialName, params (string Code, string Name, DateTime Date, string FormNo)[] rows)
     {
         using var wb = new XLWorkbook();
         var ws = wb.AddWorksheet("NİSAN");
@@ -58,7 +59,7 @@ public class StoreFormReconciliationTests
             var r = 2 + i;
             var (code, name, date, formNo) = rows[i];
             ws.Cell(r, 1).Value = code; ws.Cell(r, 2).Value = name; ws.Cell(r, 3).Value = date;
-            ws.Cell(r, 4).Value = formNo; ws.Cell(r, 5).Value = "TEST MALZEME"; ws.Cell(r, 6).Value = 1;
+            ws.Cell(r, 4).Value = formNo; ws.Cell(r, 5).Value = materialName; ws.Cell(r, 6).Value = 1;
             ws.Cell(r, 7).Value = 100; ws.Cell(r, 8).Value = 100;
         }
 
@@ -67,7 +68,7 @@ public class StoreFormReconciliationTests
         return ms.ToArray();
     }
 
-    private static byte[] BuildTwoStoreWorkbook() => BuildWorkbook(
+    private static byte[] BuildTwoStoreWorkbook() => BuildWorkbook("TEST MALZEME",
         ("1001", "Ankara MM", new DateTime(2026, 4, 23), "15527"),
         ("2002", "İzmir MM", new DateTime(2026, 4, 24), "16001"));
 
@@ -171,7 +172,7 @@ public class StoreFormReconciliationTests
         // Ankara MM'nin 2 ayrı formu var (15527, 15528, farklı tarihlerde); yalnızca 15527 yükleniyor.
         // Form granülaritesi mağaza granülaritesinden farklı olduğu için mağaza "kısmen eşleşti" olsa
         // bile 15528 ayrı bir "Form Eksik" satırı üretmelidir.
-        var workbook = BuildWorkbook(
+        var workbook = BuildWorkbook("TEST MALZEME",
             ("1001", "Ankara MM", new DateTime(2026, 4, 23), "15527"),
             ("1001", "Ankara MM", new DateTime(2026, 4, 25), "15528"),
             ("2002", "İzmir MM", new DateTime(2026, 4, 24), "16001"));
@@ -202,7 +203,7 @@ public class StoreFormReconciliationTests
     {
         // Excel'in kendi iç tutarlılığı: aynı mağaza + aynı tarihe bağlı 2 FARKLI form numarası varsa
         // uyarı üretilmeli — yüklenen formlarla ilgisi yok, salt Excel verisi üzerinden hesaplanır.
-        var workbook = BuildWorkbook(
+        var workbook = BuildWorkbook("TEST MALZEME",
             ("1001", "Ankara MM", new DateTime(2026, 4, 23), "17790"),
             ("1001", "Ankara MM", new DateTime(2026, 4, 23), "17805"));
         var (_, db, check) = await SeedCheckAsync(workbook);
@@ -235,7 +236,7 @@ public class StoreFormReconciliationTests
         // listesinde ("mm", "ankara") olduğu için normalize edilince boşa düşer ve isim karşılaştırması
         // atlanıp Mağaza Doğrulanamadı (Durum 6) üretilir. "Sincan" gürültü kelimesi olmadığı için isim
         // karşılaştırılabilir kalır ve gerçek bir Durum 4 (Mağaza Uyuşmazlığı) elde edilir.
-        var workbook = BuildWorkbook(("1001", "Sincan MM", new DateTime(2026, 4, 23), "15527"));
+        var workbook = BuildWorkbook("TEST MALZEME", ("1001", "Sincan MM", new DateTime(2026, 4, 23), "15527"));
         var (_, db, check) = await SeedCheckAsync(workbook);
 
         // Form no ve tarih doğru okunmuş ama mağaza kodu VE adı tamamen farklı bir mağazayı işaret ediyor
@@ -268,9 +269,14 @@ public class StoreFormReconciliationTests
 
         var afterResults = await pipeline.GetComparisonResultsAsync(job.Id);
         // Gate artık açık: gerçek bir malzeme karşılaştırması üretilmiş olmalı (TEST MALZEME → Uygun).
-        Assert.Contains(afterResults, r => r.ItemType == "Material" && r.Status == "Uygun");
+        var recovered = Assert.Single(afterResults, r => r.ItemType == "Material" && r.Status == "Uygun");
         // Eski "Mağaza Uyuşmazlığı" hatası artık hiç üretilmiyor (gate override ile geçildiği için).
         Assert.DoesNotContain(afterResults, r => r.Description == "Mağaza Uyuşmazlığı" && r.Status != "Uygun");
+        // Bu satır Description/ItemType olarak tamamen farklı olsa da ("Mağaza Uyuşmazlığı" değil, gerçek
+        // malzeme sonucu), gate override'ından türediği için "Kontrol Edildi" rozetini ve geri al imkanını
+        // KORUMALI — aksi halde kullanıcı için "onay verince satır gizemli şekilde değişti, geri alamıyorum"
+        // izlenimi oluşur (bu turun canlı ekranda bildirilen asıl şikayeti).
+        Assert.True(recovered.UserOverridden);
 
         var afterIssues = await pipeline.GetStoreReconciliationIssuesAsync(job.Id);
         Assert.DoesNotContain(afterIssues, i => i.IssueType == "Mağaza Uyuşmazlığı");
@@ -279,5 +285,33 @@ public class StoreFormReconciliationTests
         Assert.Equal(1, afterJob!.BeklenenFormSayisi);
         Assert.Equal(1, afterJob.EslesenFormSayisi);
         Assert.Equal(0, afterJob.EksikFormSayisi);
+
+        // Geri al: gate override kaldırılmalı, gate tekrar bloklamalı — orijinal Mağaza Uyuşmazlığı geri gelir.
+        await pipeline.RevertOverrideAsync(recovered.Id);
+        var revertedResults = await pipeline.GetComparisonResultsAsync(job.Id);
+        var revertedMismatch = Assert.Single(revertedResults);
+        Assert.Equal("Mağaza Uyuşmazlığı", revertedMismatch.Description);
+        Assert.False(revertedMismatch.UserOverridden);
+    }
+
+    /// <summary>Tek kalemli kategorilerde (Glikol Kullanım) eksik-form satırı generik "Form Eksik" yerine
+    /// kategorinin kendi kontrol kalemi adıyla ("Glikol Miktarı (kg)") etiketlenmelidir — kullanıcı hangi
+    /// kontrolün eksik olduğunu satıra bakar bakmaz anlar, çok kalemli kategorilerin genel amaçlı
+    /// "Form Eksik" etiketiyle karışmaz.</summary>
+    [Fact]
+    public async Task EksikForm_GlikolKategorisindeKendiKontrolKalemiAdiylaEtiketlenir()
+    {
+        var workbook = BuildWorkbook("GLİKOL (ETİLEN GLİKOL)", ("1001", "Ankara MM", new DateTime(2026, 4, 23), "20732"));
+        var (_, db, check) = await SeedCheckAsync(workbook, HakedisCategory.GlycolUsage);
+
+        // Hiç form yüklenmiyor — job'un tek excel satırı tamamen eksik kalmalı.
+        var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto()));
+        var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(0));
+        var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)>(), null, null, null);
+
+        var results = await pipeline.GetComparisonResultsAsync(job.Id);
+        var eksik = Assert.Single(results);
+        Assert.Equal("Glikol Miktarı (kg)", eksik.Description);
+        Assert.Equal("Eksik", eksik.Status);
     }
 }

@@ -231,23 +231,24 @@ else
                     <MudTd>
                         @if (string.IsNullOrEmpty(context.FormValue) || context.FormValue == context.HakedisValue)
                         {
-                            <MudText Typo="Typo.body2" Color="@ValueColor(context)">@ValueDisplay(context)</MudText>
+                            <MudChip T="string" Variant="Variant.Text" Size="Size.Small" Color="@ValueColor(context)">@ValueDisplay(context)</MudChip>
                         }
                         else
                         {
                             <MudTooltip Text="@($"Servis Formu: {context.FormValue}")">
-                                <MudText Typo="Typo.body2" Color="@ValueColor(context)" Style="cursor:help;border-bottom:1px dotted currentColor;display:inline-block">
+                                <MudChip T="string" Variant="Variant.Text" Size="Size.Small" Color="@ValueColor(context)" Style="cursor:help">
                                     @ValueDisplay(context)
-                                </MudText>
+                                </MudChip>
                             </MudTooltip>
                         }
                     </MudTd>
                     <MudTd>
-                        <MudStack Row Spacing="1" AlignItems="AlignItems.Center">
-                            <MudText Typo="Typo.body2">@ResultIcon(context.Status) @ResultLabel(context.Status)</MudText>
+                        <MudStack Row Spacing="1" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap">
+                            <MudChip T="string" Icon="@ResultChipIcon(context.Status)" Color="@ResultChipColor(context.Status)"
+                                     Variant="Variant.Text" Size="Size.Small">@ResultLabel(context.Status)</MudChip>
                             @if (context.UserOverridden)
                             {
-                                <MudTooltip Text="@($"AI sonucu: {ResultLabel(context.OriginalStatusLabel ?? string.Empty)}")">
+                                <MudTooltip Text="@(string.IsNullOrEmpty(context.OriginalStatusLabel) ? "Mağaza/Tarih uyuşmazlığı manuel onaylandı" : $"AI sonucu: {ResultLabel(context.OriginalStatusLabel)}")">
                                     <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Color="Color.Info"
                                              Icon="@Icons.Material.Filled.Verified">Kontrol Edildi</MudChip>
                                 </MudTooltip>
@@ -617,13 +618,24 @@ else
     private static Color ValueColor(AiComparisonResultDto r) => r.Status == "Uygun" ? Color.Success : Color.Error;
     private static string ValueDisplay(AiComparisonResultDto r) => !string.IsNullOrEmpty(r.HakedisValue) ? r.HakedisValue : (r.FormValue ?? "—");
 
-    private static string ResultIcon(string status) => status switch
+    // Sonuç kolonu artık üstteki özet çipleriyle (bkz. "8 Uygun/1 Uygun Değil..." satırı) aynı görsel
+    // dile sahip küçük MudChip'ler kullanıyor — emoji yerine gerçek Material ikonu + durum rengi.
+    private static string ResultChipIcon(string status) => status switch
     {
-        "Uygun" => "✅",
-        "UygunDegil" => "🔴",
-        "Eksik" or "Fazla" => "🟠",
-        "ManuelKontrol" => "🟡",
-        _ => "",
+        "Uygun" => Icons.Material.Filled.CheckCircle,
+        "UygunDegil" => Icons.Material.Filled.Cancel,
+        "Eksik" => Icons.Material.Filled.RemoveCircleOutline,
+        "Fazla" => Icons.Material.Filled.AddCircleOutline,
+        "ManuelKontrol" => Icons.Material.Filled.HelpOutline,
+        _ => Icons.Material.Filled.Circle,
+    };
+
+    private static Color ResultChipColor(string status) => status switch
+    {
+        "Uygun" => Color.Success,
+        "UygunDegil" => Color.Error,
+        "Eksik" or "Fazla" or "ManuelKontrol" => Color.Warning,
+        _ => Color.Default,
     };
 
     private static string ResultLabel(string status) => status switch

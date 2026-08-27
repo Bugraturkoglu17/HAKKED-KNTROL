@@ -37,11 +37,15 @@ internal static class StoreFormReconciliationBuilder
 
     /// <summary>Hiçbir üyesi (form-no grubundaki hakediş kalemlerinden hiçbiri) herhangi bir
     /// AiComparisonResult'ta referans edilmemiş form-no gruplarına, gruptaki her kalem için bir
-    /// "Form Eksik" satırı ekler. Bir kalemin "ele alınmış" sayılması için Status'ün Uygun olması
+    /// eksik-kayıt satırı ekler. Bir kalemin "ele alınmış" sayılması için Status'ün Uygun olması
     /// gerekmez — Mağaza/Tarih uyuşmazlığı bile kendi spesifik notuyla zaten raporlandığı için
-    /// ele alınmış sayılır (aksi halde aynı satır hem "Mağaza Uyuşmazlığı" hem "Form Eksik" olarak
-    /// mükerrer görünürdü).</summary>
-    public static async Task PersistMissingFormRowsAsync(AppDbContext db, AiAnalysisJob job, CancellationToken cancellationToken)
+    /// ele alınmış sayılır (aksi halde aynı satır hem "Mağaza Uyuşmazlığı" hem eksik-kayıt olarak
+    /// mükerrer görünürdü).
+    /// <paramref name="singleItemLabel"/>: kategori TEK bir kontrol kalemi üzerinden çalışıyorsa
+    /// (bkz. ICategoryComparisonStrategy.SingleItemLabel, ör. "Glikol Miktarı (kg)") satır bu isimle
+    /// etiketlenir — kullanıcı hangi kontrolün eksik olduğunu (Glikol/Gaz miktarı) hemen görür, generik
+    /// "Form Eksik" etiketi yalnızca çok kalemli kategorilerde (ör. Varsayılan malzeme listesi) kalır.</summary>
+    public static async Task PersistMissingFormRowsAsync(AppDbContext db, AiAnalysisJob job, string? singleItemLabel, CancellationToken cancellationToken)
     {
         var existing = await db.AiComparisonResults
             .Where(r => r.JobId == job.Id && r.ItemType == AiComparisonItemType.StoreMatch)
@@ -71,6 +75,12 @@ internal static class StoreFormReconciliationBuilder
             var items = g.ToList();
             var first = items[0];
             var storeLabel = first.StoreName ?? first.StoreCode ?? "Bilinmeyen Mağaza";
+            var label = singleItemLabel ?? "Form Eksik";
+            var explanation = singleItemLabel != null
+                ? $"\"{first.MaintenanceFormNo}\" numaralı form için hakedişte {storeLabel} mağazasına ait {singleItemLabel} kaydı " +
+                  "bulunmaktadır ancak karşılığında servis formu yüklenmemiş/eşleştirilememiştir."
+                : $"\"{first.MaintenanceFormNo}\" numaralı form için hakedişte {storeLabel} mağazasına ait kayıt " +
+                  "bulunmaktadır ancak karşılığında servis formu yüklenmemiş/eşleştirilememiştir.";
             foreach (var item in items)
             {
                 newRows.Add(new AiComparisonResult
@@ -80,12 +90,11 @@ internal static class StoreFormReconciliationBuilder
                     VisitDate = item.VisitDate,
                     ProgressPaymentCheckItemId = item.Id,
                     ItemType = AiComparisonItemType.StoreMatch,
-                    Description = "Form Eksik",
+                    Description = label,
                     FormValue = "—",
                     HakedisValue = first.MaintenanceFormNo,
                     Status = AiComparisonStatus.Eksik,
-                    Explanation = $"\"{first.MaintenanceFormNo}\" numaralı form için hakedişte {storeLabel} mağazasına ait kayıt " +
-                                  "bulunmaktadır ancak karşılığında servis formu yüklenmemiş/eşleştirilememiştir.",
+                    Explanation = explanation,
                     CreatedAt = DateTime.Now,
                 });
             }
@@ -111,8 +120,11 @@ internal static class StoreFormReconciliationBuilder
             .Distinct()
             .ToList();
 
+        // ItemType==StoreMatch, PersistMissingFormRowsAsync'in ürettiği eksik-kayıt satırlarını tek başına
+        // ayırt eder — Description artık kategoriye göre değişebildiği için ("Form Eksik" / "Glikol Miktarı
+        // (kg)" / "Gaz Miktarı (kg)") metin eşleşmesi yerine ItemType kullanılır.
         var eksikRows = results
-            .Where(r => r.ItemType == AiComparisonItemType.StoreMatch && r.Description == "Form Eksik" && r.Status != AiComparisonStatus.Uygun)
+            .Where(r => r.ItemType == AiComparisonItemType.StoreMatch && r.Status != AiComparisonStatus.Uygun)
             .ToList();
         var eksikFormNoSet = eksikRows
             .Select(r => TextNormalizationHelper.NormalizeCode(r.HakedisValue ?? string.Empty))
