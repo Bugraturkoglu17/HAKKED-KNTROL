@@ -395,6 +395,111 @@ public class GasUsageComparisonStrategy : ICategoryComparisonStrategy
 }
 
 /// <summary>
+/// GLİKOL KULLANIM HAKEDİŞİ için özel karşılaştırma: hakedişteki glikol kg'ı servis formundaki
+/// "KULLANILAN MALZEME" tablosundan çıkarılan glikol kg'ı ile karşılaştırılır. KRİTİK KURAL: bu
+/// kategoride YALNIZCA glikol kontrol edilir — formda bulunup Excel'de talep edilmemiş diğer
+/// malzemeler (gaz, filtre, dryer, vana, boru, flex, sensör, yağ vb.) hiçbir şekilde değerlendirilmez,
+/// hiçbir uyarı üretilmez (Excel referanstır — bkz. DefaultCategoryComparisonStrategy üstündeki
+/// açıklama). Eşleştirme FormNumberMatcher ile form no → mağaza → tarih sırasıyla yapılır.
+/// </summary>
+public class GlycolUsageComparisonStrategy : ICategoryComparisonStrategy
+{
+    private const decimal GlycolQuantityTolerance = 0.01m;
+    private static readonly Regex GlycolKgRegex = new(@"(\d+(?:[.,]\d+)?)\s*kg", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly string[] GlycolKeywords = { "glikol", "antifriz" }; // TextNormalizationHelper Türkçe karakterleri normalize eder
+
+    private readonly AppDbContext _db;
+    public GlycolUsageComparisonStrategy(AppDbContext db) => _db = db;
+
+    public HakedisCategory? Category => HakedisCategory.GlycolUsage;
+
+    public async Task BuildAsync(AiAnalysisJob job, CancellationToken cancellationToken)
+    {
+        var existing = await _db.AiComparisonResults.Where(r => r.JobId == job.Id).ToListAsync(cancellationToken);
+        _db.AiComparisonResults.RemoveRange(existing);
+
+        var pages = await _db.AiDocumentPages
+            .Where(p => p.JobId == job.Id && p.DocumentType == AiDocumentType.ServiceForm)
+            .Include(p => p.Materials)
+            .ToListAsync(cancellationToken);
+
+        var checkItems = await _db.ProgressPaymentCheckItems
+            .Where(i => i.ProgressPaymentCheckId == job.ProgressPaymentCheckId)
+            .ToListAsync(cancellationToken);
+
+        var results = new List<AiComparisonResult>();
+
+        foreach (var page in pages)
+        {
+            var (sameVisit, error) = FormNumberMatcher.Match(job.Id, page, checkItems);
+            if (error != null) { results.Add(error); continue; }
+
+            var first = sameVisit![0];
+            var storeLabel = first.StoreName ?? first.StoreCode ?? "Bilinmeyen Mağaza";
+
+            // Excel referanstır: hakedişte glikol TALEP EDİLMEMİŞSE, formda glikoldan bahsedilmesi
+            // tek başına bir talep oluşturmaz — hiçbir sonuç üretilmez (kural 6: yalnızca glikol).
+            var hakedisGlycolItems = sameVisit.Where(i => IsGlycol(i.OriginalMaterialName)).ToList();
+            if (hakedisGlycolItems.Count == 0) continue;
+
+            var formGlycolKg = ExtractGlycolKg(page);
+            var hakedisGlycolKg = hakedisGlycolItems.Sum(i => i.Quantity);
+            var firstGlycolItemId = hakedisGlycolItems[0].Id;
+
+            if (!formGlycolKg.HasValue)
+            {
+                results.Add(ComparisonResultFactory.New(job.Id, page, storeLabel, AiComparisonItemType.GlycolUsage, "Glikol Miktarı (kg)",
+                    "Okunamadı", $"{hakedisGlycolKg:0.##} kg", AiComparisonStatus.Eksik,
+                    $"\"{page.FormNumber}\" numaralı servis formunda glikol kullanımı doğrulanamadı (Glikol Formda Doğrulanamadı) " +
+                    $"— hakedişte {hakedisGlycolKg:0.##} kg glikol talep edilmiştir.", firstGlycolItemId));
+            }
+            else
+            {
+                var formStr = $"{formGlycolKg.Value:0.##} kg";
+                var hakedisStr = $"{hakedisGlycolKg:0.##} kg";
+                if (Math.Abs(formGlycolKg.Value - hakedisGlycolKg) <= GlycolQuantityTolerance)
+                {
+                    results.Add(ComparisonResultFactory.New(job.Id, page, storeLabel, AiComparisonItemType.GlycolUsage, "Glikol Miktarı (kg)",
+                        formStr, hakedisStr, AiComparisonStatus.Uygun,
+                        $"\"{page.FormNumber}\" numaralı servis formunda {formStr} glikol kullanımı doğrulanmış, hakedişteki miktarla uyumludur.", firstGlycolItemId));
+                }
+                else
+                {
+                    results.Add(ComparisonResultFactory.New(job.Id, page, storeLabel, AiComparisonItemType.GlycolUsage, "Glikol Miktarı (kg)",
+                        formStr, hakedisStr, AiComparisonStatus.UygunDegil,
+                        $"\"{page.FormNumber}\" numaralı servis formunda {formStr} glikol kullanımı doğrulanırken hakedişte {hakedisStr} talep edilmiştir.", firstGlycolItemId));
+                }
+            }
+        }
+
+        _db.AiComparisonResults.AddRange(results);
+        await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    private static bool IsGlycol(string? materialName)
+    {
+        if (string.IsNullOrEmpty(materialName)) return false;
+        var norm = TextNormalizationHelper.NormalizeName(materialName);
+        return GlycolKeywords.Any(k => norm.Contains(k));
+    }
+
+    private static decimal? ExtractGlycolKg(AiDocumentPage page)
+    {
+        var glycolMaterial = page.Materials.FirstOrDefault(m => IsGlycol(m.RawName) || IsGlycol(m.NormalizedName));
+        if (glycolMaterial != null)
+            return glycolMaterial.UserCorrectedQuantity ?? glycolMaterial.Quantity;
+
+        if (IsGlycol(page.DescriptionRaw))
+        {
+            var match = GlycolKgRegex.Match(page.DescriptionRaw!);
+            if (match.Success && decimal.TryParse(match.Groups[1].Value.Replace(',', '.'), NumberStyles.Any, CultureInfo.InvariantCulture, out var v))
+                return v;
+        }
+        return null;
+    }
+}
+
+/// <summary>
 /// İLAVE İŞLER hakedişi için özel karşılaştırma: malzeme ve adam-saat kontrolü
 /// <see cref="DefaultCategoryComparisonStrategy"/> ile aynıdır (Excel referanstır — bkz. o sınıfın
 /// üstündeki açıklama), ancak servis ücreti kuralları farklıdır: aynı ziyarette (aynı form no + aynı

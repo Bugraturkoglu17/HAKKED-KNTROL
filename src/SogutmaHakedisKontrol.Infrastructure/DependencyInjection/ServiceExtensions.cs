@@ -58,6 +58,7 @@ public static class ServiceExtensions
         services.AddScoped<ICategoryComparisonStrategy, DefaultCategoryComparisonStrategy>();
         services.AddScoped<ICategoryComparisonStrategy, GasUsageComparisonStrategy>();
         services.AddScoped<ICategoryComparisonStrategy, AdditionalWorkComparisonStrategy>();
+        services.AddScoped<ICategoryComparisonStrategy, GlycolUsageComparisonStrategy>();
         services.AddScoped<ICategoryComparisonStrategyRegistry, CategoryComparisonStrategyRegistry>();
 
         return services;

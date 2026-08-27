@@ -26,9 +26,12 @@ public sealed class GlycolUsageProfile : CategoryControlProfileBase
 {
     public override HakedisCategory Category => HakedisCategory.GlycolUsage;
     public override string AiInstructionSupplement =>
-        "Bu bir GLİKOL KULLANIM hakedişi kontrolüdür. Servis formunda öncelikle şunları ara: " +
-        "glikol kullanılmış mı, miktar (litre/kg), glikol eklenme nedeni, servis formundaki açıklama. " +
-        "Miktarı ve birimini (litre/kg) mümkün olduğunca net ve sayısal olarak çıkar.";
+        "Bu bir GLİKOL KULLANIM hakedişi kontrolüdür. Servis formunun ortasındaki \"KULLANILAN MALZEME/MALZEMELER\" " +
+        "tablosunda ÖNCELİKLE \"GLİKOL\" (veya açıkça glikolü ifade eden \"antifriz\" gibi kayıtları) ara. " +
+        "Glikol miktarını malzeme listesine \"glikol\" adıyla ve kg biriminde ekle ki otomatik karşılaştırma " +
+        "yapılabilsin — formda kg değil litre yazıyorsa birimi olduğu gibi (litre) belirt, kendiliğinden kg'a " +
+        "çevirme. Diğer ilgisiz malzemeleri (gaz, filtre, dryer, vana, boru, flex, sensör, yağ vb.) de listele " +
+        "ama glikol miktarı alanını asla boş bırakma — formda yoksa materials listesine ekleme, tahmin etme.";
 }
 
 public sealed class EvapReplacementProfile : CategoryControlProfileBase
