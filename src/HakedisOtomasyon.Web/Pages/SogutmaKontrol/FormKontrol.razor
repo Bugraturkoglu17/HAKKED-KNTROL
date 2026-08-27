@@ -254,14 +254,14 @@ else
                         @if (context.UserOverridden)
                         {
                             <MudTooltip Text="Onayı geri al">
-                                <MudIconButton Icon="@Icons.Material.Filled.Undo" Size="Size.Small" Variant="Variant.Outlined"
+                                <MudIconButton Icon="@Icons.Material.Filled.Undo" Size="Size.Small"
                                                Color="Color.Default" OnClick="@(() => RevertOverrideAsync(context))" />
                             </MudTooltip>
                         }
                         else if (context.Status != UygunFilterValue)
                         {
                             <MudTooltip Text="Kontrol ettim, uygun olarak onayla">
-                                <MudIconButton Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small" Variant="Variant.Filled"
+                                <MudIconButton Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small"
                                                Color="Color.Success" OnClick="@(() => OverrideResultAsync(context))" />
                             </MudTooltip>
                         }
