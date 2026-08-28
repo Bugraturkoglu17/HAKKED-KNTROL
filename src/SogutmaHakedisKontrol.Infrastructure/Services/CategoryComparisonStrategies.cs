@@ -506,6 +506,7 @@ public class DefaultCategoryComparisonStrategy : ICategoryComparisonStrategy
 public class GasUsageComparisonStrategy : ICategoryComparisonStrategy
 {
     private const decimal GasQuantityTolerance = 0.01m;
+    private const int RepeatVisitMaxDays = 4;
     private static readonly Regex GasKgRegex = new(@"(\d+(?:[.,]\d+)?)\s*kg", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly string[] LeakKeywords = { "kacak" }; // TextNormalizationHelper "kaçak"→"kacak" çevirir
 
@@ -610,8 +611,49 @@ public class GasUsageComparisonStrategy : ICategoryComparisonStrategy
             }
         }
 
+        // ── Tekrar Ziyaret Uyarısı: sayfa/form eşleşmesinden BAĞIMSIZ, tamamen Excel'deki (hakediş
+        // referansı) ziyaret tarihlerine dayanır — aynı mağazaya 4 gün veya daha kısa aralıkla birden
+        // fazla gaz müdahalesi yapılmışsa İLK ziyaret hariç her sonraki ziyarete uyarı eklenir (ilk
+        // ziyaret yalnızca sonraki karşılaştırmaların referansıdır, kendisi hiçbir zaman işaretlenmez).
+        // Her kayıt yalnızca KENDİSİNDEN BİR ÖNCEKİ ziyaretle karşılaştırılır (ilk ziyaretle değil).
+        AddRepeatVisitWarnings(job.Id, checkItems, results);
+
         _db.AiComparisonResults.AddRange(results);
         await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    private static void AddRepeatVisitWarnings(int jobId, List<ProgressPaymentCheckItem> checkItems, List<AiComparisonResult> results)
+    {
+        var visitsByStore = checkItems
+            .Where(i => TextNormalizationHelper.NormalizeName(i.OriginalMaterialName).Contains("gaz") && i.VisitDate.HasValue)
+            .GroupBy(i => TextNormalizationHelper.StoreKey(i.StoreCode, i.StoreName))
+            .Where(g => !string.IsNullOrEmpty(g.Key));
+
+        foreach (var storeGroup in visitsByStore)
+        {
+            var sorted = storeGroup.OrderBy(i => i.VisitDate!.Value.Date).ToList();
+            for (int i = 1; i < sorted.Count; i++)
+            {
+                var dayGap = (sorted[i].VisitDate!.Value.Date - sorted[i - 1].VisitDate!.Value.Date).Days;
+                if (dayGap > RepeatVisitMaxDays) continue;
+
+                var curr = sorted[i];
+                var verb = i == 1 ? "tekrar" : "yeniden"; // 2. ziyaret: "tekrar", 3.+ ziyaret: "yeniden"
+                var storeLabel = curr.StoreName ?? curr.StoreCode ?? "Bilinmeyen Mağaza";
+                results.Add(new AiComparisonResult
+                {
+                    JobId = jobId,
+                    StoreLabel = storeLabel,
+                    VisitDate = curr.VisitDate,
+                    ProgressPaymentCheckItemId = curr.Id,
+                    ItemType = AiComparisonItemType.GasUsage,
+                    Description = "Tekrar Ziyaret Uyarısı",
+                    Status = AiComparisonStatus.ManuelKontrol,
+                    Explanation = $"Aynı mağazaya önceki gaz müdahalesinden {dayGap} gün sonra {verb} gaz basılmıştır. Detaylı açıklama lazım.",
+                    CreatedAt = DateTime.Now,
+                });
+            }
+        }
     }
 
     private static decimal? ExtractGasKg(AiDocumentPage page)

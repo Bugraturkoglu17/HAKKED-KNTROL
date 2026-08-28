@@ -151,4 +151,80 @@ public class GasUsageComparisonStrategyTests
         var result = results.Single(r => r.Description == "Form Hakedişte Bulunamadı");
         Assert.Equal("Eksik", result.Status);
     }
+
+    /// <summary>TEST 4 — TEKRAR ZİYARET UYARISI (2 ziyaret): 05.06 → 20kg, 08.06 → 10kg (3 gün ara).
+    /// İlk ziyarete (05.06) uyarı YAZILMAZ; ikinci ziyarete (08.06) "3 gün sonra tekrar gaz basılmıştır" uyarısı yazılır.</summary>
+    [Fact]
+    public async Task Test4_IkiZiyaretUcGunAra_IkinciZiyareteTekrarUyarisiYazilir()
+    {
+        using var db = TestDbFactory.Create();
+        var (_, check) = SeedCheck(db);
+        db.ProgressPaymentCheckItems.AddRange(
+            GasItem(check.Id, "30001", "710", "5M Ankara", new DateTime(2026, 6, 5), 20),
+            GasItem(check.Id, "30002", "710", "5M Ankara", new DateTime(2026, 6, 8), 10));
+        db.SaveChanges();
+
+        var vision = new FakeAiVisionClient(idx => idx switch
+        {
+            0 => Success(new AiPageExtractionDto
+            {
+                DocumentType = "SERVICE_FORM", FormNumber = "30001", FormNumberConfidence = 0.95m,
+                Store = new AiStoreCandidateDto { CodeRaw = "710", Confidence = 0.9m }, ServiceDate = "2026-06-05",
+                Materials = new List<AiMaterialExtractionDto> { GasMaterial(20) },
+            }),
+            _ => Success(new AiPageExtractionDto
+            {
+                DocumentType = "SERVICE_FORM", FormNumber = "30002", FormNumberConfidence = 0.95m,
+                Store = new AiStoreCandidateDto { CodeRaw = "710", Confidence = 0.9m }, ServiceDate = "2026-06-08",
+                Materials = new List<AiMaterialExtractionDto> { GasMaterial(10) },
+            }),
+        });
+        var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(2));
+        var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
+
+        var results = await pipeline.GetComparisonResultsAsync(job.Id);
+        var warnings = results.Where(r => r.Description == "Tekrar Ziyaret Uyarısı").ToList();
+        var warning = Assert.Single(warnings);
+        Assert.Equal(new DateTime(2026, 6, 8), warning.VisitDate);
+        Assert.Equal("Aynı mağazaya önceki gaz müdahalesinden 3 gün sonra tekrar gaz basılmıştır. Detaylı açıklama lazım.", warning.Explanation);
+        Assert.Equal("ManuelKontrol", warning.Status);
+    }
+
+    /// <summary>TEST 5 — TEKRAR ZİYARET UYARISI (3 ziyaret): 05.06 → 20kg, 07.06 → 15kg (2 gün), 09.06 → 10kg (2 gün).
+    /// İlk ziyarete uyarı yok; ikinci ziyarete "tekrar", üçüncü ziyarete "yeniden" ifadesiyle uyarı yazılır —
+    /// her kayıt yalnızca KENDİSİNDEN BİR ÖNCEKİ ziyaretle karşılaştırılır (ilk ziyaretle değil).</summary>
+    [Fact]
+    public async Task Test5_UcZiyaretIkiserGunAra_IkinciVeUcuncuZiyareteUyariYazilir()
+    {
+        using var db = TestDbFactory.Create();
+        var (_, check) = SeedCheck(db);
+        db.ProgressPaymentCheckItems.AddRange(
+            GasItem(check.Id, "30003", "710", "5M Ankara", new DateTime(2026, 6, 5), 20),
+            GasItem(check.Id, "30004", "710", "5M Ankara", new DateTime(2026, 6, 7), 15),
+            GasItem(check.Id, "30005", "710", "5M Ankara", new DateTime(2026, 6, 9), 10));
+        db.SaveChanges();
+
+        var forms = new (string FormNo, string Date, decimal Kg)[]
+        {
+            ("30003", "2026-06-05", 20), ("30004", "2026-06-07", 15), ("30005", "2026-06-09", 10),
+        };
+        var vision = new FakeAiVisionClient(idx => Success(new AiPageExtractionDto
+        {
+            DocumentType = "SERVICE_FORM", FormNumber = forms[idx].FormNo, FormNumberConfidence = 0.95m,
+            Store = new AiStoreCandidateDto { CodeRaw = "710", Confidence = 0.9m }, ServiceDate = forms[idx].Date,
+            Materials = new List<AiMaterialExtractionDto> { GasMaterial(forms[idx].Kg) },
+        }));
+        var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(3));
+        var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
+
+        var results = await pipeline.GetComparisonResultsAsync(job.Id);
+        var warnings = results.Where(r => r.Description == "Tekrar Ziyaret Uyarısı").OrderBy(r => r.VisitDate).ToList();
+        Assert.Equal(2, warnings.Count);
+        Assert.Equal(new DateTime(2026, 6, 7), warnings[0].VisitDate);
+        Assert.Equal("Aynı mağazaya önceki gaz müdahalesinden 2 gün sonra tekrar gaz basılmıştır. Detaylı açıklama lazım.", warnings[0].Explanation);
+        Assert.Equal(new DateTime(2026, 6, 9), warnings[1].VisitDate);
+        Assert.Equal("Aynı mağazaya önceki gaz müdahalesinden 2 gün sonra yeniden gaz basılmıştır. Detaylı açıklama lazım.", warnings[1].Explanation);
+        // İlk ziyarete (05.06) hiçbir uyarı yazılmamalı.
+        Assert.DoesNotContain(warnings, w => w.VisitDate == new DateTime(2026, 6, 5));
+    }
 }
