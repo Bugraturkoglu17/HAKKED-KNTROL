@@ -203,9 +203,13 @@ internal static class FormNumberMatcher
         bool IsStoreMatch(ProgressPaymentCheckItem item)
         {
             var itemCode = TextNormalizationHelper.NormalizeCode(item.StoreCode ?? string.Empty);
-            if (!string.IsNullOrEmpty(formCode) && !string.IsNullOrEmpty(itemCode))
-                return formCode == itemCode;
+            if (!string.IsNullOrEmpty(formCode) && !string.IsNullOrEmpty(itemCode) && formCode == itemCode)
+                return true; // kod eşleşiyor — en güçlü sinyal
 
+            // Kod hiç yoksa YA DA varsa ama eşleşmiyorsa (el yazısı/damga OCR hatası çok yaygındır —
+            // bkz. CompareStore'daki aynı tolerans) isim benzerliğine düş. Kod uyuşmazlığını TEK BAŞINA
+            // reddetme sebebi sayma; asıl karar verici, ortak kelimeler (Migros/MM/Mahallesi/Ankara)
+            // atılmış isim benzerliğidir.
             var itemNameCore = NormalizeStoreNameCore(item.StoreName);
             if (string.IsNullOrEmpty(formNameCore) || string.IsNullOrEmpty(itemNameCore)) return false;
             return StoreNameSimilarity(formNameCore, itemNameCore) >= MinStoreNameSimilarity;

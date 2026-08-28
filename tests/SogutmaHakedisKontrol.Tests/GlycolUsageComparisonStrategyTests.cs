@@ -109,7 +109,10 @@ public class GlycolUsageComparisonStrategyTests
         var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
         {
             DocumentType = "SERVICE_FORM", FormNumber = "99999", FormNumberConfidence = 0.95m,
-            Store = new AiStoreCandidateDto { CodeRaw = "9999", NameRaw = "Alakasız Mağaza", Confidence = 0.9m }, ServiceDate = "2026-04-02",
+            // "Mağaza X" ile hiç ortak kelimesi olmayan bir ad — yedek eşleştirmenin de gerçekten
+            // eşleşmediğini garanti eder ("Alakasız Mağaza" gibi genel "mağaza" kelimesini paylaşan
+            // bir ad kullanmak testin kendi verisinde yanlışlıkla eşleşmeye yol açardı).
+            Store = new AiStoreCandidateDto { CodeRaw = "9999", NameRaw = "Tamamen Farklı Depo", Confidence = 0.9m }, ServiceDate = "2026-04-02",
             Materials = new List<AiMaterialExtractionDto> { GlycolMaterial(25) },
         }));
         var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
@@ -145,6 +148,37 @@ public class GlycolUsageComparisonStrategyTests
         Assert.Equal("ManuelKontrol", result.Status);
         Assert.Equal("20730", result.HakedisValue); // yedek eşleştirmeyle bulunan gerçek form no
         Assert.Equal("25 kg", result.SecondaryHakedisValue); // glikol miktarı da bağımsız hesaplandı
+        Assert.Equal("Uygun", result.SecondaryStatus);
+    }
+
+    /// <summary>TEST 2c (regresyon) — Form No okunamıyor VE mağaza kodu YANLIŞ okunmuş (el yazısı/damga
+    /// OCR hatası) AMA mağaza adı doğru — yedek eşleştirme yine de isim üzerinden çalışmalı. Kod
+    /// uyuşmazlığı TEK BAŞINA yedek eşleştirmeyi engellememeli (gerçek üretim ortamında AI'nin mağaza
+    /// kodunu yanlış ama adını doğru okuduğu durum çok yaygındır).</summary>
+    [Fact]
+    public async Task Test2c_MagazaKoduYanlisAmaAdiDogruysa_YedekEslestirmeIsimUzerindenCalisir()
+    {
+        using var db = TestDbFactory.Create();
+        var (_, check) = SeedCheck(db);
+        db.ProgressPaymentCheckItems.Add(GlycolItem(check.Id, "20725", "8507", "Kahraman Kazan Belediye 2M Migros", new DateTime(2026, 4, 1), 65));
+        db.SaveChanges();
+
+        var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
+        {
+            DocumentType = "SERVICE_FORM", FormNumber = null, FormNumberConfidence = 0.1m,
+            // Kod yanlış okunmuş (8507 değil, OCR hatası) ama ad doğru — isim benzerliği devreye girmeli.
+            Store = new AiStoreCandidateDto { CodeRaw = "8501", NameRaw = "Kahraman Kazan Belediye 2M Migros", Confidence = 0.85m },
+            ServiceDate = "2026-04-01",
+            Materials = new List<AiMaterialExtractionDto> { GlycolMaterial(65) },
+        }));
+        var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
+        var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
+
+        var results = await pipeline.GetComparisonResultsAsync(job.Id);
+        var result = Assert.Single(results);
+        Assert.Equal("Form No Yerine Mağazadan Eşleşti", result.Description);
+        Assert.Equal("20725", result.HakedisValue);
+        Assert.Equal("65 kg", result.SecondaryHakedisValue);
         Assert.Equal("Uygun", result.SecondaryStatus);
     }
 
