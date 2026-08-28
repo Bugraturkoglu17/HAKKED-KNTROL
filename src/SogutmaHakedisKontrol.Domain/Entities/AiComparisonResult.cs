@@ -26,6 +26,14 @@ public class AiComparisonResult
     public AiComparisonStatus Status { get; set; }
     public string Explanation { get; set; } = string.Empty;
 
+    // ── İkincil kontrol (bkz. GlycolUsageComparisonStrategy) — satırın ANA konusu bir Mağaza/Tarih
+    // uyuşmazlığıysa bile (Description/Status o sorunu yansıtır), tek kalemli kategorilerde (Glikol/Gaz)
+    // asıl miktar karşılaştırması AYNI SATIRDA bağımsız olarak taşınır — böylece UI hem "Tarih Uyuşmazlığı"
+    // uyarısını hem de gerçek Glikol Miktarı'nı aynı anda gösterebilir. Null ise ikincil kontrol yok/gerekmiyor.
+    public string? SecondaryFormValue { get; set; }
+    public string? SecondaryHakedisValue { get; set; }
+    public AiComparisonStatus? SecondaryStatus { get; set; }
+
     // ── Kullanıcı manuel onayı (bkz. AiComparisonOverride) — recompute'ta bu satır silinip yeniden
     // üretildiğinde AiAnalysisPipelineService.ApplyOverridesAsync tarafından yeniden uygulanır. ──
     public bool UserOverridden { get; set; }

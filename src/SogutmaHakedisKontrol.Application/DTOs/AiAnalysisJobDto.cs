@@ -148,6 +148,12 @@ public class AiComparisonResultDto
 
     public bool UserOverridden { get; set; }
     public string? OriginalStatusLabel { get; set; }
+
+    // ── İkincil kontrol (bkz. AiComparisonResult.SecondaryFormValue) — Mağaza/Tarih uyuşmazlığı olan
+    // bir satırda, tek kalemli kategorilerde (Glikol/Gaz) asıl miktar karşılaştırması bağımsız taşınır.
+    public string? SecondaryFormValue { get; set; }
+    public string? SecondaryHakedisValue { get; set; }
+    public string? SecondaryStatus { get; set; }
 }
 
 /// <summary>"Mağaza Eşleşmesi" kartının detay listesindeki tek bir 🔴 satırı.</summary>

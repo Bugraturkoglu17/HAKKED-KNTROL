@@ -676,6 +676,9 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
             Explanation = r.Explanation,
             UserOverridden = r.UserOverridden,
             OriginalStatusLabel = r.UserOverridden ? r.OriginalStatus?.ToString() : null,
+            SecondaryFormValue = r.SecondaryFormValue,
+            SecondaryHakedisValue = r.SecondaryHakedisValue,
+            SecondaryStatus = r.SecondaryStatus?.ToString(),
         }).ToList();
     }
 

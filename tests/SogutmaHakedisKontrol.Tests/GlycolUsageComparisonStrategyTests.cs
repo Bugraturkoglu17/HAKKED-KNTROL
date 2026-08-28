@@ -165,6 +165,39 @@ public class GlycolUsageComparisonStrategyTests
         var results = await pipeline.GetComparisonResultsAsync(job.Id);
         var result = results.Single(r => r.Description == "Tarih Uyuşmazlığı");
         Assert.Equal("UygunDegil", result.Status);
+        // AŞAMA 1: tarih uyuşmazlığı olsa bile glikol miktarı BAĞIMSIZ olarak aynı satırda görünmeli
+        // (form ve hakediş ikisi de 25kg olduğu için ikincil kontrol Uygun).
+        Assert.Equal("25 kg", result.SecondaryHakedisValue);
+        Assert.Equal("Uygun", result.SecondaryStatus);
+    }
+
+    /// <summary>TEST 4c — Hem tarih uyuşmazlığı HEM glikol miktarı farklı: satır yine TEK, ana konu
+    /// Tarih Uyuşmazlığı olarak kalır ama ikincil alanlar glikol miktarının da UygunDegil olduğunu
+    /// bağımsız olarak gösterir (bkz. AŞAMA 1 — Glikol Miktarı bağımsız kolon).</summary>
+    [Fact]
+    public async Task Test4c_TarihVeGlikolMiktariAyniAndaFarkliysa_IkiSorunDaAyniSatirdaGorunur()
+    {
+        using var db = TestDbFactory.Create();
+        var (_, check) = SeedCheck(db);
+        db.ProgressPaymentCheckItems.Add(GlycolItem(check.Id, "20730", "1001", "Mağaza X", new DateTime(2026, 4, 2), 30));
+        db.SaveChanges();
+
+        var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
+        {
+            DocumentType = "SERVICE_FORM", FormNumber = "20730", FormNumberConfidence = 0.95m,
+            Store = new AiStoreCandidateDto { CodeRaw = "1001", Confidence = 0.9m }, ServiceDate = "2026-04-05", // tarih farklı
+            Materials = new List<AiMaterialExtractionDto> { GlycolMaterial(20) }, // miktar da farklı
+        }));
+        var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
+        var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
+
+        var results = await pipeline.GetComparisonResultsAsync(job.Id);
+        var result = Assert.Single(results); // hâlâ tek satır, iki ayrı satır DEĞİL
+        Assert.Equal("Tarih Uyuşmazlığı", result.Description); // ana konu tarih
+        Assert.Equal("UygunDegil", result.Status);
+        Assert.Equal("30 kg", result.SecondaryHakedisValue); // glikol miktarı da bağımsız görünüyor
+        Assert.Equal("20 kg", result.SecondaryFormValue);
+        Assert.Equal("UygunDegil", result.SecondaryStatus); // ikincil kontrol de kendi başına UygunDegil
     }
 
     /// <summary>TEST 4b (manuel onay regresyonu) — Tarih Uyuşmazlığı "Onay Ver" ile onaylandığında
@@ -203,6 +236,8 @@ public class GlycolUsageComparisonStrategyTests
         Assert.True(afterResult.UserOverridden);
         Assert.Equal("05.04.2026", afterResult.FormValue); // kaynak form tarihi korunuyor (tooltip)
         Assert.Equal("02.04.2026", afterResult.HakedisValue); // kaynak Excel tarihi korunuyor
+        Assert.Equal("25 kg", afterResult.SecondaryHakedisValue); // glikol miktarı (ikincil kontrol) da bozulmadı
+        Assert.Equal("Uygun", afterResult.SecondaryStatus);
     }
 
     /// <summary>TEST 5 — Excel 30 kg, form 20 kg → GLİKOL MİKTARI UYUŞMAZLIĞI.</summary>

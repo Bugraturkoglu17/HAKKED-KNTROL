@@ -72,14 +72,35 @@ internal static class FormNumberMatcher
     };
 
     /// <summary>
-    /// <paramref name="overriddenMatchKeys"/>: kullanıcının "Onay ver" ile Uygun'a çevirdiği sonuçların
-    /// kalıcı anahtarları (bkz. ComparisonResultFactory.ComputeMatchKey). Adım 3/4'te (mağaza/tarih)
-    /// üretilecek hata bu sette varsa, hata döndürmek yerine eşleşti kabul edilir (group, null) — kullanıcı
-    /// zaten "bu doğru mağaza/tarih" demiştir, kategori kontrolünün gerçek bir sonuç üretmesi sağlanır.
-    /// Adım 1/2'de (form no okunamadı/Excel'de yok/mükerrer) kurtarma yoktur — eşleşecek bir aday satır yok.
+    /// Eski/genel kullanım: Adım 3/4'te (mağaza/tarih) bir sorun varsa TEK bir hata sonucu döner ve
+    /// Matched null olur — kategori kontrolü hiç çalışmaz (Varsayılan/Gaz/İlave İşler stratejileri için
+    /// hâlâ geçerli davranış). Glikol Kullanım artık bunun yerine <see cref="MatchWithSoftIssue"/> kullanır
+    /// (bkz. o metodun açıklaması) — mağaza/tarih sorunu olsa bile miktar karşılaştırmasının aynı satırda
+    /// bağımsız çalışabilmesi için. overriddenMatchKeys parametresi artık kullanılmıyor (bkz. AŞAMA 2 —
+    /// manuel onay kontrol tipini asla değiştiremez); imza geriye dönük uyumluluk için korunmuştur.
     /// </summary>
     public static (List<ProgressPaymentCheckItem>? Matched, AiComparisonResult? Error) Match(
         int jobId, AiDocumentPage page, List<ProgressPaymentCheckItem> checkItems, HashSet<string> overriddenMatchKeys)
+    {
+        var (matched, hardError, softIssue) = MatchCore(jobId, page, checkItems);
+        if (hardError != null) return (null, hardError);
+        if (softIssue != null) return (null, softIssue);
+        return (matched, null);
+    }
+
+    /// <summary>
+    /// Glikol/Gaz gibi tek kalemli kategoriler için: mağaza/tarih uyuşmazlığı (soft issue) bulunsa bile
+    /// eşleşen hakediş kalemi grubunu (Matched) DÖNDÜRMEYE DEVAM EDER — böylece çağıran strateji hem
+    /// soft issue'yu raporlayabilir hem de asıl miktar karşılaştırmasını aynı ziyaret için hesaplayıp
+    /// AYNI SATIRA (bkz. AiComparisonResult.SecondaryFormValue/HakedisValue/Status) ekleyebilir. Yalnızca
+    /// gerçekten eşleşen bir aday olmadığında (form no okunamadı/Excel'de yok/mükerrer — HardError) Matched
+    /// null döner.
+    /// </summary>
+    public static (List<ProgressPaymentCheckItem>? Matched, AiComparisonResult? HardError, AiComparisonResult? SoftIssue) MatchWithSoftIssue(
+        int jobId, AiDocumentPage page, List<ProgressPaymentCheckItem> checkItems) => MatchCore(jobId, page, checkItems);
+
+    private static (List<ProgressPaymentCheckItem>? Matched, AiComparisonResult? HardError, AiComparisonResult? SoftIssue) MatchCore(
+        int jobId, AiDocumentPage page, List<ProgressPaymentCheckItem> checkItems)
     {
         var label = StoreLabelFallback(page);
 
@@ -90,7 +111,7 @@ internal static class FormNumberMatcher
         {
             return (null, ComparisonResultFactory.New(jobId, page, label, AiComparisonItemType.Material,
                 "Form Numarası Okunamadı", page.FormNumber, null, AiComparisonStatus.ManuelKontrol,
-                "Servis formu numarası okunamadığı için hakediş Excelindeki ilgili kayıt güvenilir şekilde tespit edilemedi."));
+                "Servis formu numarası okunamadığı için hakediş Excelindeki ilgili kayıt güvenilir şekilde tespit edilemedi."), null);
         }
 
         // 2) Form numarasını hakediş Excelinde ara (MaintenanceFormNo — import sırasında Excel'den okunmuştu).
@@ -103,7 +124,7 @@ internal static class FormNumberMatcher
         {
             return (null, ComparisonResultFactory.New(jobId, page, label, AiComparisonItemType.Material,
                 "Form Hakedişte Bulunamadı", page.FormNumber, "—", AiComparisonStatus.Eksik,
-                $"\"{page.FormNumber}\" numaralı servis formunun yüklenen hakediş Excelinde karşılığı bulunamadı."));
+                $"\"{page.FormNumber}\" numaralı servis formunun yüklenen hakediş Excelinde karşılığı bulunamadı."), null);
         }
 
         // Aynı form numarasına ait satırlar farklı mağaza/tarihe dağılıyorsa mükerrer numaralandırma var demektir.
@@ -114,49 +135,42 @@ internal static class FormNumberMatcher
         {
             return (null, ComparisonResultFactory.New(jobId, page, label, AiComparisonItemType.Material,
                 "Mükerrer Form Numarası", page.FormNumber, null, AiComparisonStatus.ManuelKontrol,
-                $"\"{page.FormNumber}\" numaralı form hakedişte birden fazla farklı mağaza/tarihe ait kayıtla eşleşiyor — manuel kontrol edilmelidir."));
+                $"\"{page.FormNumber}\" numaralı form hakedişte birden fazla farklı mağaza/tarihe ait kayıtla eşleşiyor — manuel kontrol edilmelidir."), null);
         }
 
         var group = visitGroups[0].ToList();
         var first = group[0];
         var hakedisStoreLabel = first.StoreName ?? first.StoreCode ?? "Bilinmeyen Mağaza";
 
-        // ÖNEMLİ — kasıtlı ürün kararı: bir Mağaza/Tarih uyuşmazlığını "Onay ver" ile onaylamak,
-        // kategori kontrolünün (ör. Glikol Miktarı) farklı bir GERÇEK sonuçla bu satırın yerini almasına
-        // ASLA izin vermemelidir — manuel onay yalnızca "bu satır incelendi ve kabul edildi" bilgisini
-        // kaydeder, kontrol edilen alanı/kalem türünü değiştirmez (bkz. AiAnalysisPipelineService.
-        // ApplyOverridesAsync — aynı MatchKey'e sahip olduğu için onay her recompute'ta bu SATIRA
-        // yeniden uygulanır, "Kontrol Edildi" rozetiyle birlikte). overriddenMatchKeys parametresi bu
-        // yüzden burada kasıtlı olarak kullanılmaz; imza geriye dönük uyumluluk için korunmuştur.
-        (List<ProgressPaymentCheckItem>? Matched, AiComparisonResult? Error) RecoverableError(AiComparisonResult candidateError) =>
-            (null, candidateError);
-
         // 3) Mağaza doğrulama — kod varsa öncelikli/kesin kriter, yoksa isim benzerliğine (sınırlı) düşülür.
         var storeCheck = CompareStore(page, first);
         if (storeCheck == StoreCheck.Mismatch)
         {
-            return RecoverableError(ComparisonResultFactory.New(jobId, page, hakedisStoreLabel, AiComparisonItemType.Material,
+            var softIssue = ComparisonResultFactory.New(jobId, page, hakedisStoreLabel, AiComparisonItemType.Material,
                 "Mağaza Uyuşmazlığı", page.StoreCodeRaw ?? page.StoreNameRaw, hakedisStoreLabel, AiComparisonStatus.UygunDegil,
                 $"\"{page.FormNumber}\" numaralı form üzerindeki mağaza {(page.StoreCodeRaw ?? page.StoreNameRaw)} olarak okunmuştur " +
-                $"ancak hakediş Excelindeki aynı form numarası farklı mağazaya ({hakedisStoreLabel}) aittir.", first.Id));
+                $"ancak hakediş Excelindeki aynı form numarası farklı mağazaya ({hakedisStoreLabel}) aittir.", first.Id);
+            return (group, null, softIssue);
         }
         if (storeCheck == StoreCheck.Inconclusive)
         {
-            return RecoverableError(ComparisonResultFactory.New(jobId, page, hakedisStoreLabel, AiComparisonItemType.Material,
+            var softIssue = ComparisonResultFactory.New(jobId, page, hakedisStoreLabel, AiComparisonItemType.Material,
                 "Mağaza Doğrulanamadı", page.StoreCodeRaw ?? page.StoreNameRaw, hakedisStoreLabel, AiComparisonStatus.ManuelKontrol,
-                $"\"{page.FormNumber}\" numaralı formdaki mağaza bilgisi hakediş kaydıyla yeterli güvenle karşılaştırılamadı — manuel kontrol edilmelidir.", first.Id));
+                $"\"{page.FormNumber}\" numaralı formdaki mağaza bilgisi hakediş kaydıyla yeterli güvenle karşılaştırılamadı — manuel kontrol edilmelidir.", first.Id);
+            return (group, null, softIssue);
         }
 
         // 4) Tarih doğrulama — ikisi de doluyken farklıysa hata; biri boşsa (yetersiz veri) engelleme.
         if (page.ServiceDate.HasValue && first.VisitDate.HasValue && page.ServiceDate.Value.Date != first.VisitDate.Value.Date)
         {
-            return RecoverableError(ComparisonResultFactory.New(jobId, page, hakedisStoreLabel, AiComparisonItemType.Material,
+            var softIssue = ComparisonResultFactory.New(jobId, page, hakedisStoreLabel, AiComparisonItemType.Material,
                 "Tarih Uyuşmazlığı", page.ServiceDate.Value.ToString("dd.MM.yyyy"), first.VisitDate.Value.ToString("dd.MM.yyyy"),
                 AiComparisonStatus.UygunDegil,
-                $"Servis formu tarihi {page.ServiceDate:dd.MM.yyyy}, hakediş Excelindeki tarih {first.VisitDate:dd.MM.yyyy} olarak görülmektedir.", first.Id));
+                $"Servis formu tarihi {page.ServiceDate:dd.MM.yyyy}, hakediş Excelindeki tarih {first.VisitDate:dd.MM.yyyy} olarak görülmektedir.", first.Id);
+            return (group, null, softIssue);
         }
 
-        return (group, null);
+        return (group, null, null);
     }
 
     private enum StoreCheck { Matched, Mismatch, Inconclusive }
@@ -565,55 +579,75 @@ public class GlycolUsageComparisonStrategy : ICategoryComparisonStrategy
             .Where(i => i.ProgressPaymentCheckId == job.ProgressPaymentCheckId)
             .ToListAsync(cancellationToken);
 
-        // Kullanıcının daha önce onayladığı (Uygun'a çevirdiği) sonuçlar — mağaza/tarih uyuşmazlığı
-        // onaylanmışsa FormNumberMatcher bunu eşleşti sayıp kategori kontrolünün çalışmasına izin verir.
-        var overriddenKeys = (await _db.AiComparisonOverrides
-            .Where(o => o.JobId == job.Id)
-            .Select(o => o.MatchKey)
-            .ToListAsync(cancellationToken)).ToHashSet();
-
         var results = new List<AiComparisonResult>();
 
         foreach (var page in pages)
         {
-            var (sameVisit, error) = FormNumberMatcher.Match(job.Id, page, checkItems, overriddenKeys);
-            if (error != null) { results.Add(error); continue; }
+            // MatchWithSoftIssue: mağaza/tarih uyuşmazlığı (softIssue) olsa bile eşleşen grup (sameVisit)
+            // döner — böylece glikol miktarı BAĞIMSIZ olarak hesaplanıp AYNI SATIRA eklenebilir. Yalnızca
+            // gerçekten eşleşen bir kayıt yoksa (hardError — form no okunamadı/Excel'de yok/mükerrer)
+            // hiçbir hesaplama yapılamaz.
+            var (sameVisit, hardError, softIssue) = FormNumberMatcher.MatchWithSoftIssue(job.Id, page, checkItems);
+            if (hardError != null) { results.Add(hardError); continue; }
 
             var first = sameVisit![0];
             var storeLabel = first.StoreName ?? first.StoreCode ?? "Bilinmeyen Mağaza";
 
             // Excel referanstır: hakedişte glikol TALEP EDİLMEMİŞSE, formda glikoldan bahsedilmesi
             // tek başına bir talep oluşturmaz — hiçbir sonuç üretilmez (kural 6: yalnızca glikol).
+            // Soft issue varsa (mağaza/tarih) yine de kendi başına raporlanır.
             var hakedisGlycolItems = sameVisit.Where(i => IsGlycol(i.OriginalMaterialName)).ToList();
-            if (hakedisGlycolItems.Count == 0) continue;
+            if (hakedisGlycolItems.Count == 0)
+            {
+                if (softIssue != null) results.Add(softIssue);
+                continue;
+            }
 
             var formGlycolKg = ExtractGlycolKg(page);
             var hakedisGlycolKg = hakedisGlycolItems.Sum(i => i.Quantity);
             var firstGlycolItemId = hakedisGlycolItems[0].Id;
 
+            AiComparisonStatus glycolStatus;
+            string glycolFormStr, glycolExplanation;
+            var hakedisStr = $"{hakedisGlycolKg:0.##} kg";
+
             if (!formGlycolKg.HasValue)
             {
-                results.Add(ComparisonResultFactory.New(job.Id, page, storeLabel, AiComparisonItemType.GlycolUsage, "Glikol Miktarı (kg)",
-                    "Okunamadı", $"{hakedisGlycolKg:0.##} kg", AiComparisonStatus.Eksik,
-                    $"\"{page.FormNumber}\" numaralı servis formunda glikol kullanımı doğrulanamadı (Glikol Formda Doğrulanamadı) " +
-                    $"— hakedişte {hakedisGlycolKg:0.##} kg glikol talep edilmiştir.", firstGlycolItemId));
+                glycolStatus = AiComparisonStatus.Eksik;
+                glycolFormStr = "Okunamadı";
+                glycolExplanation = $"\"{page.FormNumber}\" numaralı servis formunda glikol kullanımı doğrulanamadı (Glikol Formda Doğrulanamadı) " +
+                    $"— hakedişte {hakedisGlycolKg:0.##} kg glikol talep edilmiştir.";
             }
             else
             {
-                var formStr = $"{formGlycolKg.Value:0.##} kg";
-                var hakedisStr = $"{hakedisGlycolKg:0.##} kg";
+                glycolFormStr = $"{formGlycolKg.Value:0.##} kg";
                 if (Math.Abs(formGlycolKg.Value - hakedisGlycolKg) <= GlycolQuantityTolerance)
                 {
-                    results.Add(ComparisonResultFactory.New(job.Id, page, storeLabel, AiComparisonItemType.GlycolUsage, "Glikol Miktarı (kg)",
-                        formStr, hakedisStr, AiComparisonStatus.Uygun,
-                        $"\"{page.FormNumber}\" numaralı servis formunda {formStr} glikol kullanımı doğrulanmış, hakedişteki miktarla uyumludur.", firstGlycolItemId));
+                    glycolStatus = AiComparisonStatus.Uygun;
+                    glycolExplanation = $"\"{page.FormNumber}\" numaralı servis formunda {glycolFormStr} glikol kullanımı doğrulanmış, hakedişteki miktarla uyumludur.";
                 }
                 else
                 {
-                    results.Add(ComparisonResultFactory.New(job.Id, page, storeLabel, AiComparisonItemType.GlycolUsage, "Glikol Miktarı (kg)",
-                        formStr, hakedisStr, AiComparisonStatus.UygunDegil,
-                        $"\"{page.FormNumber}\" numaralı servis formunda {formStr} glikol kullanımı doğrulanırken hakedişte {hakedisStr} talep edilmiştir.", firstGlycolItemId));
+                    glycolStatus = AiComparisonStatus.UygunDegil;
+                    glycolExplanation = $"\"{page.FormNumber}\" numaralı servis formunda {glycolFormStr} glikol kullanımı doğrulanırken hakedişte {hakedisStr} talep edilmiştir.";
                 }
+            }
+
+            if (softIssue != null)
+            {
+                // Satırın ANA konusu (Description/Status/Durum) mağaza/tarih sorunudur — ama glikol
+                // miktarını da aynı satırda göstermek için ikincil alanlara yazılır (bkz. AŞAMA 1: Glikol
+                // Miktarı bağımsız bir kolon). Manuel onay yalnızca ana Status'ü değiştirir, ikincil
+                // alanlara dokunmaz (bkz. AiAnalysisPipelineService.ApplyOverridesAsync).
+                softIssue.SecondaryFormValue = glycolFormStr;
+                softIssue.SecondaryHakedisValue = hakedisStr;
+                softIssue.SecondaryStatus = glycolStatus;
+                results.Add(softIssue);
+            }
+            else
+            {
+                results.Add(ComparisonResultFactory.New(job.Id, page, storeLabel, AiComparisonItemType.GlycolUsage, "Glikol Miktarı (kg)",
+                    glycolFormStr, hakedisStr, glycolStatus, glycolExplanation, firstGlycolItemId));
             }
         }
 

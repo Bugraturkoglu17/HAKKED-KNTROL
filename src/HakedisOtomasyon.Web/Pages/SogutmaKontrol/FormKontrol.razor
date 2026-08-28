@@ -271,6 +271,23 @@ else
                                     </MudChip>
                                 </MudTooltip>
                             }
+                            else if (!string.IsNullOrEmpty(context.SecondaryHakedisValue))
+                            {
+                                @* Satırın ana konusu Mağaza/Tarih uyuşmazlığı ama glikol miktarı da bağımsız
+                                   olarak hesaplanmış (bkz. GlycolUsageComparisonStrategy) — aynı satırda göster. *@
+                                @if (context.SecondaryFormValue == context.SecondaryHakedisValue)
+                                {
+                                    <MudChip T="string" Variant="Variant.Text" Size="Size.Small" Color="@SecondaryValueColor(context)">@context.SecondaryHakedisValue</MudChip>
+                                }
+                                else
+                                {
+                                    <MudTooltip Text="@SecondaryValueTooltip(context)">
+                                        <MudChip T="string" Variant="Variant.Text" Size="Size.Small" Color="@SecondaryValueColor(context)" Style="cursor:help">
+                                            @context.SecondaryHakedisValue
+                                        </MudChip>
+                                    </MudTooltip>
+                                }
+                            }
                             else
                             {
                                 <MudText Typo="Typo.caption" Color="Color.Secondary">—</MudText>
@@ -672,6 +689,11 @@ else
 
     private static string GlycolValueTooltip(AiComparisonResultDto r) =>
         r.FormValue == "Okunamadı" ? "Formda glikol miktarı doğrulanamadı." : $"Form: {r.FormValue}";
+
+    private static Color SecondaryValueColor(AiComparisonResultDto r) => r.SecondaryStatus == "Uygun" ? Color.Success : Color.Error;
+
+    private static string SecondaryValueTooltip(AiComparisonResultDto r) =>
+        r.SecondaryFormValue == "Okunamadı" ? "Formda glikol miktarı doğrulanamadı." : $"Form: {r.SecondaryFormValue}";
 
     // Sonuç kolonu artık üstteki özet çipleriyle (bkz. "8 Uygun/1 Uygun Değil..." satırı) aynı görsel
     // dile sahip küçük MudChip'ler kullanıyor — emoji yerine gerçek Material ikonu + durum rengi.

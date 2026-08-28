@@ -164,6 +164,7 @@ public partial class WpfApp : System.Windows.Application
                 MigrateSogutmaCategorySchema(sogutmaDb);
                 MigrateSogutmaFormNumberSchema(sogutmaDb);
                 MigrateSogutmaOverrideSchema(sogutmaDb);
+                MigrateSogutmaGlycolSecondarySchema(sogutmaDb);
             }
             catch (Exception ex)
             {
@@ -567,6 +568,47 @@ public partial class WpfApp : System.Windows.Application
         catch (Exception ex)
         {
             LogError("Soğutma manuel onay şema migrasyonu hatası", ex);
+        }
+    }
+
+    /// <summary>
+    /// Tek kalemli kategorilerde (Glikol/Gaz Kullanım) Mağaza/Tarih uyuşmazlığı olan bir satırda da
+    /// asıl miktar karşılaştırmasını (bkz. GlycolUsageComparisonStrategy) aynı satırda taşıyabilmek
+    /// için AiComparisonResults'a eklenen ikincil alanlar.
+    /// </summary>
+    private static void MigrateSogutmaGlycolSecondarySchema(SogutmaHakedisKontrol.Infrastructure.Data.AppDbContext db)
+    {
+        try
+        {
+            var conn = db.Database.GetDbConnection();
+            conn.Open();
+            try
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = "PRAGMA table_info(AiComparisonResults)";
+                var cols = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                using (var reader = cmd.ExecuteReader())
+                    while (reader.Read()) cols.Add(reader.GetString(1));
+
+                var newColumns = new Dictionary<string, string>
+                {
+                    ["SecondaryFormValue"] = "TEXT",
+                    ["SecondaryHakedisValue"] = "TEXT",
+                    ["SecondaryStatus"] = "INTEGER",
+                };
+                foreach (var (colName, colType) in newColumns)
+                {
+                    if (cols.Contains(colName)) continue;
+                    using var alter = conn.CreateCommand();
+                    alter.CommandText = $"ALTER TABLE \"AiComparisonResults\" ADD COLUMN \"{colName}\" {colType}";
+                    alter.ExecuteNonQuery();
+                }
+            }
+            finally { conn.Close(); }
+        }
+        catch (Exception ex)
+        {
+            LogError("Soğutma glikol ikincil alan şema migrasyonu hatası", ex);
         }
     }
 
