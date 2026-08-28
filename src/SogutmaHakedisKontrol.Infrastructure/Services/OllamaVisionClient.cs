@@ -18,6 +18,7 @@ public class OllamaVisionClient : IAiVisionClient
 
     private readonly string _baseUrl;
     private readonly string _model;
+    private readonly int _numCtx;
     private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web)
     {
         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
@@ -27,6 +28,7 @@ public class OllamaVisionClient : IAiVisionClient
     {
         _baseUrl = (Environment.GetEnvironmentVariable("OLLAMA_BASE_URL") is { Length: > 0 } b ? b : "http://localhost:11434").TrimEnd('/');
         _model = Environment.GetEnvironmentVariable("OLLAMA_MODEL") is { Length: > 0 } m ? m : "qwen2.5vl:7b";
+        _numCtx = int.TryParse(Environment.GetEnvironmentVariable("OLLAMA_NUM_CTX"), out var n) && n > 0 ? n : 16384;
     }
 
     public bool IsConfigured => true; // yerel servis, API anahtarı gerekmez
@@ -56,7 +58,10 @@ public class OllamaVisionClient : IAiVisionClient
                 },
                 format = SchemaElement,
                 stream = false,
-                options = new { temperature = 0 },
+                // Ollama, modelin gerçek kapasitesine bakmaksızın varsayılan olarak 4096 token ile
+                // sınırlar; sistem talimatı + yüksek çözünürlüklü form görseli bunu kolayca aşar.
+                // num_ctx açıkça büyütülmezse "exceeds the available context size" hatası alınır.
+                options = new { temperature = 0, num_ctx = _numCtx },
             };
 
             var requestJson = JsonSerializer.Serialize(requestBody);
