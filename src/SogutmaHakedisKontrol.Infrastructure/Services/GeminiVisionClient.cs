@@ -31,7 +31,7 @@ public class GeminiVisionClient : IAiVisionClient
     public GeminiVisionClient()
     {
         _apiKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY");
-        _model = Environment.GetEnvironmentVariable("GEMINI_MODEL") is { Length: > 0 } m ? m : "gemini-3.5-flash";
+        _model = Environment.GetEnvironmentVariable("GEMINI_MODEL") is { Length: > 0 } m ? m : "gemini-3.5-flash-lite";
     }
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_apiKey);
