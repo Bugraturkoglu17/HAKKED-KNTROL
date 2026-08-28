@@ -217,11 +217,11 @@ else
                     <MudTh>Mağaza</MudTh>
                     <MudTh>Tarih</MudTh>
                     <MudTh>Form No</MudTh>
-                    @if (!IsGlycolCategory)
+                    @if (!IsSingleItemCategory)
                     {
                         <MudTh>Kontrol Kalemi</MudTh>
                     }
-                    <MudTh>@(IsGlycolCategory ? "Glikol Miktarı" : "Değer")</MudTh>
+                    <MudTh>@(IsSingleItemCategory ? SingleItemValueLabel : "Değer")</MudTh>
                     <MudTh>Durum</MudTh>
                     <MudTh>Açıklama</MudTh>
                     <MudTh>İşlem</MudTh>
@@ -241,14 +241,14 @@ else
                         }
                     </MudTd>
                     <MudTd><MudText Style="color:var(--mud-palette-success)">@FormReferenceLabel(context)</MudText></MudTd>
-                    @if (!IsGlycolCategory)
+                    @if (!IsSingleItemCategory)
                     {
                         <MudTd>@context.Description</MudTd>
                     }
                     <MudTd>
-                        @if (IsGlycolCategory)
+                        @if (IsSingleItemCategory)
                         {
-                            @if (context.ItemType == "GlycolUsage")
+                            @if (context.ItemType == SingleItemTypeName)
                             {
                                 @if (string.IsNullOrEmpty(context.FormValue) || context.FormValue == context.HakedisValue)
                                 {
@@ -443,8 +443,7 @@ else
         // ilgisiz alanları (personel adı, diğer malzemeler) da içerebiliyor; kategoriye özel gerçek
         // sorunların hepsi zaten aşağıdaki karşılaştırma tablosunda kendi açıklamasıyla görünüyor, bu
         // yüzden bu iki kategoride ayrı bir "manuel kontrol" uyarı kutusu gösterilmez.
-        var isSingleItemCategory = _check?.Category is HakedisCategory.GasUsage or HakedisCategory.GlycolUsage;
-        _manualReviewPages = isSingleItemCategory ? new List<AiDocumentPageDto>() : _pages.Where(p => p.RequiresManualReview).ToList();
+        _manualReviewPages = IsSingleItemCategory ? new List<AiDocumentPageDto>() : _pages.Where(p => p.RequiresManualReview).ToList();
         _results = await Pipeline.GetComparisonResultsAsync(_job.Id);
         _storeIssues = await Pipeline.GetStoreReconciliationIssuesAsync(_job.Id);
     }
@@ -683,17 +682,31 @@ else
     private static Color ValueColor(AiComparisonResultDto r) => r.Status == "Uygun" ? Color.Success : Color.Error;
     private static string ValueDisplay(AiComparisonResultDto r) => !string.IsNullOrEmpty(r.HakedisValue) ? r.HakedisValue : (r.FormValue ?? "—");
 
-    // Glikol Kullanım hakedişinde tablo sadeleştirilir: ayrı "Kontrol Kalemi" kolonu kaldırılır,
-    // "Değer" kolonu doğrudan "Glikol Miktarı" olarak gösterilir (bkz. FormKontrol.razor RowTemplate).
-    private bool IsGlycolCategory => _check?.Category == HakedisCategory.GlycolUsage;
+    // Glikol/Gaz Kullanım hakedişlerinde tablo sadeleştirilir: ayrı "Kontrol Kalemi" kolonu kaldırılır,
+    // "Değer" kolonu doğrudan "Glikol Miktarı"/"Gaz Miktarı" olarak gösterilir (bkz. RowTemplate).
+    private bool IsSingleItemCategory => _check?.Category is HakedisCategory.GlycolUsage or HakedisCategory.GasUsage;
+
+    private string SingleItemValueLabel => _check?.Category switch
+    {
+        HakedisCategory.GlycolUsage => "Glikol Miktarı",
+        HakedisCategory.GasUsage => "Gaz Miktarı",
+        _ => "Değer",
+    };
+
+    private string SingleItemTypeName => _check?.Category switch
+    {
+        HakedisCategory.GlycolUsage => "GlycolUsage",
+        HakedisCategory.GasUsage => "GasUsage",
+        _ => string.Empty,
+    };
 
     private static string GlycolValueTooltip(AiComparisonResultDto r) =>
-        r.FormValue == "Okunamadı" ? "Formda glikol miktarı doğrulanamadı." : $"Form: {r.FormValue}";
+        r.FormValue == "Okunamadı" ? "Formda miktar doğrulanamadı." : $"Form: {r.FormValue}";
 
     private static Color SecondaryValueColor(AiComparisonResultDto r) => r.SecondaryStatus == "Uygun" ? Color.Success : Color.Error;
 
     private static string SecondaryValueTooltip(AiComparisonResultDto r) =>
-        r.SecondaryFormValue == "Okunamadı" ? "Formda glikol miktarı doğrulanamadı." : $"Form: {r.SecondaryFormValue}";
+        r.SecondaryFormValue == "Okunamadı" ? "Formda miktar doğrulanamadı." : $"Form: {r.SecondaryFormValue}";
 
     // Sonuç kolonu artık üstteki özet çipleriyle (bkz. "8 Uygun/1 Uygun Değil..." satırı) aynı görsel
     // dile sahip küçük MudChip'ler kullanıyor — emoji yerine gerçek Material ikonu + durum rengi.

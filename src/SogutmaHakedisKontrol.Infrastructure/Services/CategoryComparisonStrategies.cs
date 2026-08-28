@@ -529,25 +529,23 @@ public class GasUsageComparisonStrategy : ICategoryComparisonStrategy
             .Where(i => i.ProgressPaymentCheckId == job.ProgressPaymentCheckId)
             .ToListAsync(cancellationToken);
 
-        // Kullanıcının daha önce onayladığı (Uygun'a çevirdiği) sonuçlar — mağaza/tarih uyuşmazlığı
-        // onaylanmışsa FormNumberMatcher bunu eşleşti sayıp kategori kontrolünün çalışmasına izin verir.
-        var overriddenKeys = (await _db.AiComparisonOverrides
-            .Where(o => o.JobId == job.Id)
-            .Select(o => o.MatchKey)
-            .ToListAsync(cancellationToken)).ToHashSet();
-
         var results = new List<AiComparisonResult>();
 
         foreach (var page in pages)
         {
-            var (sameVisit, error) = FormNumberMatcher.Match(job.Id, page, checkItems, overriddenKeys);
-            if (error != null) { results.Add(error); continue; }
+            // MatchWithSoftIssue: mağaza/tarih uyuşmazlığı (softIssue) olsa bile eşleşen grup (sameVisit)
+            // döner — böylece gaz miktarı BAĞIMSIZ olarak hesaplanıp AYNI SATIRA eklenebilir (bkz. Glikol
+            // ile aynı desen — GlycolUsageComparisonStrategy). Yalnızca gerçekten eşleşen bir kayıt yoksa
+            // (hardError — form no okunamadı/Excel'de yok/mükerrer) hiçbir hesaplama yapılamaz.
+            var (sameVisit, hardError, softIssue) = FormNumberMatcher.MatchWithSoftIssue(job.Id, page, checkItems);
+            if (hardError != null) { results.Add(hardError); continue; }
 
             var first = sameVisit![0];
             var storeLabel = first.StoreName ?? first.StoreCode ?? "Bilinmeyen Mağaza";
 
             // Excel referanstır: hakedişte gaz kalemi TALEP EDİLMEMİŞSE, formda gaz kullanımından
-            // bahsedilmesi tek başına bir talep oluşturmaz — hiçbir sonuç üretilmez.
+            // bahsedilmesi tek başına bir talep oluşturmaz — hiçbir sonuç üretilmez. Soft issue varsa
+            // (mağaza/tarih) yine de kendi başına raporlanır.
             var hakedisGasItems = sameVisit.Where(i => TextNormalizationHelper.NormalizeName(i.OriginalMaterialName).Contains("gaz")).ToList();
             if (hakedisGasItems.Count > 0)
             {
@@ -555,31 +553,53 @@ public class GasUsageComparisonStrategy : ICategoryComparisonStrategy
                 var hakedisGasKg = hakedisGasItems.Sum(i => i.Quantity);
                 var firstGasItemId = hakedisGasItems[0].Id;
 
+                AiComparisonStatus gasStatus;
+                string gasFormStr, gasExplanation;
+                var hakedisStr = $"{hakedisGasKg:0.##} kg";
+
                 if (!formGasKg.HasValue)
                 {
-                    results.Add(ComparisonResultFactory.New(job.Id, page, storeLabel, AiComparisonItemType.GasUsage, "Gaz Miktarı (kg)",
-                        "Okunamadı", $"{hakedisGasKg:0.##} kg", AiComparisonStatus.ManuelKontrol,
-                        "Hakedişte gaz kalemi var ancak servis formunda gaz kg bilgisi açıkça bulunamadı — manuel kontrol edilmeli.", firstGasItemId));
+                    gasStatus = AiComparisonStatus.ManuelKontrol;
+                    gasFormStr = "Okunamadı";
+                    gasExplanation = "Hakedişte gaz kalemi var ancak servis formunda gaz kg bilgisi açıkça bulunamadı — manuel kontrol edilmeli.";
                 }
                 else
                 {
-                    var formStr = $"{formGasKg.Value:0.##} kg";
-                    var hakedisStr = $"{hakedisGasKg:0.##} kg";
+                    gasFormStr = $"{formGasKg.Value:0.##} kg";
                     if (Math.Abs(formGasKg.Value - hakedisGasKg) <= GasQuantityTolerance)
                     {
-                        results.Add(ComparisonResultFactory.New(job.Id, page, storeLabel, AiComparisonItemType.GasUsage, "Gaz Miktarı (kg)",
-                            formStr, hakedisStr, AiComparisonStatus.Uygun, "Hakedişteki gaz miktarı servis formuyla uyumlu.", firstGasItemId));
+                        gasStatus = AiComparisonStatus.Uygun;
+                        gasExplanation = "Hakedişteki gaz miktarı servis formuyla uyumlu.";
                     }
                     else
                     {
-                        results.Add(ComparisonResultFactory.New(job.Id, page, storeLabel, AiComparisonItemType.GasUsage, "Gaz Miktarı (kg)",
-                            formStr, hakedisStr, AiComparisonStatus.UygunDegil,
-                            $"Hakedişte {hakedisStr} gaz belirtilmiş, servis formunda {formStr} tespit edilmiştir.", firstGasItemId));
+                        gasStatus = AiComparisonStatus.UygunDegil;
+                        gasExplanation = $"Hakedişte {hakedisStr} gaz belirtilmiş, servis formunda {gasFormStr} tespit edilmiştir.";
                     }
                 }
+
+                if (softIssue != null)
+                {
+                    // Satırın ANA konusu (Description/Status/Durum) mağaza/tarih sorunudur — gaz miktarı
+                    // ikincil alanlara yazılır (bkz. Glikol ile aynı desen).
+                    softIssue.SecondaryFormValue = gasFormStr;
+                    softIssue.SecondaryHakedisValue = hakedisStr;
+                    softIssue.SecondaryStatus = gasStatus;
+                    results.Add(softIssue);
+                }
+                else
+                {
+                    results.Add(ComparisonResultFactory.New(job.Id, page, storeLabel, AiComparisonItemType.GasUsage, "Gaz Miktarı (kg)",
+                        gasFormStr, hakedisStr, gasStatus, gasExplanation, firstGasItemId));
+                }
+            }
+            else if (softIssue != null)
+            {
+                results.Add(softIssue);
             }
 
             // Kaçak bilgisi — henüz sayısal bir kural yok; bilgi amaçlı manuel kontrol notu (iskelet aşaması).
+            // Gaz miktarı eşleşmesinden bağımsız, her sayfa için ayrıca kontrol edilir.
             if (!string.IsNullOrWhiteSpace(page.DescriptionRaw) &&
                 LeakKeywords.Any(k => TextNormalizationHelper.NormalizeName(page.DescriptionRaw).Contains(k)))
             {
