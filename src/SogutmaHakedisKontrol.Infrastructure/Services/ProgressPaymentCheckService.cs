@@ -298,9 +298,10 @@ public class ProgressPaymentCheckService : IProgressPaymentCheckService
         var unitPriceItem = await _db.UnitPriceItems.FindAsync(unitPriceItemId)
             ?? throw new InvalidOperationException("Birim fiyat kalemi bulunamadı.");
 
-        var items = await _db.ProgressPaymentCheckItems
+        var seedItems = await _db.ProgressPaymentCheckItems
             .Where(i => i.ProgressPaymentCheckId == checkId && checkItemIds.Contains(i.Id))
             .ToListAsync();
+        var items = await ExpandToSameKeyPendingAsync(checkId, seedItems);
 
         string? firstOriginalName = items.FirstOrDefault()?.OriginalMaterialName;
 
@@ -325,6 +326,26 @@ public class ProgressPaymentCheckService : IProgressPaymentCheckService
 
         await UpdateCheckStatusAsync(checkId);
         await RecalculateAsync(checkId);
+    }
+
+    /// <summary>Seçilen kalem(ler)le ham malzeme adı/spec'i BİREBİR aynı olan, aynı kontrol içindeki
+    /// DİĞER bekleyen (FuzzyPending) kalemleri de bulup listeye ekler — kullanıcı bir eşleşmeyi tek
+    /// satırda onayladığında, aynı malzeme Excel'de kaç kez geçerse geçsin hepsi otomatik eşleşsin
+    /// diye (tek satır arama diyaloğu ve "turuncu kuyruk" grup diyaloğu artık aynı davranışı verir).
+    /// Zaten Onaylanmış/Reddedilmiş (ManuallyMatched/Exact/Unmatched) kalemlere DOKUNULMAZ — yalnızca
+    /// hâlâ FuzzyPending durumunda olanlar genişletmeye dahil edilir.</summary>
+    private async Task<List<ProgressPaymentCheckItem>> ExpandToSameKeyPendingAsync(int checkId, List<ProgressPaymentCheckItem> seedItems)
+    {
+        var keys = seedItems
+            .Select(i => (Name: i.OriginalMaterialName.Trim(), Spec: (i.OriginalMaterialSpec ?? "").Trim()))
+            .ToHashSet();
+
+        var pending = await _db.ProgressPaymentCheckItems
+            .Where(i => i.ProgressPaymentCheckId == checkId && i.MatchStatus == MaterialMatchStatus.FuzzyPending)
+            .ToListAsync();
+        var siblings = pending.Where(i => keys.Contains((i.OriginalMaterialName.Trim(), (i.OriginalMaterialSpec ?? "").Trim())));
+
+        return seedItems.Concat(siblings).GroupBy(i => i.Id).Select(g => g.First()).ToList();
     }
 
     public async Task RejectMatchAsync(int checkId, List<int> checkItemIds)
@@ -385,9 +406,10 @@ public class ProgressPaymentCheckService : IProgressPaymentCheckService
 
         var created = await _unitPriceList.CreateItemAsync(check.UnitPriceListId, newItem);
 
-        var items = await _db.ProgressPaymentCheckItems
+        var seedItems = await _db.ProgressPaymentCheckItems
             .Where(i => i.ProgressPaymentCheckId == checkId && checkItemIds.Contains(i.Id))
             .ToListAsync();
+        var items = await ExpandToSameKeyPendingAsync(checkId, seedItems);
 
         var matchedLabel = string.IsNullOrWhiteSpace(created.Spec) ? created.MaterialName : $"{created.MaterialName} — {created.Spec}";
         var note = actionLabel == "BuFiyatDogru"
