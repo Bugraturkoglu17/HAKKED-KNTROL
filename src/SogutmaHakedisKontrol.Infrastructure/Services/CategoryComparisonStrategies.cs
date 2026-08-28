@@ -52,6 +52,25 @@ internal static class ComparisonResultFactory
 }
 
 /// <summary>
+/// Tek kalemli miktar kontrollerinde (Glikol/Gaz kg) çok sık görülen bir AI/OCR hatasını tolere eder:
+/// el yazısı miktarda ondalık ayırıcı (nokta/virgül) ya YANLIŞLIKLA EKLENİR (20 → 2.0/2) ya da bir basamak
+/// ATLANIR (15 → 1.5) — sonuçta okunan değer, gerçek değerin tam olarak 10 katı ya da 1/10'u çıkar. Bu
+/// kalıp normal ölçüm sapmasından ayırt edilebilir kadar belirgindir (ör. 2 ile 20 arasındaki fark tolerans
+/// içinde asla YAKALANMAZ, yalnızca "×10" ilişkisiyle yakalanır) — bu yüzden yanlış negatif riski düşüktür.
+/// GÜVENLİK: hiçbir değer sessizce "düzeltilip" gösterilmez — Durum Uygun'a çevrilir ama formda gerçekte
+/// OKUNAN ham değer (glycolFormStr/gasFormStr) olduğu gibi kalır, kullanıcı her zaman tooltip'te "Form: X"
+/// olarak gerçek okumayı görür ve gerektiğinde manuel olarak sorgulayabilir.
+/// </summary>
+internal static class QuantityOcrHelper
+{
+    public static bool IsDecimalShiftMatch(decimal formValue, decimal hakedisValue, decimal tolerance)
+    {
+        if (formValue <= 0 || hakedisValue <= 0) return false;
+        return Math.Abs(formValue * 10 - hakedisValue) <= tolerance || Math.Abs(formValue / 10 - hakedisValue) <= tolerance;
+    }
+}
+
+/// <summary>
 /// Servis formunu daha önce yüklenmiş hakediş Excel satırlarıyla eşleştirir. Form numarası ANA eşleştirme
 /// anahtarıdır — ayrı bir mağaza listesi kullanılmaz; mağaza doğrulaması, form numarasıyla bulunan hakediş
 /// satırının kendi mağaza kodu/adı ile servis formundan okunan mağaza bilgisi karşılaştırılarak yapılır.
@@ -572,6 +591,14 @@ public class GasUsageComparisonStrategy : ICategoryComparisonStrategy
                         gasStatus = AiComparisonStatus.Uygun;
                         gasExplanation = "Hakedişteki gaz miktarı servis formuyla uyumlu.";
                     }
+                    else if (QuantityOcrHelper.IsDecimalShiftMatch(formGasKg.Value, hakedisGasKg, GasQuantityTolerance))
+                    {
+                        // OCR'ın ondalık ayırıcıyı yanlış eklediği/bir basamak atladığı çok yaygın bir
+                        // hata (20→2, 15→1.5) — gerçek okuma tooltip'te görünür kalır, yalnızca Durum
+                        // düzeltilir (bkz. Glikol ile aynı desen).
+                        gasStatus = AiComparisonStatus.Uygun;
+                        gasExplanation = $"Servis formunda {gasFormStr} okunmuştur — muhtemel ondalık basamak okuma hatası nedeniyle hakedişteki {hakedisStr} ile eşleştirilmiş ve uygun kabul edilmiştir.";
+                    }
                     else
                     {
                         gasStatus = AiComparisonStatus.UygunDegil;
@@ -753,6 +780,13 @@ public class GlycolUsageComparisonStrategy : ICategoryComparisonStrategy
                 {
                     glycolStatus = AiComparisonStatus.Uygun;
                     glycolExplanation = $"\"{page.FormNumber}\" numaralı servis formunda {glycolFormStr} glikol kullanımı doğrulanmış, hakedişteki miktarla uyumludur.";
+                }
+                else if (QuantityOcrHelper.IsDecimalShiftMatch(formGlycolKg.Value, hakedisGlycolKg, GlycolQuantityTolerance))
+                {
+                    // OCR'ın ondalık ayırıcıyı yanlış eklediği/bir basamak atladığı çok yaygın bir hata
+                    // (20→2, 15→1.5) — gerçek okuma tooltip'te görünür kalır, yalnızca Durum düzeltilir.
+                    glycolStatus = AiComparisonStatus.Uygun;
+                    glycolExplanation = $"\"{page.FormNumber}\" numaralı servis formunda {glycolFormStr} okunmuştur — muhtemel ondalık basamak okuma hatası nedeniyle hakedişteki {hakedisStr} ile eşleştirilmiş ve uygun kabul edilmiştir.";
                 }
                 else
                 {

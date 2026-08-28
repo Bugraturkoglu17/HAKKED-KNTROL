@@ -74,6 +74,15 @@ public static class AiVisionSchemas
            birimlerini, servis tarihini, personelleri ve çalışma saatlerini (başlangıç/bitiş) çıkar.
            Adam-saat matematiğini SEN yapma — yalnızca okuduğun saatleri ham veri olarak ver.
 
+           ── service_date NEREDEN OKUNUR (ÖNEMLİ) ────────────────────────
+           service_date için ASIL/GEÇERLİ tarih sayfanın EN ALTINDA, "SERVİS ELEMANI (İSİM, İMZA, KAŞE)"
+           ve "MAĞAZA ONAY (İSİM, İMZA, KAŞE)" imza/kaşe kutularının TAM ORTASINDA yer alan "TARİH"
+           etiketli alandır (genellikle GG/AA/YYYY biçiminde, çoğu zaman kısmen matbu/kısmen el yazısı).
+           Sayfanın ORTASINDAKİ "Çalışan Personel" tablosunda da AYRI bir "Tarih" kolonu bulunur — bu
+           kolon service_date için KAYNAK OLARAK KULLANILMAZ, yalnızca bilgi amaçlıdır ve el yazısı
+           kalitesi genellikle daha düşüktür. İki tarih normalde aynı olmalıdır ama farklı okunuyorsa
+           veya biri belirsizse HER ZAMAN sayfanın en altındaki "TARİH" alanını esas al.
+
         3. SOĞUTMA AĞIR BAKIM FORMU / PERİYODİK BAKIM FORMU → document_type = PERIODIC_MAINTENANCE_FORM
            Başlığı genellikle "SOĞUTMA AĞIR BAKIM FORMU"dur. Servis formundan tamamen farklıdır:
            sayfanın büyük bölümü bakım kontrol maddeleri, checkbox/tik alanları, kompresör ve soğutma
@@ -121,7 +130,7 @@ public static class AiVisionSchemas
               "required": ["code_raw", "name_raw", "confidence"],
               "additionalProperties": false
             },
-            "service_date": { "type": ["string", "null"], "description": "ISO 8601 yyyy-MM-dd, yalnızca SERVICE_FORM" },
+            "service_date": { "type": ["string", "null"], "description": "ISO 8601 yyyy-MM-dd, yalnızca SERVICE_FORM. Sayfanın en altındaki Servis Elemanı/Mağaza Onay arasındaki TARİH alanından okunur, ortadaki personel tablosundaki tarihten değil." },
             "maintenance_date": { "type": ["string", "null"], "description": "ISO 8601 yyyy-MM-dd, formun en altındaki tarih, yalnızca PERIODIC_MAINTENANCE_FORM" },
             "description_raw": { "type": ["string", "null"] },
             "work_performed_raw": { "type": ["string", "null"] },

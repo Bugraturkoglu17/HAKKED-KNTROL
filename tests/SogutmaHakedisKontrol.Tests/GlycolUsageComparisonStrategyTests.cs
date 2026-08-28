@@ -96,6 +96,58 @@ public class GlycolUsageComparisonStrategyTests
         Assert.Equal("Uygun", result.Status);
     }
 
+    /// <summary>TEST 1b — OCR ondalık basamak hatası: hakedişte 20kg, formda "2kg" okunmuş (sondaki
+    /// sıfır düşmüş) → yine de UYGUN kabul edilir, ham okuma (2 kg) FormValue'de görünür kalır.</summary>
+    [Fact]
+    public async Task Test1b_OcrOndalikHatasi_2Kg20KgIleEslesir_UygunUretir()
+    {
+        using var db = TestDbFactory.Create();
+        var (_, check) = SeedCheck(db);
+        db.ProgressPaymentCheckItems.Add(GlycolItem(check.Id, "20730", "1001", "Mağaza X", new DateTime(2026, 4, 2), 20));
+        db.SaveChanges();
+
+        var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
+        {
+            DocumentType = "SERVICE_FORM", FormNumber = "20730", FormNumberConfidence = 0.95m,
+            Store = new AiStoreCandidateDto { CodeRaw = "1001", Confidence = 0.9m }, ServiceDate = "2026-04-02",
+            Materials = new List<AiMaterialExtractionDto> { GlycolMaterial(2) },
+        }));
+        var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
+        var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
+
+        var results = await pipeline.GetComparisonResultsAsync(job.Id);
+        var result = results.Single(r => r.ItemType == "GlycolUsage");
+        Assert.Equal("Uygun", result.Status);
+        Assert.Equal("2 kg", result.FormValue);
+        Assert.Equal("20 kg", result.HakedisValue);
+    }
+
+    /// <summary>TEST 1c — OCR ondalık basamak hatası: hakedişte 15kg, formda "1,5kg" okunmuş (ondalık
+    /// nokta yanlışlıkla eklenmiş) → yine de UYGUN kabul edilir.</summary>
+    [Fact]
+    public async Task Test1c_OcrOndalikHatasi_1_5Kg15KgIleEslesir_UygunUretir()
+    {
+        using var db = TestDbFactory.Create();
+        var (_, check) = SeedCheck(db);
+        db.ProgressPaymentCheckItems.Add(GlycolItem(check.Id, "20730", "1001", "Mağaza X", new DateTime(2026, 4, 2), 15));
+        db.SaveChanges();
+
+        var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
+        {
+            DocumentType = "SERVICE_FORM", FormNumber = "20730", FormNumberConfidence = 0.95m,
+            Store = new AiStoreCandidateDto { CodeRaw = "1001", Confidence = 0.9m }, ServiceDate = "2026-04-02",
+            Materials = new List<AiMaterialExtractionDto> { GlycolMaterial(1.5m) },
+        }));
+        var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
+        var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
+
+        var results = await pipeline.GetComparisonResultsAsync(job.Id);
+        var result = results.Single(r => r.ItemType == "GlycolUsage");
+        Assert.Equal("Uygun", result.Status);
+        Assert.Equal("1,5 kg", result.FormValue);
+        Assert.Equal("15 kg", result.HakedisValue);
+    }
+
     /// <summary>TEST 2 — Form No Excelde yok VE mağaza da eşleşmiyor (yedek eşleştirme de bulamaz)
     /// → FORM HAKEDİŞTE BULUNAMADI.</summary>
     [Fact]

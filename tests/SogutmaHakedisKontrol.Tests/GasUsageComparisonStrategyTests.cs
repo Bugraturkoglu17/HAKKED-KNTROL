@@ -97,6 +97,82 @@ public class GasUsageComparisonStrategyTests
         Assert.Equal("40 kg", result.HakedisValue);
     }
 
+    /// <summary>TEST 1b — OCR ondalık basamak hatası: hakedişte 20kg, formda "2kg" okunmuş (sondaki
+    /// sıfır düşmüş) → yine de UYGUN kabul edilir, ham okuma (2 kg) FormValue'de görünür kalır.</summary>
+    [Fact]
+    public async Task Test1b_OcrOndalikHatasi_2Kg20KgIleEslesir_UygunUretir()
+    {
+        using var db = TestDbFactory.Create();
+        var (_, check) = SeedCheck(db);
+        db.ProgressPaymentCheckItems.Add(GasItem(check.Id, "20961", "710", "5M Ankara", new DateTime(2026, 5, 21), 20));
+        db.SaveChanges();
+
+        var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
+        {
+            DocumentType = "SERVICE_FORM", FormNumber = "20961", FormNumberConfidence = 0.95m,
+            Store = new AiStoreCandidateDto { CodeRaw = "710", Confidence = 0.9m }, ServiceDate = "2026-05-21",
+            Materials = new List<AiMaterialExtractionDto> { GasMaterial(2) },
+        }));
+        var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
+        var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
+
+        var results = await pipeline.GetComparisonResultsAsync(job.Id);
+        var result = results.Single(r => r.ItemType == "GasUsage");
+        Assert.Equal("Uygun", result.Status);
+        Assert.Equal("2 kg", result.FormValue);
+        Assert.Equal("20 kg", result.HakedisValue);
+    }
+
+    /// <summary>TEST 1c — OCR ondalık basamak hatası: hakedişte 15kg, formda "1,5kg" okunmuş (ondalık
+    /// nokta yanlışlıkla eklenmiş) → yine de UYGUN kabul edilir.</summary>
+    [Fact]
+    public async Task Test1c_OcrOndalikHatasi_1_5Kg15KgIleEslesir_UygunUretir()
+    {
+        using var db = TestDbFactory.Create();
+        var (_, check) = SeedCheck(db);
+        db.ProgressPaymentCheckItems.Add(GasItem(check.Id, "20961", "710", "5M Ankara", new DateTime(2026, 5, 21), 15));
+        db.SaveChanges();
+
+        var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
+        {
+            DocumentType = "SERVICE_FORM", FormNumber = "20961", FormNumberConfidence = 0.95m,
+            Store = new AiStoreCandidateDto { CodeRaw = "710", Confidence = 0.9m }, ServiceDate = "2026-05-21",
+            Materials = new List<AiMaterialExtractionDto> { GasMaterial(1.5m) },
+        }));
+        var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
+        var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
+
+        var results = await pipeline.GetComparisonResultsAsync(job.Id);
+        var result = results.Single(r => r.ItemType == "GasUsage");
+        Assert.Equal("Uygun", result.Status);
+        Assert.Equal("1,5 kg", result.FormValue);
+        Assert.Equal("15 kg", result.HakedisValue);
+    }
+
+    /// <summary>TEST 1d — Gerçekten farklı bir miktar (10x ilişkisi YOK) hâlâ UYGUN DEĞİL kalmalı —
+    /// tolerans yalnızca tam ×10/÷10 ilişkisini yakalar, genel bir gevşetme değildir.</summary>
+    [Fact]
+    public async Task Test1d_GercekMiktarFarki_OndalikIliskiYok_UygunDegilKalir()
+    {
+        using var db = TestDbFactory.Create();
+        var (_, check) = SeedCheck(db);
+        db.ProgressPaymentCheckItems.Add(GasItem(check.Id, "20961", "710", "5M Ankara", new DateTime(2026, 5, 21), 20));
+        db.SaveChanges();
+
+        var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
+        {
+            DocumentType = "SERVICE_FORM", FormNumber = "20961", FormNumberConfidence = 0.95m,
+            Store = new AiStoreCandidateDto { CodeRaw = "710", Confidence = 0.9m }, ServiceDate = "2026-05-21",
+            Materials = new List<AiMaterialExtractionDto> { GasMaterial(15) },
+        }));
+        var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
+        var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
+
+        var results = await pipeline.GetComparisonResultsAsync(job.Id);
+        var result = results.Single(r => r.ItemType == "GasUsage");
+        Assert.Equal("UygunDegil", result.Status);
+    }
+
     /// <summary>TEST 2 — Form No/mağaza doğru ama servis formu tarihi Excel'deki tarihten farklı
     /// (AŞAMA 1 deseni — Glikol ile aynı): satırın ANA konusu Tarih Uyuşmazlığı'dır, ama gaz miktarı
     /// bağımsız hesaplanıp ikincil alanlara (SecondaryFormValue/HakedisValue/Status) yazılır.</summary>
