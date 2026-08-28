@@ -325,14 +325,16 @@ public class AiAnalysisPipelineServiceTests
         return (db, check);
     }
 
-    [Fact] // TEST 2 — Form Excel'de yok
+    [Fact] // TEST 2 — Form Excel'de yok VE mağaza da eşleşmiyor (yedek eşleştirme de bulamaz)
     public async Task FormNo_ExceldeYoksa_FormHakedisteBulunamadiUretir()
     {
         var (db, check) = await SeedFormMatchCheckAsync(formNo: "15527");
         var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
         {
             DocumentType = "SERVICE_FORM", FormNumber = "99999", FormNumberConfidence = 0.9m,
-            Store = new AiStoreCandidateDto { CodeRaw = "1001", Confidence = 0.9m }, ServiceDate = "2026-04-23",
+            // Kod da (1001 değil) ad da eşleşmesin — mağaza yedek eşleştirmesinin de devreye
+            // girmeyeceğini garanti eder (bkz. TEST 2b — yedek eşleştirmenin ÇALIŞTIĞI durum).
+            Store = new AiStoreCandidateDto { CodeRaw = "9999", NameRaw = "Alakasız Mağaza", Confidence = 0.9m }, ServiceDate = "2026-04-23",
         }));
         var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
         var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
@@ -346,14 +348,16 @@ public class AiAnalysisPipelineServiceTests
         Assert.Contains(results, r => r.ItemType == "StoreMatch" && r.Description == "Form Eksik");
     }
 
-    [Fact] // TEST 3 — Form numarası okunamıyor
+    [Fact] // TEST 3 — Form numarası okunamıyor VE mağaza da belirsiz (yedek eşleştirme de rastgele eşleşmez)
     public async Task FormNo_Okunamiyorsa_ManuelKontrolUretirVeRastgeleEslesmez()
     {
         var (db, check) = await SeedFormMatchCheckAsync(formNo: "15527");
         var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
         {
             DocumentType = "SERVICE_FORM", FormNumber = null, FormNumberConfidence = 0.1m,
-            Store = new AiStoreCandidateDto { CodeRaw = "1001", Confidence = 0.9m }, ServiceDate = "2026-04-23",
+            // Kod da (1001 değil) ad da eşleşmesin — mağaza yedek eşleştirmesi hiçbir sinyal
+            // bulamadığında ASLA rastgele/tahmini eşleşme yapmadığını doğrular.
+            Store = new AiStoreCandidateDto { CodeRaw = "9999", NameRaw = "Alakasız Mağaza", Confidence = 0.9m }, ServiceDate = "2026-04-23",
             RequiresManualReview = true,
         }));
         var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
@@ -366,6 +370,44 @@ public class AiAnalysisPipelineServiceTests
         // Form no okunamadığı için hangi Excel satırına ait olduğu belli değil — tek Excel satırı
         // (form 15527) da ayrıca "Form Eksik" olarak işaretlenir.
         Assert.Contains(results, r => r.ItemType == "StoreMatch" && r.Description == "Form Eksik");
+    }
+
+    [Fact] // TEST 3b — Form numarası okunamıyor AMA mağaza kodu net eşleşiyor → yedek eşleştirme çalışır
+    public async Task FormNo_OkunamiyorsaAmaMagazaKoduNetEslesiyorsa_YedekEslestirmeCalisir()
+    {
+        var (db, check) = await SeedFormMatchCheckAsync(formNo: "15527", storeCode: "1001", storeName: "Kahramankazan Belediye 2M Migros");
+        var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
+        {
+            DocumentType = "SERVICE_FORM", FormNumber = null, FormNumberConfidence = 0.1m,
+            Store = new AiStoreCandidateDto { CodeRaw = "1001", Confidence = 0.9m }, ServiceDate = "2026-04-23",
+            RequiresManualReview = true,
+        }));
+        var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
+        var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
+
+        var results = await pipeline.GetComparisonResultsAsync(job.Id);
+        var result = results.Single(r => r.Description == "Form No Yerine Mağazadan Eşleşti");
+        Assert.Equal("ManuelKontrol", result.Status); // her zaman gözden geçirilsin diye Manuel Kontrol'de kalır
+        Assert.Equal("15527", result.HakedisValue); // bulunan gerçek hakediş form no'su
+    }
+
+    [Fact] // TEST 3c — Mağaza adı yalnızca ayırt edici kelimelerle (Migros/MM gibi ortak ekler hariç) eşleşmeli
+    public async Task FormNo_OkunamiyorsaAmaMagazaAdiAyirtEdiciKelimelerleEslesiyorsa_YedekEslestirmeCalisir()
+    {
+        var (db, check) = await SeedFormMatchCheckAsync(formNo: "15527", storeCode: "", storeName: "Yukarı Dikmen Mah. Ankara MM");
+        var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
+        {
+            DocumentType = "SERVICE_FORM", FormNumber = null, FormNumberConfidence = 0.1m,
+            // Kod yok, sadece ad var — "Migros/MM/Mah./Ankara" gibi ortak kelimeler hariç tutulunca
+            // "Yukarı Dikmen" asıl ayırt edici kelime olarak eşleşmeli.
+            Store = new AiStoreCandidateDto { NameRaw = "Yukarı Dikmen 2M Migros", Confidence = 0.7m }, ServiceDate = "2026-04-23",
+        }));
+        var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
+        var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
+
+        var results = await pipeline.GetComparisonResultsAsync(job.Id);
+        var result = results.Single(r => r.Description == "Form No Yerine Mağazadan Eşleşti");
+        Assert.Equal("15527", result.HakedisValue);
     }
 
     [Fact] // TEST 4 — Form no eşleşti ama mağaza kodu VE adı da açıkça farklı (Durum 4)

@@ -96,7 +96,8 @@ public class GlycolUsageComparisonStrategyTests
         Assert.Equal("Uygun", result.Status);
     }
 
-    /// <summary>TEST 2 — Form No Excelde yok → FORM HAKEDİŞTE BULUNAMADI.</summary>
+    /// <summary>TEST 2 — Form No Excelde yok VE mağaza da eşleşmiyor (yedek eşleştirme de bulamaz)
+    /// → FORM HAKEDİŞTE BULUNAMADI.</summary>
     [Fact]
     public async Task Test2_FormNoExceldeYoksa_FormHakedisteBulunamadiUretir()
     {
@@ -108,7 +109,7 @@ public class GlycolUsageComparisonStrategyTests
         var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
         {
             DocumentType = "SERVICE_FORM", FormNumber = "99999", FormNumberConfidence = 0.95m,
-            Store = new AiStoreCandidateDto { CodeRaw = "1001", Confidence = 0.9m }, ServiceDate = "2026-04-02",
+            Store = new AiStoreCandidateDto { CodeRaw = "9999", NameRaw = "Alakasız Mağaza", Confidence = 0.9m }, ServiceDate = "2026-04-02",
             Materials = new List<AiMaterialExtractionDto> { GlycolMaterial(25) },
         }));
         var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
@@ -117,6 +118,34 @@ public class GlycolUsageComparisonStrategyTests
         var results = await pipeline.GetComparisonResultsAsync(job.Id);
         var result = results.Single(r => r.Description == "Form Hakedişte Bulunamadı");
         Assert.Equal("Eksik", result.Status);
+    }
+
+    /// <summary>TEST 2b — Form No okunamıyor AMA mağaza kodu net eşleşiyor → yedek eşleştirme çalışır
+    /// VE glikol miktarı da (ikincil alan olarak) bu satırda bağımsız hesaplanır.</summary>
+    [Fact]
+    public async Task Test2b_FormNoOkunamiyorAmaMagazaNetEslesiyorsa_YedekEslestirmeVeGlikolBirlikteCalisir()
+    {
+        using var db = TestDbFactory.Create();
+        var (_, check) = SeedCheck(db);
+        db.ProgressPaymentCheckItems.Add(GlycolItem(check.Id, "20730", "1001", "Mağaza X", new DateTime(2026, 4, 2), 25));
+        db.SaveChanges();
+
+        var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
+        {
+            DocumentType = "SERVICE_FORM", FormNumber = null, FormNumberConfidence = 0.1m,
+            Store = new AiStoreCandidateDto { CodeRaw = "1001", Confidence = 0.9m }, ServiceDate = "2026-04-02",
+            Materials = new List<AiMaterialExtractionDto> { GlycolMaterial(25) },
+        }));
+        var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
+        var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
+
+        var results = await pipeline.GetComparisonResultsAsync(job.Id);
+        var result = Assert.Single(results);
+        Assert.Equal("Form No Yerine Mağazadan Eşleşti", result.Description);
+        Assert.Equal("ManuelKontrol", result.Status);
+        Assert.Equal("20730", result.HakedisValue); // yedek eşleştirmeyle bulunan gerçek form no
+        Assert.Equal("25 kg", result.SecondaryHakedisValue); // glikol miktarı da bağımsız hesaplandı
+        Assert.Equal("Uygun", result.SecondaryStatus);
     }
 
     /// <summary>TEST 3 — Form No aynı, mağaza farklı → MAĞAZA UYUŞMAZLIĞI.</summary>

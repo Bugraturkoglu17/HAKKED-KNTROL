@@ -109,6 +109,9 @@ internal static class FormNumberMatcher
         var lowConfidence = page.FormNumberConfidence.HasValue && page.FormNumberConfidence.Value < MinFormNumberConfidence;
         if (string.IsNullOrEmpty(formNo) || lowConfidence)
         {
+            var fallback = TryMatchByStoreAndDate(page, checkItems);
+            if (fallback != null) return FallbackSoftIssue(jobId, page, fallback, "okunamadı");
+
             return (null, ComparisonResultFactory.New(jobId, page, label, AiComparisonItemType.Material,
                 "Form Numarası Okunamadı", page.FormNumber, null, AiComparisonStatus.ManuelKontrol,
                 "Servis formu numarası okunamadığı için hakediş Excelindeki ilgili kayıt güvenilir şekilde tespit edilemedi."), null);
@@ -122,6 +125,9 @@ internal static class FormNumberMatcher
 
         if (candidates.Count == 0)
         {
+            var fallback = TryMatchByStoreAndDate(page, checkItems);
+            if (fallback != null) return FallbackSoftIssue(jobId, page, fallback, $"\"{page.FormNumber}\" okundu ama hakedişte bulunamadı");
+
             return (null, ComparisonResultFactory.New(jobId, page, label, AiComparisonItemType.Material,
                 "Form Hakedişte Bulunamadı", page.FormNumber, "—", AiComparisonStatus.Eksik,
                 $"\"{page.FormNumber}\" numaralı servis formunun yüklenen hakediş Excelinde karşılığı bulunamadı."), null);
@@ -171,6 +177,62 @@ internal static class FormNumberMatcher
         }
 
         return (group, null, null);
+    }
+
+    /// <summary>
+    /// Form numarası hiç okunamadığında/hakedişte bulunamadığında son çare: mağaza kodu/adından
+    /// eşleştirmeyi dener. Mağaza adı karşılaştırması zaten "Migros/MM/MMM/Mahallesi/Ankara" gibi ortak,
+    /// ayırt edici olmayan kelimeleri atıp yalnızca asıl mağazayı belirleyen kelimelere (ör. "Kahramankazan",
+    /// "Yukarı Dikmen") bakar (bkz. NormalizeStoreNameCore/StoreNameNoiseWords). GÜVENLİK ÖNCELİKLİDİR —
+    /// finansal mutabakat söz konusu olduğu için belirsiz durumda ASLA tahmin etmez: birden fazla mağaza
+    /// adayı varsa ve tarih de ayırt etmiyorsa null döner (çağıran taraf orijinal "bulunamadı" hatasına düşer).
+    /// </summary>
+    private static List<ProgressPaymentCheckItem>? TryMatchByStoreAndDate(AiDocumentPage page, List<ProgressPaymentCheckItem> checkItems)
+    {
+        if (string.IsNullOrWhiteSpace(page.StoreCodeRaw) && string.IsNullOrWhiteSpace(page.StoreNameRaw))
+            return null; // hiç mağaza ipucu yoksa yedek eşleştirme de imkansızdır
+
+        var visitGroups = checkItems
+            .Where(i => !string.IsNullOrWhiteSpace(i.MaintenanceFormNo))
+            .GroupBy(i => (Store: TextNormalizationHelper.NormalizeCode(i.StoreCode ?? i.StoreName ?? string.Empty), Date: i.VisitDate?.Date))
+            .ToList();
+
+        var formCode = TextNormalizationHelper.NormalizeCode(page.StoreCodeRaw ?? string.Empty);
+        var formNameCore = NormalizeStoreNameCore(page.StoreNameRaw);
+
+        bool IsStoreMatch(ProgressPaymentCheckItem item)
+        {
+            var itemCode = TextNormalizationHelper.NormalizeCode(item.StoreCode ?? string.Empty);
+            if (!string.IsNullOrEmpty(formCode) && !string.IsNullOrEmpty(itemCode))
+                return formCode == itemCode;
+
+            var itemNameCore = NormalizeStoreNameCore(item.StoreName);
+            if (string.IsNullOrEmpty(formNameCore) || string.IsNullOrEmpty(itemNameCore)) return false;
+            return StoreNameSimilarity(formNameCore, itemNameCore) >= MinStoreNameSimilarity;
+        }
+
+        var storeMatches = visitGroups.Where(g => IsStoreMatch(g.First())).ToList();
+        if (storeMatches.Count == 0) return null;
+
+        // Aynı mağazaya ait birden fazla ziyaret/aday varsa, tarih ile daraltmayı dene.
+        if (storeMatches.Count > 1 && page.ServiceDate.HasValue)
+            storeMatches = storeMatches.Where(g => g.Key.Date == page.ServiceDate.Value.Date).ToList();
+
+        // Hâlâ birden fazla ya da hiç aday yoksa güvenli davran — tahmin etme.
+        return storeMatches.Count == 1 ? storeMatches[0].ToList() : null;
+    }
+
+    private static (List<ProgressPaymentCheckItem>? Matched, AiComparisonResult? HardError, AiComparisonResult? SoftIssue) FallbackSoftIssue(
+        int jobId, AiDocumentPage page, List<ProgressPaymentCheckItem> group, string formNoSorunu)
+    {
+        var first = group[0];
+        var hakedisStoreLabel = first.StoreName ?? first.StoreCode ?? "Bilinmeyen Mağaza";
+        var softIssue = ComparisonResultFactory.New(jobId, page, hakedisStoreLabel, AiComparisonItemType.Material,
+            "Form No Yerine Mağazadan Eşleşti", page.FormNumber, first.MaintenanceFormNo, AiComparisonStatus.ManuelKontrol,
+            $"Form numarası {formNoSorunu} — bunun yerine mağaza bilgisi ({page.StoreCodeRaw ?? page.StoreNameRaw}) " +
+            $"kullanılarak \"{hakedisStoreLabel}\" / \"{first.MaintenanceFormNo}\" numaralı hakediş kaydıyla eşleştirildi. " +
+            "Lütfen doğruluğunu kontrol edin.", first.Id);
+        return (group, null, softIssue);
     }
 
     private enum StoreCheck { Matched, Mismatch, Inconclusive }
