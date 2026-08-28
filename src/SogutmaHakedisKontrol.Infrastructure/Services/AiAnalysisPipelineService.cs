@@ -425,19 +425,15 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
 
         var overrideByKey = overrides.ToDictionary(o => o.MatchKey);
 
-        // Mağaza/Tarih (gate) override'ları tam anahtarla HATANIN KENDİSİNE yazılmıştır (bkz.
-        // OverrideResultStatusAsync). Ama override sonrası FormNumberMatcher gate'i açıp kategori kontrolü
-        // GERÇEK bir sonuç ürettiğinde (ör. "Glikol Miktarı (kg)") bu yeni satırın Description'ı artık
-        // farklıdır — tam anahtar bir daha hiç eşleşmez, gate hata satırı da bir daha üretilmez. Bu satırın
-        // "Kontrol Edildi" rozetini ve geri al imkanını koruması için, aynı sayfa+kalem çiftine ait bir gate
-        // override'ı varsa bunu ayrıca (sayfa+kalem bazında, Description'dan bağımsız) yakalıyoruz — durum
-        // DEĞİŞTİRİLMEZ (kategori kontrolünün kendi gerçek sonucu/UygunDegil'i bile korunur), yalnızca
-        // "manuel onaylanmış mağaza/tarih" bilgisi taşınır.
-        var gateOverrideByPageItem = overrides
-            .Where(o => FormNumberMatcher.GateErrorDescriptions.Contains(o.MatchKey.Split('|').LastOrDefault() ?? string.Empty))
-            .GroupBy(o => ComparisonResultFactory.PageItemKeyFromMatchKey(o.MatchKey))
-            .ToDictionary(g => g.Key, g => g.First());
-
+        // ÖNEMLİ — kasıtlı ürün kararı: bir override yalnızca ÜRETTİĞİ SATIRIN KENDİSİNE (tam MatchKey
+        // eşleşmesiyle) uygulanır. Eskiden burada bir "sayfa+kalem bazında, Description'dan bağımsız"
+        // ikinci bir eşleştirme daha vardı — bu, bir Mağaza/Tarih uyuşmazlığı onaylandığında
+        // FormNumberMatcher'ın gate'i açıp TAMAMEN FARKLI bir kategori sonucu (ör. "Glikol Miktarı (kg)")
+        // üretmesine ve bu yeni/farklı satırın da "Kontrol Edildi" rozetini miras almasına yol açıyordu —
+        // kullanıcı "Tarih Uyuşmazlığı"nı onaylıyor, satır sessizce "Glikol Miktarı"na dönüşüyordu.
+        // Manuel onay kontrol edilen alanı ASLA değiştiremez; bu yüzden FormNumberMatcher.RecoverableError
+        // artık gate'i hiç açmıyor (bkz. CategoryComparisonStrategies.cs) — gate hatası aynı MatchKey ile
+        // her recompute'ta yeniden üretilir ve buradaki tam eşleşme tek başına yeterlidir.
         var results = await _db.AiComparisonResults.Where(r => r.JobId == jobId).ToListAsync(cancellationToken);
         foreach (var r in results)
         {
@@ -447,13 +443,6 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
                 r.Status = ov.OverrideStatus;
                 r.UserOverridden = true;
                 r.OverrideNote = ov.Note;
-                continue;
-            }
-
-            if (gateOverrideByPageItem.TryGetValue(ComparisonResultFactory.ComputePageItemKey(r), out var gateOv))
-            {
-                r.UserOverridden = true;
-                r.OverrideNote = gateOv.Note;
             }
         }
         await _db.SaveChangesAsync(cancellationToken);
@@ -491,10 +480,10 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
         var existing = await _db.AiComparisonOverrides.Where(o => o.JobId == jobId && o.MatchKey == matchKey).ToListAsync();
         if (existing.Count == 0)
         {
-            // Bu satırın kendi tam eşleşen override kaydı yok — muhtemelen bir gate (Mağaza/Tarih) override'ının
-            // kurtardığı GERÇEK kategori sonucu (bkz. ApplyOverridesAsync). Aynı sayfa+kalem çiftine ait gate
-            // override'ını bulup onu geri alıyoruz — bu, gate'i tekrar kapatır ve orijinal Mağaza/Tarih hatasını
-            // geri getirir.
+            // Savunma amaçlı yedek yol — normal akışta artık tetiklenmemeli: gate (Mağaza/Tarih)
+            // override'ları başka bir sonuç türüne "geçmediği" için (bkz. FormNumberMatcher.
+            // RecoverableError, ApplyOverridesAsync) her satırın kendi tam eşleşen override kaydı olmalı.
+            // Eski/olası tutarsız verilerde yine de aynı sayfa+kalem çiftine ait bir kayıt varsa onu geri alır.
             var pageItemKey = ComparisonResultFactory.ComputePageItemKey(result);
             var candidates = await _db.AiComparisonOverrides.Where(o => o.JobId == jobId).ToListAsync();
             existing = candidates.Where(o => ComparisonResultFactory.PageItemKeyFromMatchKey(o.MatchKey) == pageItemKey).ToList();

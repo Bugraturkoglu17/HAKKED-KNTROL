@@ -217,19 +217,66 @@ else
                     <MudTh>Mağaza</MudTh>
                     <MudTh>Tarih</MudTh>
                     <MudTh>Form No</MudTh>
-                    <MudTh>Kontrol Kalemi</MudTh>
-                    <MudTh>Değer</MudTh>
-                    <MudTh>Sonuç</MudTh>
+                    @if (!IsGlycolCategory)
+                    {
+                        <MudTh>Kontrol Kalemi</MudTh>
+                    }
+                    <MudTh>@(IsGlycolCategory ? "Glikol Miktarı" : "Değer")</MudTh>
+                    <MudTh>Durum</MudTh>
                     <MudTh>Açıklama</MudTh>
                     <MudTh>İşlem</MudTh>
                 </HeaderContent>
                 <RowTemplate>
                     <MudTd>@context.StoreLabel</MudTd>
-                    <MudTd>@VisitDateLabel(context)</MudTd>
-                    <MudTd>@FormReferenceLabel(context)</MudTd>
-                    <MudTd>@context.Description</MudTd>
                     <MudTd>
-                        @if (string.IsNullOrEmpty(context.FormValue) || context.FormValue == context.HakedisValue)
+                        @if (context.Description == "Tarih Uyuşmazlığı")
+                        {
+                            <MudTooltip Text="@($"Form: {context.FormValue}")">
+                                <MudText Style="color:var(--mud-palette-error);cursor:help">@context.HakedisValue</MudText>
+                            </MudTooltip>
+                        }
+                        else
+                        {
+                            <MudText Style="color:var(--mud-palette-success)">@VisitDateLabel(context)</MudText>
+                        }
+                    </MudTd>
+                    <MudTd><MudText Style="color:var(--mud-palette-success)">@FormReferenceLabel(context)</MudText></MudTd>
+                    @if (!IsGlycolCategory)
+                    {
+                        <MudTd>@context.Description</MudTd>
+                    }
+                    <MudTd>
+                        @if (IsGlycolCategory)
+                        {
+                            @if (context.ItemType == "GlycolUsage")
+                            {
+                                @if (string.IsNullOrEmpty(context.FormValue) || context.FormValue == context.HakedisValue)
+                                {
+                                    <MudChip T="string" Variant="Variant.Text" Size="Size.Small" Color="@ValueColor(context)">@ValueDisplay(context)</MudChip>
+                                }
+                                else
+                                {
+                                    <MudTooltip Text="@GlycolValueTooltip(context)">
+                                        <MudChip T="string" Variant="Variant.Text" Size="Size.Small" Color="@ValueColor(context)" Style="cursor:help">
+                                            @ValueDisplay(context)
+                                        </MudChip>
+                                    </MudTooltip>
+                                }
+                            }
+                            else if (context.ItemType == "StoreMatch")
+                            {
+                                <MudTooltip Text="Servis formu bulunamadı.">
+                                    <MudChip T="string" Variant="Variant.Text" Size="Size.Small" Color="Color.Error" Style="cursor:help">
+                                        @(string.IsNullOrEmpty(context.FormValue) || context.FormValue == "—" ? "—" : context.FormValue)
+                                    </MudChip>
+                                </MudTooltip>
+                            }
+                            else
+                            {
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">—</MudText>
+                            }
+                        }
+                        else if (string.IsNullOrEmpty(context.FormValue) || context.FormValue == context.HakedisValue)
                         {
                             <MudChip T="string" Variant="Variant.Text" Size="Size.Small" Color="@ValueColor(context)">@ValueDisplay(context)</MudChip>
                         }
@@ -243,17 +290,18 @@ else
                         }
                     </MudTd>
                     <MudTd>
-                        <MudStack Row Spacing="1" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap">
+                        @if (context.UserOverridden)
+                        {
+                            <MudTooltip Text="@(string.IsNullOrEmpty(context.OriginalStatusLabel) ? "Mağaza/Tarih uyuşmazlığı manuel onaylandı" : $"AI sonucu: {ResultLabel(context.OriginalStatusLabel)}")">
+                                <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Color="Color.Info"
+                                         Icon="@Icons.Material.Filled.Verified">Kontrol Edildi</MudChip>
+                            </MudTooltip>
+                        }
+                        else
+                        {
                             <MudChip T="string" Icon="@ResultChipIcon(context.Status)" Color="@ResultChipColor(context.Status)"
                                      Variant="Variant.Text" Size="Size.Small">@ResultLabel(context.Status)</MudChip>
-                            @if (context.UserOverridden)
-                            {
-                                <MudTooltip Text="@(string.IsNullOrEmpty(context.OriginalStatusLabel) ? "Mağaza/Tarih uyuşmazlığı manuel onaylandı" : $"AI sonucu: {ResultLabel(context.OriginalStatusLabel)}")">
-                                    <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Color="Color.Info"
-                                             Icon="@Icons.Material.Filled.Verified">Kontrol Edildi</MudChip>
-                                </MudTooltip>
-                            }
-                        </MudStack>
+                        }
                     </MudTd>
                     <MudTd>
                         <MudTooltip Text="@context.Explanation">
@@ -617,6 +665,13 @@ else
     // yeşil, değilse kırmızı; formdaki değer (FormValue) farklıysa yalnızca tooltip'te görünür (bkz. §11-12).
     private static Color ValueColor(AiComparisonResultDto r) => r.Status == "Uygun" ? Color.Success : Color.Error;
     private static string ValueDisplay(AiComparisonResultDto r) => !string.IsNullOrEmpty(r.HakedisValue) ? r.HakedisValue : (r.FormValue ?? "—");
+
+    // Glikol Kullanım hakedişinde tablo sadeleştirilir: ayrı "Kontrol Kalemi" kolonu kaldırılır,
+    // "Değer" kolonu doğrudan "Glikol Miktarı" olarak gösterilir (bkz. FormKontrol.razor RowTemplate).
+    private bool IsGlycolCategory => _check?.Category == HakedisCategory.GlycolUsage;
+
+    private static string GlycolValueTooltip(AiComparisonResultDto r) =>
+        r.FormValue == "Okunamadı" ? "Formda glikol miktarı doğrulanamadı." : $"Form: {r.FormValue}";
 
     // Sonuç kolonu artık üstteki özet çipleriyle (bkz. "8 Uygun/1 Uygun Değil..." satırı) aynı görsel
     // dile sahip küçük MudChip'ler kullanıyor — emoji yerine gerçek Material ikonu + durum rengi.

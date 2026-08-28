@@ -121,11 +121,15 @@ internal static class FormNumberMatcher
         var first = group[0];
         var hakedisStoreLabel = first.StoreName ?? first.StoreCode ?? "Bilinmeyen Mağaza";
 
-        // Kullanıcı bu formun mağaza/tarih uyuşmazlığını "Onay ver" ile zaten düzeltmişse (bkz.
-        // AiComparisonOverride), hata döndürmek yerine eşleşti kabul edip kategori kontrolünün normal
-        // şekilde çalışmasına (gerçek bir sonuç üretmesine) izin verilir.
+        // ÖNEMLİ — kasıtlı ürün kararı: bir Mağaza/Tarih uyuşmazlığını "Onay ver" ile onaylamak,
+        // kategori kontrolünün (ör. Glikol Miktarı) farklı bir GERÇEK sonuçla bu satırın yerini almasına
+        // ASLA izin vermemelidir — manuel onay yalnızca "bu satır incelendi ve kabul edildi" bilgisini
+        // kaydeder, kontrol edilen alanı/kalem türünü değiştirmez (bkz. AiAnalysisPipelineService.
+        // ApplyOverridesAsync — aynı MatchKey'e sahip olduğu için onay her recompute'ta bu SATIRA
+        // yeniden uygulanır, "Kontrol Edildi" rozetiyle birlikte). overriddenMatchKeys parametresi bu
+        // yüzden burada kasıtlı olarak kullanılmaz; imza geriye dönük uyumluluk için korunmuştur.
         (List<ProgressPaymentCheckItem>? Matched, AiComparisonResult? Error) RecoverableError(AiComparisonResult candidateError) =>
-            overriddenMatchKeys.Contains(ComparisonResultFactory.ComputeMatchKey(candidateError)) ? (group, null) : (null, candidateError);
+            (null, candidateError);
 
         // 3) Mağaza doğrulama — kod varsa öncelikli/kesin kriter, yoksa isim benzerliğine (sınırlı) düşülür.
         var storeCheck = CompareStore(page, first);

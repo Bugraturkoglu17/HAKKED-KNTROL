@@ -167,6 +167,44 @@ public class GlycolUsageComparisonStrategyTests
         Assert.Equal("UygunDegil", result.Status);
     }
 
+    /// <summary>TEST 4b (manuel onay regresyonu) — Tarih Uyuşmazlığı "Onay Ver" ile onaylandığında
+    /// satır Glikol Miktarı'na DÖNÜŞMEMELİ; kontrol edilen alan (Description="Tarih Uyuşmazlığı") aynı
+    /// kalmalı, yalnızca UserOverridden=true olmalı. Bu, manuel onayın kontrol tipini asla
+    /// değiştiremeyeceği kuralının regresyon testidir (bkz. FormNumberMatcher.RecoverableError,
+    /// AiAnalysisPipelineService.ApplyOverridesAsync).</summary>
+    [Fact]
+    public async Task Test4b_TarihUyusmazligiOnaylandiginda_GlikolMiktarinaDonusmez()
+    {
+        using var db = TestDbFactory.Create();
+        var (_, check) = SeedCheck(db);
+        db.ProgressPaymentCheckItems.Add(GlycolItem(check.Id, "20730", "1001", "Mağaza X", new DateTime(2026, 4, 2), 25));
+        db.SaveChanges();
+
+        var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
+        {
+            DocumentType = "SERVICE_FORM", FormNumber = "20730", FormNumberConfidence = 0.95m,
+            Store = new AiStoreCandidateDto { CodeRaw = "1001", Confidence = 0.9m }, ServiceDate = "2026-04-05",
+            Materials = new List<AiMaterialExtractionDto> { GlycolMaterial(25) },
+        }));
+        var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
+        var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
+
+        var before = await pipeline.GetComparisonResultsAsync(job.Id);
+        var tarihResult = Assert.Single(before);
+        Assert.Equal("Tarih Uyuşmazlığı", tarihResult.Description);
+        Assert.False(tarihResult.UserOverridden);
+
+        await pipeline.OverrideResultStatusAsync(tarihResult.Id, note: null);
+
+        var after = await pipeline.GetComparisonResultsAsync(job.Id);
+        var afterResult = Assert.Single(after); // hâlâ tek satır — Glikol Miktarı için AYRICA bir satır üretilmedi
+        Assert.Equal("Tarih Uyuşmazlığı", afterResult.Description); // kontrol edilen alan DEĞİŞMEDİ
+        Assert.Equal("Material", afterResult.ItemType); // GlycolUsage'a dönüşmedi
+        Assert.True(afterResult.UserOverridden);
+        Assert.Equal("05.04.2026", afterResult.FormValue); // kaynak form tarihi korunuyor (tooltip)
+        Assert.Equal("02.04.2026", afterResult.HakedisValue); // kaynak Excel tarihi korunuyor
+    }
+
     /// <summary>TEST 5 — Excel 30 kg, form 20 kg → GLİKOL MİKTARI UYUŞMAZLIĞI.</summary>
     [Fact]
     public async Task Test5_KgFarkliysa_GlikolMiktariUyusmazligiUretir()

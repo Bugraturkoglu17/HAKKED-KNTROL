@@ -81,6 +81,19 @@ internal static class StoreFormReconciliationBuilder
                   "bulunmaktadır ancak karşılığında servis formu yüklenmemiş/eşleştirilememiştir."
                 : $"\"{first.MaintenanceFormNo}\" numaralı form için hakedişte {storeLabel} mağazasına ait kayıt " +
                   "bulunmaktadır ancak karşılığında servis formu yüklenmemiş/eşleştirilememiştir.";
+
+            // Tekil kalem kategorilerinde (Glikol/Gaz Kullanım), servis formu hiç yoksa bile ekranda
+            // Excel'in talep ettiği miktarı gösterebilmek için FormValue'ye (bu satır türünde normalde
+            // "—" olan alan) Excel'deki toplam miktarı yazıyoruz — HakedisValue zaten form numarası için
+            // kullanıldığından (bkz. ComputeSummaryAsync gruplaması) miktarı oraya koyamıyoruz.
+            string? requestedQuantity = null;
+            if (singleItemLabel != null)
+            {
+                var quantityItems = items.Where(i => !i.IsServiceItem && i.Quantity != 0).ToList();
+                if (quantityItems.Count > 0)
+                    requestedQuantity = $"{quantityItems.Sum(i => i.Quantity):0.##} {quantityItems[0].Unit}";
+            }
+
             foreach (var item in items)
             {
                 newRows.Add(new AiComparisonResult
@@ -91,7 +104,7 @@ internal static class StoreFormReconciliationBuilder
                     ProgressPaymentCheckItemId = item.Id,
                     ItemType = AiComparisonItemType.StoreMatch,
                     Description = label,
-                    FormValue = "—",
+                    FormValue = requestedQuantity ?? "—",
                     HakedisValue = first.MaintenanceFormNo,
                     Status = AiComparisonStatus.Eksik,
                     Explanation = explanation,
