@@ -250,9 +250,19 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
                 if (result.Success) break;
                 lastError = result.ErrorMessage;
             }
-            catch (OperationCanceledException) { throw; }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                // Gerçek iptal (kullanıcı/uygulama durdurdu) — yeniden denemeden yukarı fırlat.
+                throw;
+            }
             catch (Exception ex)
             {
+                // HttpClient.Timeout dolduğunda da OperationCanceledException/TaskCanceledException
+                // fırlatılır (kullanıcının cancellationToken'ı İPTAL EDİLMEMİŞ olsa bile) — bunu
+                // yukarıdaki when koşulu eledi, buraya düşerse gerçek bir zaman aşımı/hatadır ve diğer
+                // hatalar gibi (lastError + retry) ele alınmalı. Eskiden bu ayrım yapılmadığı için tek
+                // bir sayfanın zaman aşımı TÜM analiz pipeline'ını (Task.WhenAll üzerinden) sessizce
+                // yarıda kesiyor, job "Analiz Ediliyor" durumunda sonsuza dek takılı kalıyordu.
                 lastError = ex.Message;
             }
 
