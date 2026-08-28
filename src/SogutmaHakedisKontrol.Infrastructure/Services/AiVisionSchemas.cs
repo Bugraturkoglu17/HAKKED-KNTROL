@@ -19,10 +19,17 @@ public static class AiVisionSchemas
         form_number, bu formun hakediş Excel'indeki karşılığını bulmakta kullanılan ANA ANAHTARDIR —
         diğer her alandan daha önceliklidir. SERVICE_FORM ve PERIODIC_MAINTENANCE_FORM sayfalarında
         form numarasını bulmak için ÖZELLİKLE şu alanlara bak: sağ üst köşe, başlık bölümü, "Form No",
-        "Servis No", "Sıra No", "Belge No" etiketli kutular. Emin olduğun kadarıyla oku ve
+        "Servis No", "Sıra No", "Belge No" etiketli kutular. ÇOK ÖNEMLİ: form numarası HER ZAMAN bir
+        etiketle ("Form No:" gibi) birlikte yazılmaz — birçok formda sağ üst köşede, adres/iletişim
+        bilgilerinin hemen altında veya yanında, ETİKETSİZ, genellikle firma logosunun/başlığının rengiyle
+        UYUŞMAYAN farklı bir renkte (ör. turuncu, kırmızı — matbu/damgalı sıra numarası) tek başına duran
+        bir sayı da form numarasıdır. Sayfanın geri kalanından farklı renkte/fontta, bağımsız duran ve
+        başka hiçbir etikete bağlı olmayan bir sayı gördüğünde bunu ATLAMA — bu genellikle form numarasının
+        ta kendisidir, "etiketi yok" diye göz ardı etme veya null bırakma. Emin olduğun kadarıyla oku ve
         form_number_confidence alanına 0-1 arası bir güven değeri yaz (net okunuyorsa yüksek, tahminiyse
-        düşük). Form numarasını ASLA tahmin etme veya uydurma — net okunamıyorsa form_number'ı null bırak,
-        form_number_confidence'ı düşük (0-0.3) yap ve requires_manual_review'i true yap.
+        düşük). Form numarasını ASLA tahmin etme veya uydurma — gerçekten hiçbir sayı bulamıyorsan
+        form_number'ı null bırak, form_number_confidence'ı düşük (0-0.3) yap ve requires_manual_review'i
+        true yap.
 
         ── MAĞAZA KODU VE MAĞAZA ADI ────────────────────────────────────────
         Mağaza kodu veya mağaza adı sayfanın HERHANGİ BİR BÖLÜMÜNDE bulunabilir — sağ üst, sol üst, orta,
