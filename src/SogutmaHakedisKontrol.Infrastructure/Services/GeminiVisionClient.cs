@@ -13,7 +13,13 @@ namespace SogutmaHakedisKontrol.Infrastructure.Services;
 /// </summary>
 public class GeminiVisionClient : IAiVisionClient
 {
-    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromMinutes(3) };
+    // ConnectTimeout kısa tutulur: DNS/TCP/TLS bağlantısı hiç kurulamıyorsa (ağ hatası, kurumsal
+    // proxy engeli vb.) 3 dakika beklemeden hızlıca hata dönülür. Bağlantı kurulup Gemini yanıt
+    // üretmeye başladıysa (gerçek analiz) toplam Timeout süresince beklenmeye devam edilir.
+    private static readonly HttpClient Http = new(new SocketsHttpHandler { ConnectTimeout = TimeSpan.FromSeconds(15) })
+    {
+        Timeout = TimeSpan.FromMinutes(3),
+    };
 
     private readonly string? _apiKey;
     private readonly string _model;
