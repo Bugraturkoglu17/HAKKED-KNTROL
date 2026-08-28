@@ -36,9 +36,12 @@ public static class ServiceExtensions
 
         // AI_PROVIDER=ollama (varsayılan) → yerel, internete çıkmayan vision modeli (kurumsal ağ
         // engeli OpenAI'ı bloklarsa bile çalışır). AI_PROVIDER=openai → OpenAI Responses API.
+        // AI_PROVIDER=gemini → Google Gemini API (bulut, GEMINI_API_KEY gerekir).
         var aiProvider = (Environment.GetEnvironmentVariable("AI_PROVIDER") ?? "ollama").Trim().ToLowerInvariant();
         if (aiProvider == "openai")
             services.AddScoped<IAiVisionClient, OpenAiVisionClient>();
+        else if (aiProvider == "gemini")
+            services.AddScoped<IAiVisionClient, GeminiVisionClient>();
         else
             services.AddScoped<IAiVisionClient, OllamaVisionClient>();
 

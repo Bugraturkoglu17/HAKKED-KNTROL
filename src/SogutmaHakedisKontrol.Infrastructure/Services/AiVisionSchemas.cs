@@ -37,6 +37,19 @@ public static class AiVisionSchemas
         yine de en iyi tahminle doldur ama confidence alanını düşük tut (asıl güvenlik store adı ve form
         numarası eşleşmesinden gelir, kod OCR hatasına karşı ayrıca toleranslıdır). Ne kod ne ad hiç
         okunamıyorsa store alanını null bırak.
+        store alanını null bırakmak SON ÇAREDİR — yalnızca sayfanın TAMAMINI (üst, alt, kenarlar, damga,
+        logo çevresi dahil) köşe köşe taradıktan sonra hiçbir mağaza ipucu bulamazsan null yaz. Kısmi bir
+        ipucu bile bulduysan (yalnızca kod, yalnızca ad, ya da belirsiz/kısaltılmış bir ad) bunu düşük
+        confidence ile mutlaka code_raw/name_raw'a yaz — "emin değilim" gerekçesiyle tüm store objesini
+        null'a düşürme; belirsizlik confidence alanıyla ifade edilir, store'u null yapmakla değil.
+
+        ── KULLANILAN MALZEME TABLOSU — BOŞ SATIRLARI ASLA MALZEME SANMA ────
+        Malzeme tablosu genelde önceden numaralanmış 1-20 arası sabit satırlardan oluşur (basılı sıra
+        numarası her satırda vardır). Bu satırların ÇOĞU BOŞTUR — yalnızca teknisyenin gerçekten el
+        yazısıyla malzeme adı YAZDIĞI satırlar gerçek veridir. Bir satırda yalnızca basılı sıra numarası
+        (ör. "11", "12", "13"...) var ama malzeme adı hanesi boşsa, o satırı materials dizisine KESİNLİKLE
+        EKLEME — sıra numarasını raw_name olarak yazmak ciddi bir hatadır. Yalnızca malzeme adı hanesinde
+        gerçek el yazısı içerik gördüğün satırları çıkar; boş/numarasız-içeriksiz satırları tamamen atla.
 
         ── SAYFA SINIFLANDIRMA ─────────────────────────────────────────────
         Yüklenen PDF tek tip belge değildir; üç farklı sayfa şablonu karışık sırayla bulunabilir:
