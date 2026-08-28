@@ -5,11 +5,17 @@ using SogutmaHakedisKontrol.Application.Interfaces;
 namespace SogutmaHakedisKontrol.Infrastructure.Services;
 
 /// <summary>
-/// PDF sayfalarını yüksek çözünürlüklü PNG'ye dönüştürür. El yazılı formlar için düşük DPI OCR
-/// yaklaşımı kullanılmaz — varsayılan 220 DPI, gerektiğinde artırılabilir.
+/// PDF sayfalarını yüksek çözünürlüklü görsele dönüştürür. El yazılı formlar için düşük DPI OCR
+/// yaklaşımı kullanılmaz — varsayılan 220 DPI, gerektiğinde artırılabilir. Kodlama JPEG (kalite 88)
+/// — büyük taranmış sayfalarda lossless PNG'ye göre boyutu (dolayısıyla API'ye yükleme/işleme
+/// süresini) çok belirgin şekilde küçültür; 88 kalitede metin/form içeriğinde OCR'ı etkileyecek
+/// görünür kayıp oluşmaz (bkz. performans incelemesi — sayfa başına 1-3MB PNG payload'ı tespit
+/// edildi, bu API gecikmesinin ana kaynağıydı).
 /// </summary>
 public class PdfPageRasterizerService : IPdfPageRasterizer
 {
+    private const int JpegQuality = 88;
+
     public List<byte[]> RasterizeToPngPages(byte[] pdfBytes, int dpi = 220)
     {
         var result = new List<byte[]>();
@@ -20,7 +26,7 @@ public class PdfPageRasterizerService : IPdfPageRasterizer
             using (bitmap)
             {
                 using var ms = new MemoryStream();
-                bitmap.Encode(ms, SKEncodedImageFormat.Png, 100);
+                bitmap.Encode(ms, SKEncodedImageFormat.Jpeg, JpegQuality);
                 result.Add(ms.ToArray());
             }
         }
@@ -32,7 +38,7 @@ public class PdfPageRasterizerService : IPdfPageRasterizer
     public List<byte[]> RasterizeDocumentToPngPages(byte[] fileBytes, string fileName, int dpi = 220)
     {
         if (IsImageFile(fileName, fileBytes))
-            return new List<byte[]> { ConvertToPng(fileBytes) };
+            return new List<byte[]> { ConvertToJpeg(fileBytes) };
 
         return RasterizeToPngPages(fileBytes, dpi);
     }
@@ -53,12 +59,12 @@ public class PdfPageRasterizerService : IPdfPageRasterizer
         return false;
     }
 
-    private static byte[] ConvertToPng(byte[] imageBytes)
+    private static byte[] ConvertToJpeg(byte[] imageBytes)
     {
         using var bitmap = SKBitmap.Decode(imageBytes)
             ?? throw new InvalidOperationException("Görsel dosyası okunamadı veya bozuk.");
         using var ms = new MemoryStream();
-        bitmap.Encode(ms, SKEncodedImageFormat.Png, 100);
+        bitmap.Encode(ms, SKEncodedImageFormat.Jpeg, JpegQuality);
         return ms.ToArray();
     }
 }

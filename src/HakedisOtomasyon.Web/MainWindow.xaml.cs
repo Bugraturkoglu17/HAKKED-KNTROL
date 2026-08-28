@@ -30,6 +30,17 @@ public partial class MainWindow : Window
                 "localfiles.hakedis",
                 appPath.DataRootPath,
                 Microsoft.Web.WebView2.Core.CoreWebView2HostResourceAccessKind.Allow);
+
+            // Soğutma Hakediş Kontrol modülünün veri kökü ayrı (bkz. SogutmaHakedisKontrol.Infrastructure
+            // .FileStorage.AppPathService) — AI servis formu PDF'leri burada saklanıyor, "Formu Göster"
+            // önizlemesi için ayrı bir sanal host gerekiyor.
+            var sogutmaAppPath = ((WpfApp)System.Windows.Application.Current).Services
+                .GetRequiredService<SogutmaHakedisKontrol.Application.Interfaces.IAppPathService>();
+            Directory.CreateDirectory(sogutmaAppPath.DataRootPath);
+            e.WebView.CoreWebView2.SetVirtualHostNameToFolderMapping(
+                "localfiles.sogutma",
+                sogutmaAppPath.DataRootPath,
+                Microsoft.Web.WebView2.Core.CoreWebView2HostResourceAccessKind.Allow);
         }
         catch (Exception ex)
         {

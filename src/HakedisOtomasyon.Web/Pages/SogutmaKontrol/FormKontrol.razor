@@ -7,6 +7,8 @@
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @inject NavigationManager Nav
+@inject SogutmaHakedisKontrol.Application.Interfaces.IAppPathService SogutmaAppPath
+@using HakedisOtomasyon.Web.Components
 
 <PageTitle>Form Kontrolü</PageTitle>
 
@@ -328,6 +330,13 @@ else
                         </MudTooltip>
                     </MudTd>
                     <MudTd>
+                        @if (!string.IsNullOrEmpty(context.FormFilePath))
+                        {
+                            <MudTooltip Text="Formu Göster">
+                                <MudIconButton Icon="@Icons.Material.Filled.Description" Size="Size.Small"
+                                               Color="Color.Info" OnClick="@(() => ShowFormAsync(context))" />
+                            </MudTooltip>
+                        }
                         @if (context.UserOverridden)
                         {
                             <MudTooltip Text="Onayı geri al">
@@ -602,6 +611,37 @@ else
         await Pipeline.RevertOverrideAsync(result.Id);
         await LoadJobAsync();
         Snackbar.Add("Onay geri alındı.", Severity.Info);
+    }
+
+    // "Formu Göster": zaten diskte duran orijinal PDF'i (AI analizinden BAĞIMSIZ, ek bir sayfa görseli
+    // üretmeden/kaydetmeden) açar — #page= URL parçasıyla doğrudan ilgili sayfaya atlar. Bu işlem AI
+    // analiz sürecine hiçbir şekilde dokunmaz, yalnızca kullanıcı tıkladığında çalışır.
+    private async Task ShowFormAsync(AiComparisonResultDto result)
+    {
+        if (string.IsNullOrEmpty(result.FormFilePath))
+        {
+            Snackbar.Add("Bu satır için servis formu bulunamadı.", Severity.Warning);
+            return;
+        }
+        if (!File.Exists(result.FormFilePath))
+        {
+            Snackbar.Add("Servis formu dosyası diskte bulunamadı — taşınmış veya silinmiş olabilir.", Severity.Error);
+            return;
+        }
+
+        var relativePath = Path.GetRelativePath(SogutmaAppPath.DataRootPath, result.FormFilePath).Replace('\\', '/');
+        var fileUrl = $"https://localfiles.sogutma/{Uri.EscapeDataString(relativePath).Replace("%2F", "/")}";
+        if (result.FormPageNumberInFile is > 0)
+            fileUrl += $"#page={result.FormPageNumberInFile}";
+
+        var parameters = new DialogParameters
+        {
+            ["FileUrl"] = fileUrl,
+            ["FileName"] = result.FormFileName ?? "Servis Formu",
+            ["FilePath"] = result.FormFilePath,
+        };
+        var options = new DialogOptions { FullScreen = true, CloseButton = true, MaxWidth = MaxWidth.False };
+        await DialogService.ShowAsync<ServiceFormPreviewDialog>(result.FormFileName ?? "Servis Formu", parameters, options);
     }
 
     private void OnStatusFilterChanged(string? value) => _statusFilter = value ?? AllFilterValue;

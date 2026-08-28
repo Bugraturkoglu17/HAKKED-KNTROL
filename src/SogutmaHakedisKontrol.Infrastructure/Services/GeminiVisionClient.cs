@@ -71,7 +71,7 @@ public class GeminiVisionClient : IAiVisionClient
                         parts = new object[]
                         {
                             new { text = "Bu görsel bir soğutma servis/bakım formu sayfasıdır. Sistem talimatına göre analiz et ve yalnızca JSON şemasına uygun sonuç döndür." },
-                            new { inline_data = new { mime_type = "image/png", data = Convert.ToBase64String(pageImagePng) } },
+                            new { inline_data = new { mime_type = "image/jpeg", data = Convert.ToBase64String(pageImagePng) } },
                         },
                     },
                 },

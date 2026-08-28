@@ -53,7 +53,7 @@ public class OpenAiVisionClient : IAiVisionClient
                 ResponseContentPart.CreateInputTextPart(
                     "Bu görsel bir soğutma servis/bakım formu sayfasıdır. Sistem talimatına göre analiz et " +
                     "ve yalnızca JSON şemasına uygun sonuç döndür."),
-                ResponseContentPart.CreateInputImagePart(BinaryData.FromBytes(pageImagePng, "image/png"), ResponseImageDetailLevel.High),
+                ResponseContentPart.CreateInputImagePart(BinaryData.FromBytes(pageImagePng, "image/jpeg"), ResponseImageDetailLevel.High),
             };
 
             var systemInstruction = string.IsNullOrWhiteSpace(extraInstruction)

@@ -671,24 +671,47 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
             return $"{fileName ?? "Belge"} · Sayfa {page.PageNumber}";
         }
 
-        return results.Select(r => new AiComparisonResultDto
+        // "Formu Göster" önizlemesi için: sonucun bağlı olduğu sayfanın FİZİKSEL dosya yolunu ve o
+        // dosya İÇİNDEKİ sayfa numarasını (global PageNumber, PageOffset'e göre yerelleştirilir) bulur.
+        (string? FilePath, string? FileName, int? PageNumberInFile) ResolveFileInfo(AiComparisonResult r)
         {
-            Id = r.Id,
-            JobId = r.JobId,
-            StoreLabel = r.StoreLabel,
-            VisitDate = r.VisitDate,
-            FormReference = FormReference(r),
-            ItemType = r.ItemType.ToString(),
-            Description = r.Description,
-            FormValue = r.FormValue,
-            HakedisValue = r.HakedisValue,
-            Status = r.Status.ToString(),
-            Explanation = r.Explanation,
-            UserOverridden = r.UserOverridden,
-            OriginalStatusLabel = r.UserOverridden ? r.OriginalStatus?.ToString() : null,
-            SecondaryFormValue = r.SecondaryFormValue,
-            SecondaryHakedisValue = r.SecondaryHakedisValue,
-            SecondaryStatus = r.SecondaryStatus?.ToString(),
+            var page = pages.FirstOrDefault(p => p.Id == r.SourcePageId);
+            if (page is null) return (null, null, null);
+            if (page.SourceKind == AiDocumentSource.ServiceForm)
+            {
+                var doc = serviceSourceDocs.FirstOrDefault(d => page.PageNumber > d.PageOffset && page.PageNumber <= d.PageOffset + d.PageCount);
+                return doc is null ? (null, null, null) : (doc.FilePath, doc.FileName, page.PageNumber - doc.PageOffset);
+            }
+            return string.IsNullOrEmpty(job?.MaintenanceFormsFilePath)
+                ? (null, null, null)
+                : (job.MaintenanceFormsFilePath, job.MaintenanceFormsFileName, page.PageNumber);
+        }
+
+        return results.Select(r =>
+        {
+            var fileInfo = ResolveFileInfo(r);
+            return new AiComparisonResultDto
+            {
+                Id = r.Id,
+                JobId = r.JobId,
+                StoreLabel = r.StoreLabel,
+                VisitDate = r.VisitDate,
+                FormReference = FormReference(r),
+                ItemType = r.ItemType.ToString(),
+                Description = r.Description,
+                FormValue = r.FormValue,
+                HakedisValue = r.HakedisValue,
+                Status = r.Status.ToString(),
+                Explanation = r.Explanation,
+                UserOverridden = r.UserOverridden,
+                OriginalStatusLabel = r.UserOverridden ? r.OriginalStatus?.ToString() : null,
+                SecondaryFormValue = r.SecondaryFormValue,
+                SecondaryHakedisValue = r.SecondaryHakedisValue,
+                SecondaryStatus = r.SecondaryStatus?.ToString(),
+                FormFilePath = fileInfo.FilePath,
+                FormFileName = fileInfo.FileName,
+                FormPageNumberInFile = fileInfo.PageNumberInFile,
+            };
         }).ToList();
     }
 

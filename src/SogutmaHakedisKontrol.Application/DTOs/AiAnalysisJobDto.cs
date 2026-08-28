@@ -154,6 +154,12 @@ public class AiComparisonResultDto
     public string? SecondaryFormValue { get; set; }
     public string? SecondaryHakedisValue { get; set; }
     public string? SecondaryStatus { get; set; }
+
+    // ── "Formu Göster" önizlemesi için — yalnızca bu satır bir AI sayfasına (SourcePageId) bağlıysa
+    // doludur; formu bulunamayan/eşleşmeyen satırlarda (Form Eksik, Tekrar Ziyaret Uyarısı vb.) null'dur.
+    public string? FormFilePath { get; set; }
+    public string? FormFileName { get; set; }
+    public int? FormPageNumberInFile { get; set; }
 }
 
 /// <summary>"Mağaza Eşleşmesi" kartının detay listesindeki tek bir 🔴 satırı.</summary>
