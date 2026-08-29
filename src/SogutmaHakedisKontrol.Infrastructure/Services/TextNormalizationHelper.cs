@@ -35,13 +35,18 @@ public static class TextNormalizationHelper
         return WhitespaceRegex.Replace(sb.ToString(), " ").Trim();
     }
 
-    /// <summary>Mağaza kodu normalizasyonu: boşluk/tire/sıfır dolgusu farklarını yok sayar. "33-20" ve "3320" farklı kalır
-    /// (rakamlar arasındaki tire anlamlı olabilir) — yalnızca boşluk ve baştaki/sondaki gereksiz karakterler temizlenir.</summary>
+    /// <summary>Mağaza/form kodu normalizasyonu: boşluk/tire/sıfır dolgusu farklarını yok sayar. AI'nin el
+    /// yazısı form numaralarını fazladan/eksik sıfırla okuması yaygın bir OCR farkı (ör. "0861" ↔ "861",
+    /// Excel'de "861" yazsa da formda "0861" damgalanmış olabilir) — baştaki sıfırlar atılır, böylece bu
+    /// iki yazım aynı koda normalize olur. Tamamen sıfırlardan oluşan bir kod ("000") "0"a düşer.</summary>
     public static string NormalizeCode(string? code)
     {
         if (string.IsNullOrWhiteSpace(code)) return string.Empty;
         var lowered = NormalizeName(code);
-        return NonAlnumRegex.Replace(lowered.Replace("-", ""), "");
+        var cleaned = NonAlnumRegex.Replace(lowered.Replace("-", ""), "");
+        if (cleaned.Length == 0) return cleaned;
+        var trimmed = cleaned.TrimStart('0');
+        return trimmed.Length > 0 ? trimmed : "0";
     }
 
     /// <summary>Mağaza kimliği anahtarı: kod varsa normalize edilmiş kod, yoksa normalize edilmiş ad

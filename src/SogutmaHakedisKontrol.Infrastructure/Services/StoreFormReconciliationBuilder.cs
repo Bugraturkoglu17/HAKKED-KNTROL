@@ -63,6 +63,23 @@ internal static class StoreFormReconciliationBuilder
             .ToListAsync(cancellationToken);
         var addressedSet = addressedItemIds.ToHashSet();
 
+        // Kategori stratejileri (Gaz/Glikol/Varsayılan/İlave İşler) yalnızca DocumentType=ServiceForm
+        // sayfalarını FormNumberMatcher'a verir — bir sayfa AI tarafından PeriodicMaintenanceForm (ya da
+        // Unknown) olarak sınıflandırıldıysa hiç değerlendirilmez, form no doğru okunmuş olsa bile. Bu
+        // durumda "Form Eksik" (form hiç yüklenmemiş gibi) demek YANLIŞ bir izlenim verir — form aslında
+        // yüklenip okunmuş, yalnızca beklenenden FARKLI bir belge TÜRÜ olarak sınıflandırılmış (ör. sahada
+        // yanlışlıkla periyodik bakım formu doldurulmuş). Bu iki durumu ayırt etmek için, bu job'daki
+        // servis-formu-olmayan ama form no'su okunmuş sayfaları normalize edilmiş form no'ya göre indeksliyoruz.
+        var nonServiceFormPages = await db.AiDocumentPages
+            .Include(p => p.Materials)
+            .Where(p => p.JobId == job.Id && p.DocumentType != AiDocumentType.ServiceForm
+                        && p.DocumentType != AiDocumentType.Summary && p.FormNumber != null && p.FormNumber != "")
+            .ToListAsync(cancellationToken);
+        var wrongTypePageByFormNo = nonServiceFormPages
+            .GroupBy(p => TextNormalizationHelper.NormalizeCode(p.FormNumber!))
+            .Where(g => !string.IsNullOrEmpty(g.Key))
+            .ToDictionary(g => g.Key, g => g.First());
+
         var formGroups = checkItems
             .Where(i => !string.IsNullOrWhiteSpace(i.MaintenanceFormNo))
             .GroupBy(i => TextNormalizationHelper.NormalizeCode(i.MaintenanceFormNo!));
@@ -75,12 +92,38 @@ internal static class StoreFormReconciliationBuilder
             var items = g.ToList();
             var first = items[0];
             var storeLabel = first.StoreName ?? first.StoreCode ?? "Bilinmeyen Mağaza";
-            var label = singleItemLabel ?? "Form Eksik";
-            var explanation = singleItemLabel != null
-                ? $"\"{first.MaintenanceFormNo}\" numaralı form için hakedişte {storeLabel} mağazasına ait {singleItemLabel} kaydı " +
-                  "bulunmaktadır ancak karşılığında servis formu yüklenmemiş/eşleştirilememiştir."
-                : $"\"{first.MaintenanceFormNo}\" numaralı form için hakedişte {storeLabel} mağazasına ait kayıt " +
-                  "bulunmaktadır ancak karşılığında servis formu yüklenmemiş/eşleştirilememiştir.";
+
+            wrongTypePageByFormNo.TryGetValue(g.Key, out var wrongTypePage);
+
+            string label;
+            string explanation;
+            AiComparisonStatus status;
+            int? sourcePageId = null;
+
+            if (wrongTypePage != null)
+            {
+                label = "Form Formatı Hatalı";
+                status = AiComparisonStatus.ManuelKontrol;
+                sourcePageId = wrongTypePage.Id;
+                var typeLabel = wrongTypePage.DocumentType == AiDocumentType.PeriodicMaintenanceForm
+                    ? "Periyodik Bakım Formu" : "beklenmeyen bir belge türü";
+                var materialHint = wrongTypePage.Materials.Count > 0
+                    ? $" Formda okunan malzeme(ler): {string.Join(", ", wrongTypePage.Materials.Select(m => $"{m.RawName} {m.Quantity:0.##} {m.Unit}"))}."
+                    : string.Empty;
+                explanation = $"\"{first.MaintenanceFormNo}\" numaralı bir form yüklenip okundu, ancak bu form \"{typeLabel}\" olarak " +
+                              $"sınıflandırıldı — bu kontrol için servis formu bekleniyor.{materialHint} \"Formu Göster\" ile açıp " +
+                              "sahada yanlış form türü doldurulup doldurulmadığını kontrol edin.";
+            }
+            else
+            {
+                label = singleItemLabel ?? "Form Eksik";
+                status = AiComparisonStatus.Eksik;
+                explanation = singleItemLabel != null
+                    ? $"\"{first.MaintenanceFormNo}\" numaralı form için hakedişte {storeLabel} mağazasına ait {singleItemLabel} kaydı " +
+                      "bulunmaktadır ancak karşılığında servis formu yüklenmemiş/eşleştirilememiştir."
+                    : $"\"{first.MaintenanceFormNo}\" numaralı form için hakedişte {storeLabel} mağazasına ait kayıt " +
+                      "bulunmaktadır ancak karşılığında servis formu yüklenmemiş/eşleştirilememiştir.";
+            }
 
             // Tekil kalem kategorilerinde (Glikol/Gaz Kullanım), servis formu hiç yoksa bile ekranda
             // Excel'in talep ettiği miktarı gösterebilmek için FormValue'ye (bu satır türünde normalde
@@ -101,12 +144,13 @@ internal static class StoreFormReconciliationBuilder
                     JobId = job.Id,
                     StoreLabel = storeLabel,
                     VisitDate = item.VisitDate,
+                    SourcePageId = sourcePageId,
                     ProgressPaymentCheckItemId = item.Id,
                     ItemType = AiComparisonItemType.StoreMatch,
                     Description = label,
                     FormValue = requestedQuantity ?? "—",
                     HakedisValue = first.MaintenanceFormNo,
-                    Status = AiComparisonStatus.Eksik,
+                    Status = status,
                     Explanation = explanation,
                     CreatedAt = DateTime.Now,
                 });
