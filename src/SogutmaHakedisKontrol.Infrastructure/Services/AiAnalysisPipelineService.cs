@@ -19,6 +19,11 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
 {
     private const int MaxRetriesPerPage = 3;
     private static readonly TimeSpan[] RetryDelays = { TimeSpan.FromMilliseconds(500), TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5) };
+    // Saglayici (ör. Gemini ucretsiz katman: gemini-3.5-flash-lite icin 15 istek/dakika) HTTP 429
+    // dondurup kendi onerdigi bekleme suresini (result.RetryAfter) verdiyse sabit RetryDelays yerine
+    // o kullanilir - aksi halde ayni dakikalik pencereye hemen tekrar carpilip tum denemeler bosa gider.
+    // Ust sinir konuldu: tek bir sayfanin cok uzun beklemesi butun semaphore slotunu kilitlemesin.
+    private static readonly TimeSpan MaxRateLimitWait = TimeSpan.FromSeconds(75);
     private const decimal ManHoursTolerance = 0.1m;
     private const decimal MaterialQuantityTolerance = 0.01m;
 
@@ -267,7 +272,12 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
             }
 
             if (attempt < MaxRetriesPerPage)
-                await Task.Delay(RetryDelays[Math.Min(attempt - 1, RetryDelays.Length - 1)], cancellationToken);
+            {
+                var delay = result?.RetryAfter is { } retryAfter && retryAfter > TimeSpan.Zero
+                    ? (retryAfter > MaxRateLimitWait ? MaxRateLimitWait : retryAfter)
+                    : RetryDelays[Math.Min(attempt - 1, RetryDelays.Length - 1)];
+                await Task.Delay(delay, cancellationToken);
+            }
         }
 
         lock (_db)

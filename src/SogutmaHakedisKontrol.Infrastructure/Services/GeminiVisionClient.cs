@@ -21,6 +21,11 @@ public class GeminiVisionClient : IAiVisionClient
         Timeout = TimeSpan.FromMinutes(3),
     };
 
+    // Hata metninde API anahtarı sorgu parametresi olarak yer alabilir — asla loglama/döndürme.
+    private static readonly System.Text.RegularExpressions.Regex KeyPattern =
+        new("\"key\"\\s*:\\s*\"[^\"]*\"", System.Text.RegularExpressions.RegexOptions.Compiled);
+    private const string KeyReplacement = "\"key\":\"[GİZLİ]\"";
+
     private readonly string? _apiKey;
     private readonly string _model;
     private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web)
@@ -91,8 +96,15 @@ public class GeminiVisionClient : IAiVisionClient
             if (!response.IsSuccessStatusCode)
             {
                 // Hata metninde API key sorgu parametresi olarak yer alabilir — asla loglama/döndürme.
-                var scrubbed = System.Text.RegularExpressions.Regex.Replace(responseText, @"""key""\s*:\s*""[^""]*""", "\"key\":\"[GİZLİ]\"");
-                return new AiVisionCallResultDto { Success = false, ErrorMessage = $"Gemini HTTP {(int)response.StatusCode}: {scrubbed}" };
+                var scrubbed = KeyPattern.Replace(responseText, KeyReplacement);
+                return new AiVisionCallResultDto
+                {
+                    Success = false,
+                    ErrorMessage = $"Gemini HTTP {(int)response.StatusCode}: {scrubbed}",
+                    RetryAfter = response.StatusCode == System.Net.HttpStatusCode.TooManyRequests
+                        ? ParseRetryDelay(responseText)
+                        : null,
+                };
             }
 
             using var doc = JsonDocument.Parse(responseText);
@@ -142,5 +154,32 @@ public class GeminiVisionClient : IAiVisionClient
         {
             return new AiVisionCallResultDto { Success = false, ErrorMessage = ex.Message };
         }
+    }
+
+    /// <summary>Gemini'nin 429 yanıtındaki "retryDelay": "52s" (ya da "52.46s") alanını ayrıştırır —
+    /// hız sınırı (ücretsiz katman: gemini-3.5-flash-lite için 15 istek/dakika) aşıldığında API'nin
+    /// kendi önerdiği bekleme süresini kullanmak, sabit kısa yeniden deneme aralıklarıyla aynı dakikalık
+    /// pencereye tekrar tekrar çarpıp tüm denemeleri boşa harcamaktan çok daha güvenilirdir.</summary>
+    private static TimeSpan? ParseRetryDelay(string errorResponseJson)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(errorResponseJson);
+            if (!doc.RootElement.TryGetProperty("error", out var error)) return null;
+            if (!error.TryGetProperty("details", out var details)) return null;
+            foreach (var detail in details.EnumerateArray())
+            {
+                if (!detail.TryGetProperty("retryDelay", out var retryDelayEl)) continue;
+                var raw = retryDelayEl.GetString();
+                if (string.IsNullOrEmpty(raw) || !raw.EndsWith('s')) continue;
+                if (double.TryParse(raw[..^1], System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var seconds))
+                    return TimeSpan.FromSeconds(seconds);
+            }
+        }
+        catch (JsonException)
+        {
+            // Hata gövdesi beklenen şemada değil — sessizce null döner, pipeline sabit gecikmeye düşer.
+        }
+        return null;
     }
 }

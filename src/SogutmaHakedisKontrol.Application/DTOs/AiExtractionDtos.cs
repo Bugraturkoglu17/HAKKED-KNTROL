@@ -65,4 +65,10 @@ public class AiVisionCallResultDto
     public string? RawJson { get; set; }
     public AiTokenUsageDto? Usage { get; set; }
     public string? ErrorMessage { get; set; }
+
+    /// <summary>Sağlayıcı hız sınırı (HTTP 429) döndürdüyse ve yanıtta önerilen bekleme süresi varsa
+    /// (ör. Gemini'nin "retryDelay": "52s" alanı) burada taşınır — pipeline bir sonraki denemeden önce
+    /// sabit RetryDelays tablosu yerine bunu bekler, aksi halde aynı dakikalık kotaya hemen tekrar
+    /// çarpıp gereksiz yere tüm denemeleri tüketir.</summary>
+    public TimeSpan? RetryAfter { get; set; }
 }

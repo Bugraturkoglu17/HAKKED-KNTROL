@@ -460,11 +460,16 @@ else
     // Form numarası hiç okunamadı/Excel'de bulunamadı/mükerrer türü hatalar belirli bir hakediş satırına
     // bağlı DEĞİLDİR (checkItemId yok) — bu yüzden detay tablosunda değil, yalnızca üst Form Mutabakatı
     // özetinde gösterilir (bkz. FormNumberMatcher.PageOnlyErrorDescriptions ile aynı liste, senkron tutulmalı).
-    private static readonly string[] PageOnlyErrorDescriptions =
-        { "Form Numarası Okunamadı", "Form Hakedişte Bulunamadı", "Mükerrer Form Numarası" };
+    // "Form Hakedişte Bulunamadı"/"Mükerrer Form Numarası" hiçbir hakediş kalemine bağlı değildir (fazla/
+    // yabancı form — bkz. plan §9: yalnızca üst özette sayı olarak görünür, satıra girmez). "Form Numarası
+    // Okunamadı" ise BİLEREK tabloda tutulur — kullanıcının "eksik/hatalı olsa da formu görebilmem lazım"
+    // isteği: bu satırın kendi sayfası (SourcePageId) var, "Formu Göster" ile gerçek görsele bakılıp AI'nin
+    // neden okuyamadığı manuel doğrulanabilir.
+    private static readonly string[] TableHiddenErrorDescriptions =
+        { "Form Hakedişte Bulunamadı", "Mükerrer Form Numarası" };
 
     private IEnumerable<AiComparisonResultDto> SortedResults => _results
-        .Where(r => !PageOnlyErrorDescriptions.Contains(r.Description))
+        .Where(r => !TableHiddenErrorDescriptions.Contains(r.Description))
         .OrderBy(r => r.StoreLabel).ThenBy(r => r.VisitDate);
 
     private bool CanProceedToAnalysis => _files.Count > 0 && _files.All(f => !f.HasError);
