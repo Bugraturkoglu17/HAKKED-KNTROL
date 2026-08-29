@@ -563,7 +563,6 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
             UygunItemCount = results.Count(r => r.Status == AiComparisonStatus.Uygun),
             UygunDegilItemCount = results.Count(r => r.Status == AiComparisonStatus.UygunDegil),
             EksikItemCount = results.Count(r => r.Status == AiComparisonStatus.Eksik),
-            FazlaItemCount = results.Count(r => r.Status == AiComparisonStatus.Fazla),
             RejectedServiceFeeCount = results.Count(r => r.ItemType == AiComparisonItemType.ServiceFee && r.Status == AiComparisonStatus.UygunDegil),
             ManHoursDiscrepancyCount = results.Count(r => r.ItemType == AiComparisonItemType.ManHours && r.Status == AiComparisonStatus.UygunDegil),
             BeklenenFormSayisi = reconciliation.BeklenenFormSayisi,

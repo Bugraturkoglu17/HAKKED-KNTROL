@@ -131,7 +131,10 @@ else
                 <MudStack Row Wrap="Wrap.Wrap" Spacing="2" AlignItems="AlignItems.Center">
                     <MudChip T="string" Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Variant="Variant.Text" Size="Size.Small">@UygunCountLabel Uygun</MudChip>
                     <MudChip T="string" Icon="@Icons.Material.Filled.Cancel" Color="Color.Error" Variant="Variant.Text" Size="Size.Small">@UygunDegilCountLabel Uygun Değil</MudChip>
-                    <MudChip T="string" Icon="@Icons.Material.Filled.RemoveCircleOutline" Color="Color.Warning" Variant="Variant.Text" Size="Size.Small">@EksikCountLabel Eksik</MudChip>
+                    @if (!IsSingleItemCategory)
+                    {
+                        <MudChip T="string" Icon="@Icons.Material.Filled.RemoveCircleOutline" Color="Color.Warning" Variant="Variant.Text" Size="Size.Small">@EksikCountLabel Eksik</MudChip>
+                    }
                     <MudChip T="string" Icon="@Icons.Material.Filled.HelpOutline" Color="Color.Warning" Variant="Variant.Text" Size="Size.Small">@ManuelKontrolCountLabel Manuel Kontrol</MudChip>
                 </MudStack>
                 <MudStack Row Spacing="1" AlignItems="AlignItems.Center">
@@ -205,8 +208,15 @@ else
                                 <MudChip T="string" Value="@AllFilterValue" Size="Size.Small">Tümü</MudChip>
                                 <MudChip T="string" Value="@UygunFilterValue" Size="Size.Small" Color="Color.Success">Uygun</MudChip>
                                 <MudChip T="string" Value="@UygunDegilFilterValue" Size="Size.Small" Color="Color.Error">Uygun Değil</MudChip>
-                                <MudChip T="string" Value="@EksikFilterValue" Size="Size.Small" Color="Color.Warning">Eksik</MudChip>
-                                <MudChip T="string" Value="@FazlaFilterValue" Size="Size.Small" Color="Color.Warning">Fazla</MudChip>
+                                @if (!IsSingleItemCategory)
+                                {
+                                    @* Gaz/Glikol Kullanım'da "Eksik" durumu artık hiç üretilmiyor (form
+                                       okunamadığında Manuel Kontrol'e yönlendiriliyor) — filtre yalnızca
+                                       çok kalemli kategorilerde (malzeme listesi) anlamlı dolduğu için
+                                       burada gösteriliyor. "Fazla" ise hiçbir kategoride hiç üretilmediği
+                                       için tamamen kaldırıldı (bkz. AiComparisonStatus.cs). *@
+                                    <MudChip T="string" Value="@EksikFilterValue" Size="Size.Small" Color="Color.Warning">Eksik</MudChip>
+                                }
                                 <MudChip T="string" Value="@ManuelKontrolFilterValue" Size="Size.Small" Color="Color.Warning">Manuel Kontrol</MudChip>
                             </MudChipSet>
                         </MudItem>
@@ -411,7 +421,6 @@ else
     private const string UygunFilterValue = "Uygun";
     private const string UygunDegilFilterValue = "UygunDegil";
     private const string EksikFilterValue = "Eksik";
-    private const string FazlaFilterValue = "Fazla";
     private const string ManuelKontrolFilterValue = "ManuelKontrol";
 
     private class PickedFile
@@ -781,7 +790,6 @@ else
         "Uygun" => Icons.Material.Filled.CheckCircle,
         "UygunDegil" => Icons.Material.Filled.Cancel,
         "Eksik" => Icons.Material.Filled.RemoveCircleOutline,
-        "Fazla" => Icons.Material.Filled.AddCircleOutline,
         "ManuelKontrol" => Icons.Material.Filled.HelpOutline,
         _ => Icons.Material.Filled.Circle,
     };
@@ -790,7 +798,7 @@ else
     {
         "Uygun" => Color.Success,
         "UygunDegil" => Color.Error,
-        "Eksik" or "Fazla" or "ManuelKontrol" => Color.Warning,
+        "Eksik" or "ManuelKontrol" => Color.Warning,
         _ => Color.Default,
     };
 
@@ -799,7 +807,6 @@ else
         "Uygun" => "Uygun",
         "UygunDegil" => "Uygun Değil",
         "Eksik" => "Eksik",
-        "Fazla" => "Fazla",
         "ManuelKontrol" => "Manuel Kontrol",
         _ => status,
     };

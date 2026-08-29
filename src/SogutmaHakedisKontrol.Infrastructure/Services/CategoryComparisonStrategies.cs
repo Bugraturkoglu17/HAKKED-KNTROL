@@ -788,10 +788,13 @@ public class GlycolUsageComparisonStrategy : ICategoryComparisonStrategy
 
             if (!formGlycolKg.HasValue)
             {
-                glycolStatus = AiComparisonStatus.Eksik;
+                // GasUsage ile aynı desen (bkz. ExtractGasKg çağrısı) — form var ama miktar okunamadı,
+                // bu "Eksik" değil "Manuel Kontrol"dür: kullanıcı formu bizzat okuyup Düzelt ile miktarı
+                // girebilir (bkz. CorrectSingleItemQuantityAsync). Eskiden Eksik kullanılıyordu ama bu
+                // kategori için Eksik filtresi/rozeti hiçbir zaman anlamlı dolmuyordu.
+                glycolStatus = AiComparisonStatus.ManuelKontrol;
                 glycolFormStr = "Okunamadı";
-                glycolExplanation = $"\"{page.FormNumber}\" numaralı servis formunda glikol kullanımı doğrulanamadı (Glikol Formda Doğrulanamadı) " +
-                    $"— hakedişte {hakedisGlycolKg:0.##} kg glikol talep edilmiştir.";
+                glycolExplanation = $"Hakedişte glikol kalemi var ancak servis formunda glikol kg bilgisi açıkça bulunamadı — manuel kontrol edilmeli.";
             }
             else
             {

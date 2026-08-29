@@ -380,9 +380,11 @@ public class GlycolUsageComparisonStrategyTests
         Assert.Contains("20", result.Explanation);
     }
 
-    /// <summary>TEST 6 — Excelde glikol var, formda hiç glikol yok → GLİKOL FORMDA DOĞRULANAMADI.</summary>
+    /// <summary>TEST 6 — Excelde glikol var, formda hiç glikol yok → Manuel Kontrol (GasUsage ile aynı
+    /// desen: "Eksik" değil, kullanıcı Düzelt ile formdan okuduğu miktarı elle girebilsin diye Manuel
+    /// Kontrol üretilir — bkz. CorrectSingleItemQuantityAsync).</summary>
     [Fact]
-    public async Task Test6_FormdaGlikolYoksa_GlikolFormdaDogrulanamadiUretir()
+    public async Task Test6_FormdaGlikolYoksa_ManuelKontrolUretir()
     {
         using var db = TestDbFactory.Create();
         var (_, check) = SeedCheck(db);
@@ -404,8 +406,8 @@ public class GlycolUsageComparisonStrategyTests
 
         var results = await pipeline.GetComparisonResultsAsync(job.Id);
         var result = results.Single(r => r.ItemType == "GlycolUsage");
-        Assert.Equal("Eksik", result.Status);
-        Assert.Contains("Doğrulanamadı", result.Explanation, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("ManuelKontrol", result.Status);
+        Assert.Contains("bulunamadı", result.Explanation, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>TEST 7 — Formda glikol yanında 4 farklı malzeme daha var, Excelde yoklar → hiçbir ek uyarı üretilmez, sadece glikol satırı.</summary>

@@ -51,7 +51,7 @@ else
         <MudItem xs="6" md="2"><KpiStat Label="Birim Fiyat Hatası" Value="@_check.HataliCount.ToString()" Color="Color.Error" /></MudItem>
         <MudItem xs="6" md="2"><KpiStat Label="Eşleşmeyen" Value="@_check.EslesmeyenCount.ToString()" Color="Color.Error" /></MudItem>
         <MudItem xs="6" md="2"><KpiStat Label="Form Uyuşmazlığı" Value="@FormMismatchCount" Color="Color.Error" /></MudItem>
-        <MudItem xs="6" md="2"><KpiStat Label="Eksik / Fazla Belge" Value="@FormMissingCount" Color="Color.Warning" /></MudItem>
+        <MudItem xs="6" md="2"><KpiStat Label="Eksik Belge" Value="@FormMissingCount" Color="Color.Warning" /></MudItem>
         <MudItem xs="6" md="2"><KpiStat Label="Manuel Kontrol" Value="@FormManualCount" Color="Color.Warning" /></MudItem>
     </MudGrid>
 
@@ -186,7 +186,7 @@ else
         .OrderBy(r => r.StoreLabel).ThenBy(r => r.VisitDate).ToList();
 
     private string FormMismatchCount => _job?.UygunDegilItemCount.ToString() ?? "0";
-    private string FormMissingCount => _job != null ? (_job.EksikItemCount + _job.FazlaItemCount).ToString() : "0";
+    private string FormMissingCount => _job?.EksikItemCount.ToString() ?? "0";
     private string FormManualCount => _formResults.Count(r => r.Status == "ManuelKontrol").ToString();
 
     private static Color PriceStatusColor(CheckItemControlStatus s) => s switch
@@ -210,7 +210,6 @@ else
         "Uygun" => "Uygun",
         "UygunDegil" => "Uygun Değil",
         "Eksik" => "Eksik",
-        "Fazla" => "Fazla",
         "ManuelKontrol" => "Manuel Kontrol",
         _ => status,
     };

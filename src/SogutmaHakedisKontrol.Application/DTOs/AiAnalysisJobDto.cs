@@ -34,7 +34,6 @@ public class AiAnalysisJobDto
     public int UygunItemCount { get; set; }
     public int UygunDegilItemCount { get; set; }
     public int EksikItemCount { get; set; }
-    public int FazlaItemCount { get; set; }
     public int RejectedServiceFeeCount { get; set; }
     public int ManHoursDiscrepancyCount { get; set; }
 
