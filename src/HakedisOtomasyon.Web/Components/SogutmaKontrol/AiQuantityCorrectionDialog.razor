@@ -9,7 +9,7 @@
         </MudText>
         <MudGrid Spacing="2">
             <MudItem xs="8">
-                <MudNumericField T="decimal?" @bind-Value="_quantity" Label="Formda Okuduğunuz Miktar" Variant="Variant.Outlined" Format="N2" Autofocus />
+                <MudNumericField T="decimal?" @bind-Value="_quantity" Immediate="true" Label="Formda Okuduğunuz Miktar" Variant="Variant.Outlined" Autofocus />
             </MudItem>
             <MudItem xs="4">
                 <MudTextField @bind-Value="_unit" Label="Birim" Variant="Variant.Outlined" />
@@ -22,10 +22,14 @@
             Girdiğiniz miktar hakedişteki değerle otomatik karşılaştırılır — eşleşirse "Uygun",
             farklıysa "Uygun Değil" olarak işaretlenir. Bu bir onay değil, gerçek bir ölçümdür.
         </MudText>
+        @if (_error != null)
+        {
+            <MudAlert Severity="Severity.Error" Dense Class="mt-2">@_error</MudAlert>
+        }
     </DialogContent>
     <DialogActions>
         <MudButton OnClick="@(() => MudDialog.Cancel())">İptal</MudButton>
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" Disabled="@(_quantity is null)" OnClick="Submit">Kaydet</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Submit">Kaydet</MudButton>
     </DialogActions>
 </MudDialog>
 
@@ -36,6 +40,20 @@
     private decimal? _quantity;
     private string? _unit = "kg";
     private string? _note;
+    private string? _error;
 
-    private void Submit() => MudDialog.Close(DialogResult.Ok((_quantity, _unit, _note)));
+    // Not: Kaydet düğmesi kasıtlı olarak asla "Disabled" değil — MudNumericField'ın bağlı değeri
+    // (Immediate="true" olsa bile) her ortamda anlık güncellenmeyebiliyor; düğme devre dışı kalırsa
+    // kullanıcıya hiç geri bildirim vermeden "tıklayınca hiçbir şey olmuyor" izlenimi yaratıyordu.
+    // Bunun yerine burada açıkça doğrulanıp eksikse net bir hata mesajı gösteriliyor.
+    private void Submit()
+    {
+        if (_quantity is null)
+        {
+            _error = "Lütfen formda okuduğunuz miktarı girin.";
+            return;
+        }
+        _error = null;
+        MudDialog.Close(DialogResult.Ok((_quantity, _unit, _note)));
+    }
 }

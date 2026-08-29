@@ -370,4 +370,37 @@ public class GasUsageComparisonStrategyTests
         Assert.Equal("UygunDegil", afterMismatch.Status);
         Assert.Equal("15 kg", afterMismatch.FormValue);
     }
+
+    /// <summary>Gerçek olay yerinde yakalanan hata: AI zaten (yanlış) bir miktar okumuşken kullanıcı
+    /// düzeltme girerse, ExtractGasKg sayfadaki İLK "gaz" eşleşen malzemeyi (genelde AI'nın orijinal,
+    /// yanlış okuduğu satır) seçip kullanıcının düzeltmesini sessizce yok sayıyordu — ekranda "Kaydet"
+    /// tıklanıyor ama Uygun/Eksik/Fazla hiç değişmiyordu. Kullanıcı düzeltmesi artık her zaman önceliklidir.</summary>
+    [Fact]
+    public async Task CorrectSingleItemQuantityAsync_AiZatenYanlisMiktarOkumussaKullaniciDuzeltmesiKazanir()
+    {
+        using var db = TestDbFactory.Create();
+        var (_, check) = SeedCheck(db);
+        db.ProgressPaymentCheckItems.Add(GasItem(check.Id, "60030", "710", "5M Ankara", new DateTime(2026, 5, 21), 10));
+        db.SaveChanges();
+
+        // AI formdan 200kg okumuş (gerçekte yanlış okuma) — hakedişte 10kg talep edilmiş → Uygun Değil.
+        var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
+        {
+            DocumentType = "SERVICE_FORM", FormNumber = "60030", FormNumberConfidence = 0.95m,
+            Store = new AiStoreCandidateDto { CodeRaw = "710", Confidence = 0.9m }, ServiceDate = "2026-05-21",
+            Materials = new List<AiMaterialExtractionDto> { GasMaterial(200) },
+        }));
+        var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
+        var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
+
+        var before = (await pipeline.GetComparisonResultsAsync(job.Id)).Single(r => r.ItemType == "GasUsage");
+        Assert.Equal("UygunDegil", before.Status);
+        Assert.Equal("200 kg", before.FormValue);
+
+        // Kullanıcı formu bizzat okuyup 10kg olduğunu giriyor — hakedişteki 10kg ile eşleşir → Uygun.
+        await pipeline.CorrectSingleItemQuantityAsync(before.Id, 10m, "kg", "AI yanlış okumuş, formda 10 kg yazıyor.");
+        var after = (await pipeline.GetComparisonResultsAsync(job.Id)).Single(r => r.ItemType == "GasUsage");
+        Assert.Equal("Uygun", after.Status);
+        Assert.Equal("10 kg", after.FormValue);
+    }
 }

@@ -698,9 +698,17 @@ public class GasUsageComparisonStrategy : ICategoryComparisonStrategy
 
     private static decimal? ExtractGasKg(AiDocumentPage page)
     {
-        var gasMaterial = page.Materials.FirstOrDefault(m => IsGas(m.RawName) || IsGas(m.NormalizedName));
+        // Birden fazla "gaz" eşleşen malzeme olabilir: AI'nın orijinal okuduğu satır VE kullanıcının
+        // manuel düzeltme için eklediği sentetik satır (bkz. CorrectSingleItemQuantityAsync). Kullanıcı
+        // düzeltmesi HER ZAMAN önceliklidir — aksi halde FirstOrDefault sırayla ilk eşleşeni (genelde
+        // AI'nın orijinal, yanlış okuduğu satırı) seçip kullanıcının girdiği miktarı sessizce yok sayardı.
+        var gasMaterials = page.Materials.Where(m => IsGas(m.RawName) || IsGas(m.NormalizedName)).ToList();
+        var corrected = gasMaterials.FirstOrDefault(m => m.UserCorrectedQuantity.HasValue);
+        if (corrected != null) return corrected.UserCorrectedQuantity;
+
+        var gasMaterial = gasMaterials.FirstOrDefault();
         if (gasMaterial != null)
-            return gasMaterial.UserCorrectedQuantity ?? gasMaterial.Quantity;
+            return gasMaterial.Quantity;
 
         if (!string.IsNullOrEmpty(page.DescriptionRaw))
         {
@@ -838,9 +846,15 @@ public class GlycolUsageComparisonStrategy : ICategoryComparisonStrategy
 
     private static decimal? ExtractGlycolKg(AiDocumentPage page)
     {
-        var glycolMaterial = page.Materials.FirstOrDefault(m => IsGlycol(m.RawName) || IsGlycol(m.NormalizedName));
+        // ExtractGasKg ile aynı öncelik kuralı — bkz. oradaki açıklama: kullanıcı düzeltmesi varsa
+        // her zaman o kazanır, AI'nın orijinal (yanlış) okuması sessizce üzerine yazamaz.
+        var glycolMaterials = page.Materials.Where(m => IsGlycol(m.RawName) || IsGlycol(m.NormalizedName)).ToList();
+        var correctedGlycol = glycolMaterials.FirstOrDefault(m => m.UserCorrectedQuantity.HasValue);
+        if (correctedGlycol != null) return correctedGlycol.UserCorrectedQuantity;
+
+        var glycolMaterial = glycolMaterials.FirstOrDefault();
         if (glycolMaterial != null)
-            return glycolMaterial.UserCorrectedQuantity ?? glycolMaterial.Quantity;
+            return glycolMaterial.Quantity;
 
         if (IsGlycol(page.DescriptionRaw))
         {
