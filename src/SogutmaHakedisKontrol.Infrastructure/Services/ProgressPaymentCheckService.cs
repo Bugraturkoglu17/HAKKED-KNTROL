@@ -10,7 +10,14 @@ namespace SogutmaHakedisKontrol.Infrastructure.Services;
 
 public class ProgressPaymentCheckService : IProgressPaymentCheckService
 {
-    private const decimal AutoMatchThreshold = 0.995m;
+    // %99,5 gibi çok katı bir eşik, aynı malzemenin Excel'deki yazımıyla katalogdaki kaydı arasında
+    // fazladan boşluk/parantez gibi önemsiz bir fark olduğunda bile (görsel olarak "aynı" olsa da)
+    // her satırı manuel onaya düşürüyordu — kullanıcı 60+ satırlık tek bir malzemeyi tek tek onaylamak
+    // zorunda kalıyordu. %85'e düşürüldü; farklı bir teknik ölçü/miktar (ör. "10,9 kg" vs "13,6 kg")
+    // FindCandidatesAsync'teki AYRI bir kontrolle (ExtractTechnicalTokens -> SpecMismatchWarning) hâlâ
+    // yakalanıp otomatik eşleşmeyi engelliyor — bu eşik yalnızca yazım/boşluk gibi önemsiz farkları
+    // tolere ediyor, ölçü/miktar farkına karşı koruma bağımsız olarak duruyor.
+    private const decimal AutoMatchThreshold = 0.85m;
     private const decimal FuzzyMinThreshold = 0.60m;
     private const decimal ToleranceTry = 1.0m;      // ±1 TL yuvarlama toleransı
     private const decimal TolerancePercent = 0.5m;   // ±%0.5 yuvarlama toleransı
