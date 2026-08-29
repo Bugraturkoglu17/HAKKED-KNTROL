@@ -350,6 +350,14 @@ else
                                 <MudIconButton Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small"
                                                Color="Color.Success" OnClick="@(() => OverrideResultAsync(context))" />
                             </MudTooltip>
+                            @if (IsSingleItemCategory && context.ItemType == SingleItemTypeName
+                                 && !string.IsNullOrEmpty(context.FormFilePath))
+                            {
+                                <MudTooltip Text="@($"Formdan okuduğunuz {SingleItemValueLabel.ToLowerInvariant()} miktarını girin")">
+                                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                                                   Color="Color.Default" OnClick="@(() => CorrectQuantityAsync(context))" />
+                                </MudTooltip>
+                            }
                         }
                     </MudTd>
                 </RowTemplate>
@@ -616,6 +624,19 @@ else
         await Pipeline.RevertOverrideAsync(result.Id);
         await LoadJobAsync();
         Snackbar.Add("Onay geri alındı.", Severity.Info);
+    }
+
+    // Kör "Onay ver"den FARKLI: burada gerçek bir miktar girilir, hakedişteki değerle otomatik
+    // karşılaştırılıp Uygun/Uygun Değil sonucu sistem tarafından belirlenir (bkz. dialog metni).
+    private async Task CorrectQuantityAsync(AiComparisonResultDto result)
+    {
+        var parameters = new DialogParameters { ["Result"] = result };
+        var dialog = await DialogService.ShowAsync<AiQuantityCorrectionDialog>("Miktarı Düzelt", parameters);
+        var dialogResult = await dialog.Result;
+        if (dialogResult.Canceled || dialogResult.Data is not ValueTuple<decimal?, string?, string?> correction || correction.Item1 is null) return;
+        await Pipeline.CorrectSingleItemQuantityAsync(result.Id, correction.Item1.Value, correction.Item2, correction.Item3);
+        await LoadJobAsync();
+        Snackbar.Add("Miktar kaydedildi ve karşılaştırıldı.", Severity.Success);
     }
 
     // "Formu Göster": zaten diskte duran orijinal PDF'i (AI analizinden BAĞIMSIZ, ek bir sayfa görseli

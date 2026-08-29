@@ -303,4 +303,71 @@ public class GasUsageComparisonStrategyTests
         // İlk ziyarete (05.06) hiçbir uyarı yazılmamalı.
         Assert.DoesNotContain(warnings, w => w.VisitDate == new DateTime(2026, 6, 5));
     }
+
+    /// <summary>Gaz malzemesi servis formunda "gaz" kelimesi olmadan, doğrudan soğutucu akışkan koduyla
+    /// yazılabilir (ör. "R404 A Soğutucu Akışkan") — yalnızca "gaz" araması bu satırı kaçırıp gerçek bir
+    /// miktar varken bile "okunamadı" (Manuel Kontrol) üretiyordu. Artık tanınmalı ve doğrudan Uygun
+    /// çıkmalı.</summary>
+    [Fact]
+    public async Task Test_SogutucuAkiskanAdliMalzeme_GazOlarakTaninirVeUygunUretir()
+    {
+        using var db = TestDbFactory.Create();
+        var (_, check) = SeedCheck(db);
+        db.ProgressPaymentCheckItems.Add(GasItem(check.Id, "40010", "710", "5M Ankara", new DateTime(2026, 5, 21), 15));
+        db.SaveChanges();
+
+        var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
+        {
+            DocumentType = "SERVICE_FORM", FormNumber = "40010", FormNumberConfidence = 0.95m,
+            Store = new AiStoreCandidateDto { CodeRaw = "710", Confidence = 0.9m }, ServiceDate = "2026-05-21",
+            Materials = new List<AiMaterialExtractionDto>
+            {
+                new() { RawName = "R404 A Soğutucu Akışkan", NormalizedName = "R404A", Quantity = 15, Unit = "kg", Confidence = 0.9m },
+            },
+        }));
+        var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
+        var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
+
+        var results = await pipeline.GetComparisonResultsAsync(job.Id);
+        var result = results.Single(r => r.ItemType == "GasUsage");
+        Assert.Equal("Uygun", result.Status);
+        Assert.Equal("15 kg", result.HakedisValue);
+    }
+
+    /// <summary>Kullanıcının fiziksel formdan okuyup manuel girdiği miktar, hakedişteki değerle otomatik
+    /// karşılaştırılmalı: eşleşirse Uygun, farklıysa Uygun Değil — kör bir onay değildir.</summary>
+    [Fact]
+    public async Task CorrectSingleItemQuantityAsync_GirilenMiktarHakedisleKarsilastirilirVeSonucBelirlenir()
+    {
+        using var db = TestDbFactory.Create();
+        var (_, check) = SeedCheck(db);
+        db.ProgressPaymentCheckItems.Add(GasItem(check.Id, "50020", "710", "5M Ankara", new DateTime(2026, 5, 21), 20));
+        db.SaveChanges();
+
+        // Form yüklendi ama gaz kg bilgisi hiç okunamadı — Manuel Kontrol üretir.
+        var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
+        {
+            DocumentType = "SERVICE_FORM", FormNumber = "50020", FormNumberConfidence = 0.95m,
+            Store = new AiStoreCandidateDto { CodeRaw = "710", Confidence = 0.9m }, ServiceDate = "2026-05-21",
+        }));
+        var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
+        var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
+
+        var beforeResults = await pipeline.GetComparisonResultsAsync(job.Id);
+        var pending = beforeResults.Single(r => r.ItemType == "GasUsage");
+        Assert.Equal("ManuelKontrol", pending.Status);
+        Assert.Equal("Okunamadı", pending.FormValue);
+
+        // Kullanıcı formdan 20kg okuyup giriyor — hakedişteki 20kg ile eşleşir → Uygun.
+        await pipeline.CorrectSingleItemQuantityAsync(pending.Id, 20m, "kg", "Formdan elle okundu.");
+        var afterMatch = (await pipeline.GetComparisonResultsAsync(job.Id)).Single(r => r.ItemType == "GasUsage");
+        Assert.Equal("Uygun", afterMatch.Status);
+        Assert.Equal("20 kg", afterMatch.FormValue);
+
+        // Aynı satırı bu kez YANLIŞ bir miktarla düzeltirse (15kg) → Uygun Değil.
+        await pipeline.CorrectSingleItemQuantityAsync(afterMatch.Id, 15m, "kg", null);
+        var afterMismatch = (await pipeline.GetComparisonResultsAsync(job.Id)).Single(r => r.ItemType == "GasUsage");
+        Assert.Equal("UygunDegil", afterMismatch.Status);
+        Assert.Equal("15 kg", afterMismatch.FormValue);
+    }
 }

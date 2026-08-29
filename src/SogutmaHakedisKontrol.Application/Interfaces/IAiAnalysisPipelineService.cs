@@ -29,6 +29,11 @@ public interface IAiAnalysisPipelineService
     /// <summary>Kullanıcının manuel düzelttiği malzeme miktarını kaydeder (AI'nın orijinal değeri korunur).</summary>
     Task CorrectMaterialAsync(int materialId, decimal? correctedQuantity, string? correctedUnit, string? note);
 
+    /// <summary>Tek kalemli kategorilerde (Glikol/Gaz Kullanım) "Manuel Kontrol" bir satıra kullanıcının
+    /// formdan okuduğu gerçek miktarı girer — yeniden hesaplandığında bu miktar hakedişteki değerle
+    /// otomatik karşılaştırılır (eşleşirse Uygun, farklıysa Uygun Değil), kör bir onay değildir.</summary>
+    Task CorrectSingleItemQuantityAsync(int resultId, decimal correctedQuantity, string? unit, string? note);
+
     /// <summary>Belirsiz mağaza eşleşmesini kullanıcı elle onaylar/düzeltir.</summary>
     Task CorrectPageStoreAsync(int pageId, int storeId);
 

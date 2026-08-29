@@ -778,6 +778,62 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
         await RecomputeComparisonForJobAsync(material.Page.JobId);
     }
 
+    /// <summary>Tek kalemli kategorilerde (Glikol/Gaz Kullanım) AI formdaki miktarı okuyamadığında
+    /// ("Manuel Kontrol") ya da yanlış okuduğunda, kullanıcının fiziksel formdan kendi okuduğu miktarı
+    /// girmesini sağlar. Kör bir "Uygun" onayından FARKLI olarak burada gerçek bir miktar girilir —
+    /// yeniden hesaplandığında GlycolUsage/GasUsageComparisonStrategy bu miktarı hakedişteki değerle
+    /// KENDİSİ karşılaştırır (eşleşirse Uygun, farklıysa Uygun Değil) — sonuç kullanıcının doğru mu
+    /// yanlış mı yazdığına göre otomatik belirlenir, kullanıcı yalnızca "onaylamaz".
+    /// Teknik olarak: sayfada zaten var olan (ama isim eşleşmesi tutmayan, ör. "R404 Soğutucu Akışkan")
+    /// bir malzeme satırına dokunmak yerine, kategori kelimesiyle (gaz/glikol) açıkça adlandırılmış YENİ
+    /// bir AiPageMaterial satırı eklenir — böylece ExtractGasKg/ExtractGlycolKg'nin anahtar kelime
+    /// aramasıyla güvenilir şekilde bulunur.</summary>
+    public async Task CorrectSingleItemQuantityAsync(int resultId, decimal correctedQuantity, string? unit, string? note)
+    {
+        var result = await _db.AiComparisonResults.FindAsync(resultId)
+            ?? throw new InvalidOperationException("Karşılaştırma sonucu bulunamadı.");
+        if (result.SourcePageId is null)
+            throw new InvalidOperationException("Bu satırın bağlı olduğu bir servis formu sayfası yok, miktar düzeltilemez.");
+
+        var jobId = result.JobId;
+        var job = await _db.AiAnalysisJobs.FindAsync(jobId);
+        var check = job is null ? null : await _db.ProgressPaymentChecks.FindAsync(job.ProgressPaymentCheckId);
+        var keyword = check?.Category == HakedisCategory.GlycolUsage ? "glikol" : "gaz";
+        var correctionMarker = $"Manuel düzeltme ({keyword})";
+
+        // Aynı satır birden fazla kez düzeltilirse (kullanıcı fikrini değiştirirse) YENİ bir satır daha
+        // eklemek yerine, bu sayfada zaten var olan kendi düzeltme kaydımızı güncelliyoruz — aksi halde
+        // ExtractGasKg/ExtractGlycolKg birden fazla aday arasından hangisini bulacağı belirsizleşir (ilk
+        // eklenen, artık geçersiz olan düzeltme seçilebilirdi).
+        var existingCorrection = await _db.AiPageMaterials
+            .FirstOrDefaultAsync(m => m.PageId == result.SourcePageId.Value && m.RawName == correctionMarker);
+
+        if (existingCorrection != null)
+        {
+            existingCorrection.UserCorrectedQuantity = correctedQuantity;
+            existingCorrection.UserCorrectedUnit = unit;
+            existingCorrection.UserCorrectedAt = DateTime.Now;
+            existingCorrection.CorrectionNote = note;
+        }
+        else
+        {
+            _db.AiPageMaterials.Add(new AiPageMaterial
+            {
+                PageId = result.SourcePageId.Value,
+                RawName = correctionMarker,
+                NormalizedName = keyword,
+                UserCorrectedQuantity = correctedQuantity,
+                UserCorrectedUnit = unit,
+                UserCorrectedAt = DateTime.Now,
+                CorrectionNote = note,
+                RequiresManualReview = false,
+            });
+        }
+        await _db.SaveChangesAsync();
+
+        await RecomputeComparisonForJobAsync(jobId);
+    }
+
     public async Task CorrectPageStoreAsync(int pageId, int storeId)
     {
         var page = await _db.AiDocumentPages.FindAsync(pageId)

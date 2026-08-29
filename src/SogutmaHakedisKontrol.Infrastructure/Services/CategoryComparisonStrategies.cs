@@ -529,6 +529,19 @@ public class GasUsageComparisonStrategy : ICategoryComparisonStrategy
     private static readonly Regex GasKgRegex = new(@"(\d+(?:[.,]\d+)?)\s*kg", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly string[] LeakKeywords = { "kacak" }; // TextNormalizationHelper "kaçak"→"kacak" çevirir
 
+    // Servis formlarında gaz malzemesi genellikle "gaz" kelimesiyle değil doğrudan soğutucu akışkan
+    // koduyla yazılıyor (ör. "R404 A Soğutucu Akışkan", "R410a") — yalnızca "gaz" araması bu satırları
+    // kaçırıp gerçek bir miktar varken bile "okunamadı" (Manuel Kontrol) sonucu üretiyordu.
+    private static readonly string[] GasKeywords =
+        { "gaz", "sogutucu akiskan", "r404", "r410", "r407", "r422", "r134", "r22", "freon" };
+
+    private static bool IsGas(string? materialName)
+    {
+        if (string.IsNullOrEmpty(materialName)) return false;
+        var norm = TextNormalizationHelper.NormalizeName(materialName);
+        return GasKeywords.Any(k => norm.Contains(k));
+    }
+
     private readonly AppDbContext _db;
     public GasUsageComparisonStrategy(AppDbContext db) => _db = db;
 
@@ -566,7 +579,7 @@ public class GasUsageComparisonStrategy : ICategoryComparisonStrategy
             // Excel referanstır: hakedişte gaz kalemi TALEP EDİLMEMİŞSE, formda gaz kullanımından
             // bahsedilmesi tek başına bir talep oluşturmaz — hiçbir sonuç üretilmez. Soft issue varsa
             // (mağaza/tarih) yine de kendi başına raporlanır.
-            var hakedisGasItems = sameVisit.Where(i => TextNormalizationHelper.NormalizeName(i.OriginalMaterialName).Contains("gaz")).ToList();
+            var hakedisGasItems = sameVisit.Where(i => IsGas(i.OriginalMaterialName)).ToList();
             if (hakedisGasItems.Count > 0)
             {
                 var formGasKg = ExtractGasKg(page);
@@ -652,7 +665,7 @@ public class GasUsageComparisonStrategy : ICategoryComparisonStrategy
     private static void AddRepeatVisitWarnings(int jobId, List<ProgressPaymentCheckItem> checkItems, List<AiComparisonResult> results)
     {
         var visitsByStore = checkItems
-            .Where(i => TextNormalizationHelper.NormalizeName(i.OriginalMaterialName).Contains("gaz") && i.VisitDate.HasValue)
+            .Where(i => IsGas(i.OriginalMaterialName) && i.VisitDate.HasValue)
             .GroupBy(i => TextNormalizationHelper.StoreKey(i.StoreCode, i.StoreName))
             .Where(g => !string.IsNullOrEmpty(g.Key));
 
@@ -685,8 +698,7 @@ public class GasUsageComparisonStrategy : ICategoryComparisonStrategy
 
     private static decimal? ExtractGasKg(AiDocumentPage page)
     {
-        var gasMaterial = page.Materials.FirstOrDefault(m =>
-            TextNormalizationHelper.NormalizeName(m.RawName ?? m.NormalizedName ?? string.Empty).Contains("gaz"));
+        var gasMaterial = page.Materials.FirstOrDefault(m => IsGas(m.RawName) || IsGas(m.NormalizedName));
         if (gasMaterial != null)
             return gasMaterial.UserCorrectedQuantity ?? gasMaterial.Quantity;
 

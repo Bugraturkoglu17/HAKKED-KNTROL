@@ -1,0 +1,41 @@
+@using SogutmaHakedisKontrol.Application.DTOs
+
+<MudDialog Style="min-width:420px">
+    <TitleContent><MudText Typo="Typo.h6">@Result.Description Düzelt</MudText></TitleContent>
+    <DialogContent>
+        <MudText Typo="Typo.body2" Class="mb-1" Style="font-weight:600">@Result.StoreLabel</MudText>
+        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-3 d-block">
+            Hakedişte talep edilen: @(Result.HakedisValue ?? "—")
+        </MudText>
+        <MudGrid Spacing="2">
+            <MudItem xs="8">
+                <MudNumericField T="decimal?" @bind-Value="_quantity" Label="Formda Okuduğunuz Miktar" Variant="Variant.Outlined" Format="N2" Autofocus />
+            </MudItem>
+            <MudItem xs="4">
+                <MudTextField @bind-Value="_unit" Label="Birim" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_note" Label="Not (opsiyonel)" Variant="Variant.Outlined" Lines="2" />
+            </MudItem>
+        </MudGrid>
+        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-2 d-block">
+            Girdiğiniz miktar hakedişteki değerle otomatik karşılaştırılır — eşleşirse "Uygun",
+            farklıysa "Uygun Değil" olarak işaretlenir. Bu bir onay değil, gerçek bir ölçümdür.
+        </MudText>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => MudDialog.Cancel())">İptal</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" Disabled="@(_quantity is null)" OnClick="Submit">Kaydet</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public AiComparisonResultDto Result { get; set; } = null!;
+
+    private decimal? _quantity;
+    private string? _unit = "kg";
+    private string? _note;
+
+    private void Submit() => MudDialog.Close(DialogResult.Ok((_quantity, _unit, _note)));
+}
