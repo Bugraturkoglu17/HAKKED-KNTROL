@@ -264,6 +264,9 @@ public class GasUsageComparisonStrategyTests
         Assert.Equal(new DateTime(2026, 6, 8), warning.VisitDate);
         Assert.Equal("Aynı mağazaya önceki gaz müdahalesinden 3 gün sonra tekrar gaz basılmıştır. Detaylı açıklama lazım.", warning.Explanation);
         Assert.Equal("ManuelKontrol", warning.Status);
+        // Regresyon: bu satır sayfa/form eşleşmesinden bağımsız üretilir ama gerçek ziyarete ait bir
+        // servis formu VARSA "Formu Göster" butonu görünmeli — eskiden SourcePageId hiç yazılmıyordu.
+        Assert.False(string.IsNullOrEmpty(warning.FormFilePath));
     }
 
     /// <summary>TEST 5 — TEKRAR ZİYARET UYARISI (3 ziyaret): 05.06 → 20kg, 07.06 → 15kg (2 gün), 09.06 → 10kg (2 gün).

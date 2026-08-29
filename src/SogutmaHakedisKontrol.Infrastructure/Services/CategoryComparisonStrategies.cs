@@ -564,6 +564,11 @@ public class GasUsageComparisonStrategy : ICategoryComparisonStrategy
 
         var results = new List<AiComparisonResult>();
 
+        // Hangi hakediş kaleminin hangi sayfayla eşleştiği burada toplanır — Tekrar Ziyaret Uyarısı
+        // (bkz. AddRepeatVisitWarnings) sayfa eşleşmesinden bağımsız üretiliyor olsa da, "Formu Göster"
+        // butonunun görünebilmesi için satırın SourcePageId'ye ihtiyacı var (bkz. FormKontrol.razor).
+        var checkItemPageId = new Dictionary<int, int>();
+
         foreach (var page in pages)
         {
             // MatchWithSoftIssue: mağaza/tarih uyuşmazlığı (softIssue) olsa bile eşleşen grup (sameVisit)
@@ -572,6 +577,8 @@ public class GasUsageComparisonStrategy : ICategoryComparisonStrategy
             // (hardError — form no okunamadı/Excel'de yok/mükerrer) hiçbir hesaplama yapılamaz.
             var (sameVisit, hardError, softIssue) = FormNumberMatcher.MatchWithSoftIssue(job.Id, page, checkItems);
             if (hardError != null) { results.Add(hardError); continue; }
+
+            foreach (var item in sameVisit!) checkItemPageId.TryAdd(item.Id, page.Id);
 
             var first = sameVisit![0];
             var storeLabel = first.StoreName ?? first.StoreCode ?? "Bilinmeyen Mağaza";
@@ -656,13 +663,14 @@ public class GasUsageComparisonStrategy : ICategoryComparisonStrategy
         // fazla gaz müdahalesi yapılmışsa İLK ziyaret hariç her sonraki ziyarete uyarı eklenir (ilk
         // ziyaret yalnızca sonraki karşılaştırmaların referansıdır, kendisi hiçbir zaman işaretlenmez).
         // Her kayıt yalnızca KENDİSİNDEN BİR ÖNCEKİ ziyaretle karşılaştırılır (ilk ziyaretle değil).
-        AddRepeatVisitWarnings(job.Id, checkItems, results);
+        AddRepeatVisitWarnings(job.Id, checkItems, checkItemPageId, results);
 
         _db.AiComparisonResults.AddRange(results);
         await _db.SaveChangesAsync(cancellationToken);
     }
 
-    private static void AddRepeatVisitWarnings(int jobId, List<ProgressPaymentCheckItem> checkItems, List<AiComparisonResult> results)
+    private static void AddRepeatVisitWarnings(int jobId, List<ProgressPaymentCheckItem> checkItems,
+        Dictionary<int, int> checkItemPageId, List<AiComparisonResult> results)
     {
         var visitsByStore = checkItems
             .Where(i => IsGas(i.OriginalMaterialName) && i.VisitDate.HasValue)
@@ -680,6 +688,7 @@ public class GasUsageComparisonStrategy : ICategoryComparisonStrategy
                 var curr = sorted[i];
                 var verb = i == 1 ? "tekrar" : "yeniden"; // 2. ziyaret: "tekrar", 3.+ ziyaret: "yeniden"
                 var storeLabel = curr.StoreName ?? curr.StoreCode ?? "Bilinmeyen Mağaza";
+                checkItemPageId.TryGetValue(curr.Id, out var sourcePageId);
                 results.Add(new AiComparisonResult
                 {
                     JobId = jobId,
@@ -691,6 +700,12 @@ public class GasUsageComparisonStrategy : ICategoryComparisonStrategy
                     Status = AiComparisonStatus.ManuelKontrol,
                     Explanation = $"Aynı mağazaya önceki gaz müdahalesinden {dayGap} gün sonra {verb} gaz basılmıştır. Detaylı açıklama lazım.",
                     CreatedAt = DateTime.Now,
+                    // Bu ziyaretin eşleştiği servis formu sayfası varsa bağla — "Formu Göster" butonu
+                    // bu satırda da görünsün (kullanıcı isteği: "eksik veya hatalı olsa bile yanında
+                    // hakedişi formu görebilmem lazım, hepsine form butonunu ekle"). Sayfa yoksa (örn.
+                    // bu ziyarete ait form hiç yüklenmemişse) 0 kalır — SourcePageId int? olduğundan
+                    // null'a çevrilir.
+                    SourcePageId = sourcePageId == 0 ? null : sourcePageId,
                 });
             }
         }
