@@ -31,6 +31,24 @@ public static class AiVisionSchemas
         form_number'ı null bırak, form_number_confidence'ı düşük (0-0.3) yap ve requires_manual_review'i
         true yap.
 
+        ── FORM NUMARASI İLE MAĞAZA KODUNU KARIŞTIRMA (sık görülen hata) ────
+        Sayfanın üst kısmında BİRDEN FAZLA sayı görebilirsin (ör. logo/ISO damgasının yanına el yazısıyla
+        eklenmiş bir sayı VE sayfanın sağ köşesinde matbu/damgalı başka bir sayı) — bunlardan yalnızca BİRİ
+        gerçek form numarasıdır, diğeri genellikle mağaza kodu veya başka bir iç referanstır. Ayırt etmek
+        için şu üç işarete güven (üçü birlikte neredeyse kesin kanıttır):
+        1. Gerçek form numarası neredeyse HİÇBİR ZAMAN dikine/yan yatık (90 derece döndürülmüş) yazılmaz —
+           yatay, normal okuma yönünde yazılır/basılıdır. Dikine veya yan yatık el yazısıyla yazılmış bir
+           sayı gördüğünde (ör. logonun yanına sıkıştırılmış) bu SIKLIKLA mağaza kodudur, form numarası DEĞİL.
+        2. Gerçek form numarası çoğunlukla (yaklaşık %90) KIRMIZI/TURUNCU renkli, matbu veya damgalı bir
+           sayıdır — el yazısıyla farklı bir renkte (ör. mavi/siyah tükenmez kalemle) eklenmiş bir sayı daha
+           düşük ihtimalle form numarasıdır.
+        3. Gerçek form numarası neredeyse HER ZAMAN sayfanın SAĞ KÖŞESİNDE (genellikle sağ üst) bulunur.
+           Logonun hemen yanında, sayfanın ortasına yakın veya sol tarafta duran bir sayı form numarası
+           OLMA İHTİMALİ DÜŞÜKTÜR.
+        Bu üç işaretten BİRDEN FAZLASINI karşılayan sayıyı (sağ köşede + kırmızı/turuncu + yatay/matbu)
+        form_number olarak seç; yalnızca dikine yazılmış, sol/orta konumlu, farklı renkte bir sayıyı asla
+        tercih etme — o sayı büyük ihtimalle mağaza kodudur ve store.code_raw'a yazılmalıdır, form_number'a değil.
+
         ── MAĞAZA KODU VE MAĞAZA ADI ────────────────────────────────────────
         Mağaza kodu veya mağaza adı sayfanın HERHANGİ BİR BÖLÜMÜNDE bulunabilir — sağ üst, sol üst, orta,
         "İŞİN YERİ"/"ÇAĞRI BİLDİREN" alanı, sayfanın kenarında/logonun yanında dönük veya küçük yazılmış,
