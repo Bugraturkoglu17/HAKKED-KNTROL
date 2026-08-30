@@ -100,9 +100,10 @@ internal static class FormNumberMatcher
     /// manuel onay kontrol tipini asla değiştiremez); imza geriye dönük uyumluluk için korunmuştur.
     /// </summary>
     public static (List<ProgressPaymentCheckItem>? Matched, AiComparisonResult? Error) Match(
-        int jobId, AiDocumentPage page, List<ProgressPaymentCheckItem> checkItems, HashSet<string> overriddenMatchKeys)
+        int jobId, AiDocumentPage page, List<ProgressPaymentCheckItem> checkItems, HashSet<string> overriddenMatchKeys,
+        bool monthOnlyDateCheck = false)
     {
-        var (matched, hardError, softIssue) = MatchCore(jobId, page, checkItems);
+        var (matched, hardError, softIssue) = MatchCore(jobId, page, checkItems, monthOnlyDateCheck);
         if (hardError != null) return (null, hardError);
         if (softIssue != null) return (null, softIssue);
         return (matched, null);
@@ -117,10 +118,15 @@ internal static class FormNumberMatcher
     /// null döner.
     /// </summary>
     public static (List<ProgressPaymentCheckItem>? Matched, AiComparisonResult? HardError, AiComparisonResult? SoftIssue) MatchWithSoftIssue(
-        int jobId, AiDocumentPage page, List<ProgressPaymentCheckItem> checkItems) => MatchCore(jobId, page, checkItems);
+        int jobId, AiDocumentPage page, List<ProgressPaymentCheckItem> checkItems) => MatchCore(jobId, page, checkItems, monthOnlyDateCheck: false);
 
+    /// <param name="monthOnlyDateCheck">Kullanıcı talebi: "İlave İşlerdeki tüm tarih hatalarını uygun
+    /// sayalım, sadece ay hatası varsa kontrol edelim." — true iken servis formu tarihiyle hakediş
+    /// tarihi arasında yalnızca YIL+AY karşılaştırılır, gün farkı asla "Tarih Uyuşmazlığı" üretmez.
+    /// Yalnızca AdditionalWorkComparisonStrategy bunu true geçer; diğer kategoriler (Gaz/Glikol/
+    /// Varsayılan) etkilenmez, hâlâ tam gün eşleşmesi arar.</param>
     private static (List<ProgressPaymentCheckItem>? Matched, AiComparisonResult? HardError, AiComparisonResult? SoftIssue) MatchCore(
-        int jobId, AiDocumentPage page, List<ProgressPaymentCheckItem> checkItems)
+        int jobId, AiDocumentPage page, List<ProgressPaymentCheckItem> checkItems, bool monthOnlyDateCheck = false)
     {
         var label = StoreLabelFallback(page);
 
@@ -187,10 +193,15 @@ internal static class FormNumberMatcher
         }
 
         // 4) Tarih doğrulama — ikisi de doluyken farklıysa hata; biri boşsa (yetersiz veri) engelleme.
-        if (page.ServiceDate.HasValue && first.VisitDate.HasValue && page.ServiceDate.Value.Date != first.VisitDate.Value.Date)
+        // monthOnlyDateCheck=true iken (İlave İşler) yalnızca YIL+AY karşılaştırılır — gün farkları
+        // (evrak/imza gecikmesi vb. çok yaygın) artık hiç "Tarih Uyuşmazlığı" üretmez.
+        var datesDiffer = page.ServiceDate.HasValue && first.VisitDate.HasValue && (monthOnlyDateCheck
+            ? (page.ServiceDate.Value.Year != first.VisitDate.Value.Year || page.ServiceDate.Value.Month != first.VisitDate.Value.Month)
+            : page.ServiceDate.Value.Date != first.VisitDate.Value.Date);
+        if (datesDiffer)
         {
             var softIssue = ComparisonResultFactory.New(jobId, page, hakedisStoreLabel, AiComparisonItemType.Material,
-                "Tarih Uyuşmazlığı", page.ServiceDate.Value.ToString("dd.MM.yyyy"), first.VisitDate.Value.ToString("dd.MM.yyyy"),
+                "Tarih Uyuşmazlığı", page.ServiceDate!.Value.ToString("dd.MM.yyyy"), first.VisitDate!.Value.ToString("dd.MM.yyyy"),
                 AiComparisonStatus.UygunDegil,
                 $"Servis formu tarihi {page.ServiceDate:dd.MM.yyyy}, hakediş Excelindeki tarih {first.VisitDate:dd.MM.yyyy} olarak görülmektedir.", first.Id);
             return (group, null, softIssue);
@@ -925,33 +936,28 @@ public class GlycolUsageComparisonStrategy : ICategoryComparisonStrategy
 /// servis ücretleri birbirini etkilemez (her biri kendi FormNumberMatcher grubunda ayrı değerlendirilir).
 /// Eşleştirme FormNumberMatcher ile form numarası üzerinden yapılır.
 /// </summary>
-public class AdditionalWorkComparisonStrategy : ICategoryComparisonStrategy
+/// <summary>Şehir içi/şehir dışı servis bedeli ve adam-saat kalemlerinin İLAVE İŞLER hakedişindeki sabit
+/// MALZEME KODU (S1-S4) ile tespiti — hem <see cref="AdditionalWorkComparisonStrategy"/> (Form Kontrolü/
+/// AI aşaması, yalnızca "servis ücreti mevcut mu/mükerrer mi" sorar) hem de
+/// <see cref="ProgressPaymentCheckService"/> (Fiyat Kontrolü aşaması — kullanıcı talebi: "servis içi/dışı
+/// olduğu SADECE Excele bakılarak Fiyat Kontrolünde doğrulanmalı, AI/form hiç kullanılmamalı") tarafından
+/// paylaşılır. Kod bazlı eşleştirme metin eşleştirmesinden çok daha güvenilir (bkz. metin yedeği: eskiden
+/// TextNormalizationHelper.NormalizeName kelimeler arasındaki boşluğu KORUDUĞU için ör. "sehirici"
+/// hiçbir zaman eşleşmiyordu — bu üretimde muhtemelen hiç çalışmamış bir hataydı).</summary>
+public static class ServiceFeeTypeHelper
 {
-    private const decimal ManHoursTolerance = 0.1m;
-    private const decimal MaterialQuantityTolerance = 0.01m;
+    public const string SehirIciCode = "S1";
+    public const string SehirDisiCode = "S2";
+    public static readonly string[] ManHoursCodes = { "S3", "S4" };
 
-    // Gerçek hakediş dosyasında ("İÇ ANADOLU_İNTİKOŞ MİGROS SOĞUTMA İLAVE İŞLER") bu iki iş kalemi hep
-    // sabit MALZEME KODU (S1-S4) ile geliyor — kod bazlı eşleştirme metin eşleştirmesinden çok daha
-    // güvenilir (bkz. aşağıdaki metin yedeği: eskiden TextNormalizationHelper.NormalizeName sonucu
-    // KELİMELER ARASINDA BOŞLUK BIRAKTIĞI için ör. "sehirici" hiçbir zaman eşleşmiyordu — "1 EKIP ŞEHİR
-    // İÇİ SERVİS BEDELİ" normalize edilince "1 ekip sehir ici servis bedeli" olur, boşluksuz "sehirici"
-    // bunun içinde hiç geçmez. Bu satır hem adam-saat hem şehir içi/dışı tespitini etkileyen, üretimde
-    // muhtemelen hiç çalışmamış bir hataydı — kod bazlı eşleştirmeyle birlikte düzeltildi).
-    private const string SehirIciCode = "S1";
-    private const string SehirDisiCode = "S2";
-    private static readonly string[] ManHoursCodes = { "S3", "S4" };
+    public enum ServiceFeeType { Unknown, SehirIci, SehirDisi }
 
-    private readonly AppDbContext _db;
-    public AdditionalWorkComparisonStrategy(AppDbContext db) => _db = db;
-
-    private static bool IsManHoursItem(ProgressPaymentCheckItem i) =>
+    public static bool IsManHoursItem(ProgressPaymentCheckItem i) =>
         i.IsServiceItem && (
             ManHoursCodes.Any(c => string.Equals(i.OriginalItemCode?.Trim(), c, StringComparison.OrdinalIgnoreCase)) ||
             TextNormalizationHelper.NormalizeName(i.OriginalMaterialName).Contains("adam saat"));
 
-    private enum ServiceFeeType { Unknown, SehirIci, SehirDisi }
-
-    private static ServiceFeeType GetServiceFeeType(ProgressPaymentCheckItem i)
+    public static ServiceFeeType GetServiceFeeType(ProgressPaymentCheckItem i)
     {
         var code = i.OriginalItemCode?.Trim();
         if (string.Equals(code, SehirIciCode, StringComparison.OrdinalIgnoreCase)) return ServiceFeeType.SehirIci;
@@ -962,15 +968,27 @@ public class AdditionalWorkComparisonStrategy : ICategoryComparisonStrategy
         return ServiceFeeType.Unknown;
     }
 
-    private static bool IsServiceFeeItem(ProgressPaymentCheckItem i) =>
+    public static bool IsServiceFeeItem(ProgressPaymentCheckItem i) =>
         i.IsServiceItem && GetServiceFeeType(i) != ServiceFeeType.Unknown;
 
-    private static string FeeTypeLabel(ServiceFeeType t) => t switch
+    public static string FeeTypeLabel(ServiceFeeType t) => t switch
     {
         ServiceFeeType.SehirIci => "şehir içi",
         ServiceFeeType.SehirDisi => "şehir dışı",
         _ => "bilinmeyen",
     };
+}
+
+public class AdditionalWorkComparisonStrategy : ICategoryComparisonStrategy
+{
+    private const decimal ManHoursTolerance = 0.1m;
+    private const decimal MaterialQuantityTolerance = 0.01m;
+
+    private static bool IsManHoursItem(ProgressPaymentCheckItem i) => ServiceFeeTypeHelper.IsManHoursItem(i);
+    private static bool IsServiceFeeItem(ProgressPaymentCheckItem i) => ServiceFeeTypeHelper.IsServiceFeeItem(i);
+
+    private readonly AppDbContext _db;
+    public AdditionalWorkComparisonStrategy(AppDbContext db) => _db = db;
 
     public HakedisCategory? Category => HakedisCategory.AdditionalWork;
     public string? SingleItemLabel => null; // çok kalemli (iş kalemi listesi) kategori — tekil etiket yok
@@ -1000,7 +1018,9 @@ public class AdditionalWorkComparisonStrategy : ICategoryComparisonStrategy
 
         foreach (var page in pages)
         {
-            var (sameVisit, error) = FormNumberMatcher.Match(job.Id, page, checkItems, overriddenKeys);
+            // monthOnlyDateCheck: true — kullanıcı talebi: "İlave İşlerdeki tüm tarih hatalarını uygun
+            // sayalım, sadece ay hatası varsa kontrol edelim." Gün farkı asla Tarih Uyuşmazlığı üretmez.
+            var (sameVisit, error) = FormNumberMatcher.Match(job.Id, page, checkItems, overriddenKeys, monthOnlyDateCheck: true);
             if (error != null) { results.Add(error); continue; }
 
             var first = sameVisit![0];
@@ -1106,41 +1126,15 @@ public class AdditionalWorkComparisonStrategy : ICategoryComparisonStrategy
                 }
                 else
                 {
-                    // Kullanıcı talebi: "Ankara dışındaki illere gidiyorsa EXCELDEN kontrol edilip
-                    // '1 EKİP ŞEHİR DIŞI SERVİS BEDELİ' verilmelidir. Ankara içi ise şehir içidir. Bunu
-                    // formdan bulmana gerek yok." — mağazanın hangi ilde olduğu Excel'deki "Mağazalar"
-                    // master sayfasından (bkz. ProgressPaymentExcelParser.BuildStoreCityMap) gelir;
-                    // servis formu bu kararda HİÇ kullanılmaz. Aynı ziyaretteki kalemlerden biri
-                    // StoreCity taşıyorsa (hepsi aynı mağazaya ait olduğundan hangisi fark etmez) yeterlidir.
-                    var storeCity = sameVisit.Select(i => i.StoreCity).FirstOrDefault(c => !string.IsNullOrWhiteSpace(c));
-                    var feeType = GetServiceFeeType(fee);
-
-                    if (string.IsNullOrWhiteSpace(storeCity))
-                    {
-                        results.Add(ComparisonResultFactory.New(job.Id, page, storeLabel, AiComparisonItemType.ServiceFee, fee.OriginalMaterialName,
-                            $"{FeeTypeLabel(feeType)} talep edilmiş", $"{fee.Quantity:0.##} adet", AiComparisonStatus.ManuelKontrol,
-                            "Bu mağazanın hangi ilde olduğu hakediş Excel'indeki \"Mağazalar\" listesinden bulunamadı — " +
-                            "şehir içi/şehir dışı servis bedeli türü doğrulanamadı, manuel kontrol edilmeli.", fee.Id));
-                    }
-                    else
-                    {
-                        var isAnkara = TextNormalizationHelper.NormalizeName(storeCity) == "ankara";
-                        var expectedType = isAnkara ? ServiceFeeType.SehirIci : ServiceFeeType.SehirDisi;
-
-                        if (feeType == expectedType)
-                        {
-                            results.Add(ComparisonResultFactory.New(job.Id, page, storeLabel, AiComparisonItemType.ServiceFee, fee.OriginalMaterialName,
-                                "Servis ziyareti mevcut", $"{fee.Quantity:0.##} adet", AiComparisonStatus.Uygun,
-                                $"Mağaza {storeCity} ilinde — {FeeTypeLabel(expectedType)} servis bedeli doğru talep edilmiştir.", fee.Id));
-                        }
-                        else
-                        {
-                            results.Add(ComparisonResultFactory.New(job.Id, page, storeLabel, AiComparisonItemType.ServiceFee, fee.OriginalMaterialName,
-                                FeeTypeLabel(feeType), FeeTypeLabel(expectedType), AiComparisonStatus.UygunDegil,
-                                $"Mağaza {storeCity} ilinde — bu yüzden {FeeTypeLabel(expectedType)} servis bedeli talep edilmesi gerekirken " +
-                                $"hakedişte {FeeTypeLabel(feeType)} servis bedeli talep edilmiştir.", fee.Id));
-                        }
-                    }
+                    // Kullanıcı talebi: "servis içi/dışı olduğunu sadece Excele bakıp Fiyat Kontrolünde
+                    // gerçekleştirmek gerekiyor, AI analizi ile bu kısmı formdan kontrol etmiyoruz." —
+                    // şehir içi/şehir dışı TÜRÜNÜN doğruluğu artık burada değil, Fiyat Kontrolü adımında
+                    // (bkz. ProgressPaymentCheckService.RecalculateAsync → ValidateServiceFeeCityAsync)
+                    // salt Excel verisiyle doğrulanıyor. Burada (Form Kontrolü/AI aşaması) yalnızca
+                    // servis ücretinin mevcut/tekil olduğu doğrulanır.
+                    results.Add(ComparisonResultFactory.New(job.Id, page, storeLabel, AiComparisonItemType.ServiceFee, fee.OriginalMaterialName,
+                        "Servis ziyareti mevcut", $"{fee.Quantity:0.##} adet", AiComparisonStatus.Uygun,
+                        "Servis ücreti mevcut ve uygundur.", fee.Id));
                 }
             }
             // serviceFeeItems.Count == 0: hakedişte servis ücreti talep edilmemiş — Excel referanstır,

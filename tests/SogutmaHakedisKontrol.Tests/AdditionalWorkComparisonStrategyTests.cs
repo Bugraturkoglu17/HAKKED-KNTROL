@@ -281,103 +281,51 @@ public class AdditionalWorkComparisonStrategyTests
         Assert.DoesNotContain(feeResults, r => r.Description == "Mükerrer Servis Ücreti");
     }
 
-    /// <summary>Kullanıcı talebi: "Ankara dışındaki illere gidiyorsa Excelden kontrol edilip '1 EKİP
-    /// ŞEHİR DIŞI SERVİS BEDELİ' verilmelidir. Ankara içi ise şehir içidir. Bunu formdan bulmana gerek
-    /// yok." — mağaza Konya'da (Excel'deki "Mağazalar" sayfasından gelen StoreCity) ama hakedişte
-    /// yanlışlıkla ŞEHİR İÇİ (S1) talep edilmiş → Uygun Değil, doğru türü açıklamada belirtmeli.</summary>
+    /// <summary>Kullanıcı talebi: "İlave İşlerdeki tüm tarih hatalarını uygun sayalım, sadece ay hatası
+    /// varsa kontrol edelim." — servis formu ayın 5'ini, hakediş Excel'i aynı ayın 20'sini gösteriyor
+    /// (gün farklı, AY/YIL aynı) → Tarih Uyuşmazlığı ÜRETİLMEMELİ, kategori kontrolü normal çalışmalı.</summary>
     [Fact]
-    public async Task AnkaraDisindakiMagazayaSehirIciTalepEdilmisse_UygunDegilUretir()
+    public async Task AyniAyFarkliGunTarihi_TarihUyusmazligiUretmez()
     {
         using var db = TestDbFactory.Create();
         var (_, check) = SeedCheck(db);
-        db.ProgressPaymentCheckItems.Add(ServiceFeeItem(check.Id, "15001", "3039", new DateTime(2026, 4, 5), feeCode: "S1", storeCity: "KONYA"));
+        db.ProgressPaymentCheckItems.Add(ServiceFeeItem(check.Id, "15001", "1001", new DateTime(2026, 4, 20)));
         db.SaveChanges();
 
         var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
         {
             DocumentType = "SERVICE_FORM", FormNumber = "15001", FormNumberConfidence = 0.95m,
-            Store = new AiStoreCandidateDto { CodeRaw = "3039", Confidence = 0.9m }, ServiceDate = "2026-04-05",
+            Store = new AiStoreCandidateDto { CodeRaw = "1001", Confidence = 0.9m }, ServiceDate = "2026-04-05", // gün farklı, ay/yıl aynı
         }));
         var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
         var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
 
         var results = await pipeline.GetComparisonResultsAsync(job.Id);
-        var result = results.Single(r => r.ItemType == "ServiceFee");
-        Assert.Equal("UygunDegil", result.Status);
-        Assert.Contains("KONYA", result.Explanation);
-        Assert.Contains("şehir dışı", result.Explanation);
-        Assert.Equal("şehir dışı", result.HakedisValue);
-        Assert.Equal("şehir içi", result.FormValue);
+        Assert.DoesNotContain(results, r => r.Description == "Tarih Uyuşmazlığı");
+        var fee = results.Single(r => r.ItemType == "ServiceFee");
+        Assert.Equal("Uygun", fee.Status);
     }
 
-    /// <summary>Aynı kural, ters yönde: Ankara'daki bir mağazaya yanlışlıkla ŞEHİR DIŞI (S2) talep
-    /// edilmişse de Uygun Değil olmalı.</summary>
+    /// <summary>Aynı kural, ters yönde: AY genuinely farklıysa (Mart formu, Nisan hakedişi) hâlâ Tarih
+    /// Uyuşmazlığı üretilmeli — yalnızca GÜN farkı görmezden gelinir, AY farkı görmezden gelinmez.</summary>
     [Fact]
-    public async Task AnkaradakiMagazayaSehirDisiTalepEdilmisse_UygunDegilUretir()
+    public async Task FarkliAyTarihi_TarihUyusmazligiUretir()
     {
         using var db = TestDbFactory.Create();
         var (_, check) = SeedCheck(db);
-        db.ProgressPaymentCheckItems.Add(ServiceFeeItem(check.Id, "15001", "383", new DateTime(2026, 4, 5), feeCode: "S2", storeCity: "ANKARA"));
+        db.ProgressPaymentCheckItems.Add(ServiceFeeItem(check.Id, "15001", "1001", new DateTime(2026, 4, 20)));
         db.SaveChanges();
 
         var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
         {
             DocumentType = "SERVICE_FORM", FormNumber = "15001", FormNumberConfidence = 0.95m,
-            Store = new AiStoreCandidateDto { CodeRaw = "383", Confidence = 0.9m }, ServiceDate = "2026-04-05",
+            Store = new AiStoreCandidateDto { CodeRaw = "1001", Confidence = 0.9m }, ServiceDate = "2026-03-20", // ay farklı
         }));
         var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
         var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
 
         var results = await pipeline.GetComparisonResultsAsync(job.Id);
-        var result = results.Single(r => r.ItemType == "ServiceFee");
-        Assert.Equal("UygunDegil", result.Status);
-        Assert.Contains("ANKARA", result.Explanation);
-        Assert.Contains("şehir içi", result.Explanation);
-    }
-
-    /// <summary>Doğru eşleşme: Ankara dışı bir mağazaya doğru şekilde ŞEHİR DIŞI (S2) talep edilmiş → Uygun.</summary>
-    [Fact]
-    public async Task AnkaraDisindakiMagazayaSehirDisiDogruTalepEdilmisse_UygunUretir()
-    {
-        using var db = TestDbFactory.Create();
-        var (_, check) = SeedCheck(db);
-        db.ProgressPaymentCheckItems.Add(ServiceFeeItem(check.Id, "15001", "2294", new DateTime(2026, 4, 5), feeCode: "S2", storeCity: "ZONGULDAK"));
-        db.SaveChanges();
-
-        var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
-        {
-            DocumentType = "SERVICE_FORM", FormNumber = "15001", FormNumberConfidence = 0.95m,
-            Store = new AiStoreCandidateDto { CodeRaw = "2294", Confidence = 0.9m }, ServiceDate = "2026-04-05",
-        }));
-        var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
-        var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
-
-        var results = await pipeline.GetComparisonResultsAsync(job.Id);
-        var result = results.Single(r => r.ItemType == "ServiceFee");
-        Assert.Equal("Uygun", result.Status);
-    }
-
-    /// <summary>Mağazanın hangi ilde olduğu Excel'deki "Mağazalar" listesinden bulunamazsa (StoreCity
-    /// null) — otomatik karar verilmemeli, Manuel Kontrol'e düşmeli.</summary>
-    [Fact]
-    public async Task MagazaIliBulunamazsa_ManuelKontrolUretir()
-    {
-        using var db = TestDbFactory.Create();
-        var (_, check) = SeedCheck(db);
-        db.ProgressPaymentCheckItems.Add(ServiceFeeItem(check.Id, "15001", "9999", new DateTime(2026, 4, 5), feeCode: "S1", storeCity: null));
-        db.SaveChanges();
-
-        var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
-        {
-            DocumentType = "SERVICE_FORM", FormNumber = "15001", FormNumberConfidence = 0.95m,
-            Store = new AiStoreCandidateDto { CodeRaw = "9999", Confidence = 0.9m }, ServiceDate = "2026-04-05",
-        }));
-        var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
-        var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
-
-        var results = await pipeline.GetComparisonResultsAsync(job.Id);
-        var result = results.Single(r => r.ItemType == "ServiceFee");
-        Assert.Equal("ManuelKontrol", result.Status);
+        Assert.Contains(results, r => r.Description == "Tarih Uyuşmazlığı");
     }
 
     /// <summary>Gerçek olayda yakalanan hata: TextNormalizationHelper.NormalizeName kelimeler arasındaki

@@ -642,6 +642,33 @@ public class ProgressPaymentCheckService : IProgressPaymentCheckService
                 item.ControlNote = $"Firma tutarı: {item.CompanyLineTotal:N2} TL / Hesaplanan: {item.CalculatedLineTotal:N2} TL. " +
                     $"{Math.Abs(item.Difference.Value):N2} TL ({Math.Abs(item.DifferencePercent ?? 0):N1}%) {yon} yazılmış.";
             }
+
+            // ── Şehir içi/şehir dışı servis bedeli türü — SALT Excel'den doğrulanır ────────────────
+            // Kullanıcı talebi: "servis içi ve dışı olduğunu sadece Excele bakıp Fiyat Kontrolünde
+            // gerçekleştirmek gerekiyor. AI analizi ile bu kısmı formdan kontrol etmiyoruz." Fiyat kendi
+            // içinde tutarlı olsa bile (ör. yanlış türün fiyatı doğru yazılmış olabilir) bu satır ayrıca
+            // buradan geçer — mağazanın ili StoreCity'den (Excel'deki "Mağazalar" master sayfası, bkz.
+            // ProgressPaymentExcelParser.BuildStoreCityMap) gelir, servis formu/AI hiç kullanılmaz.
+            if (ServiceFeeTypeHelper.IsServiceFeeItem(item))
+            {
+                var feeType = ServiceFeeTypeHelper.GetServiceFeeType(item);
+                if (string.IsNullOrWhiteSpace(item.StoreCity))
+                {
+                    item.ControlNote = "Bu mağazanın hangi ilde olduğu Excel'deki \"Mağazalar\" listesinden bulunamadı — " +
+                        "şehir içi/şehir dışı servis bedeli türü doğrulanamadı.";
+                }
+                else
+                {
+                    var isAnkara = TextNormalizationHelper.NormalizeName(item.StoreCity) == "ankara";
+                    var expectedType = isAnkara ? ServiceFeeTypeHelper.ServiceFeeType.SehirIci : ServiceFeeTypeHelper.ServiceFeeType.SehirDisi;
+                    if (feeType != expectedType)
+                    {
+                        item.ControlStatus = CheckItemControlStatus.FiyatHatasi;
+                        item.ControlNote = $"Mağaza {item.StoreCity} ilinde — bu yüzden {ServiceFeeTypeHelper.FeeTypeLabel(expectedType)} " +
+                            $"servis bedeli talep edilmesi gerekirken hakedişte {ServiceFeeTypeHelper.FeeTypeLabel(feeType)} servis bedeli talep edilmiştir.";
+                    }
+                }
+            }
         }
 
         check.CalculatedTotal = calculatedTotal;
