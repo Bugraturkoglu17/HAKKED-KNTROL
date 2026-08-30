@@ -510,16 +510,27 @@ public class DefaultCategoryComparisonStrategy : ICategoryComparisonStrategy
                             formStr, hakedisStr, AiComparisonStatus.ManuelKontrol,
                             $"\"{item.OriginalMaterialName}\" için servis formunda okunan miktar belirsiz — manuel kontrol edilmeli.", item.Id, candidate.Mat.Id));
                     }
-                    else if (Math.Abs(effectiveQty.Value - item.Quantity) <= MaterialQuantityTolerance)
+                    // Kullanıcı talebi: "Excelde 2 yazan bir malzeme formda 400 yazsa da Excele göre para
+                    // vereceğim için uygun say. Ama Excelde 2 yazıyorsa formda 1 ise fazla para vermiş
+                    // olurum." — ödeme HAKEDİŞTEKİ (Excel) miktar üzerinden yapılır; form yalnızca bunun
+                    // GERÇEKTEN KULLANILMIŞ olduğunu doğrular. Form miktarı hakedişten AZ ise fazla ödeme
+                    // riski vardır (Uygun Değil); form miktarı hakedişe eşit YA DA FAZLA ise (fazlası
+                    // formda kalır, hakedişten fazlası zaten talep/ödeme konusu değildir) ödeme güvenlidir
+                    // (Uygun). Bu artık iki-yönlü bir "eşitlik" kontrolü DEĞİL, tek-yönlü bir "yeterlilik"
+                    // kontrolüdür.
+                    else if (effectiveQty.Value >= item.Quantity - MaterialQuantityTolerance)
                     {
+                        var not = effectiveQty.Value > item.Quantity + MaterialQuantityTolerance
+                            ? $" (Formda hakedişteki miktardan fazlası kullanılmış görünüyor — ödeme yine de hakedişteki {hakedisStr} üzerinden yapılır.)"
+                            : string.Empty;
                         results.Add(ComparisonResultFactory.New(job.Id, page, storeLabel, AiComparisonItemType.Material, item.OriginalMaterialName,
-                            formStr, hakedisStr, AiComparisonStatus.Uygun, "Hakedişte talep edilen miktar servis formunda doğrulanmıştır.", item.Id, candidate.Mat.Id));
+                            formStr, hakedisStr, AiComparisonStatus.Uygun, $"Hakedişte talep edilen miktar servis formunda doğrulanmıştır.{not}", item.Id, candidate.Mat.Id));
                     }
                     else
                     {
                         results.Add(ComparisonResultFactory.New(job.Id, page, storeLabel, AiComparisonItemType.Material, item.OriginalMaterialName,
                             formStr, hakedisStr, AiComparisonStatus.UygunDegil,
-                            $"Hakedişte {hakedisStr} talep edilmiş, servis formunda {formStr} doğrulanmıştır.", item.Id, candidate.Mat.Id));
+                            $"Hakedişte {hakedisStr} talep edilmiş, servis formunda yalnızca {formStr} doğrulanmıştır — fazla ödeme riski vardır.", item.Id, candidate.Mat.Id));
                     }
                 }
                 else
@@ -1129,16 +1140,27 @@ public class AdditionalWorkComparisonStrategy : ICategoryComparisonStrategy
                             formStr, hakedisStr, AiComparisonStatus.ManuelKontrol,
                             $"\"{item.OriginalMaterialName}\" için servis formunda okunan miktar belirsiz — manuel kontrol edilmeli.", item.Id, candidate.Mat.Id));
                     }
-                    else if (Math.Abs(effectiveQty.Value - item.Quantity) <= MaterialQuantityTolerance)
+                    // Kullanıcı talebi: "Excelde 2 yazan bir malzeme formda 400 yazsa da Excele göre para
+                    // vereceğim için uygun say. Ama Excelde 2 yazıyorsa formda 1 ise fazla para vermiş
+                    // olurum." — ödeme HAKEDİŞTEKİ (Excel) miktar üzerinden yapılır; form yalnızca bunun
+                    // GERÇEKTEN KULLANILMIŞ olduğunu doğrular. Form miktarı hakedişten AZ ise fazla ödeme
+                    // riski vardır (Uygun Değil); form miktarı hakedişe eşit YA DA FAZLA ise (fazlası
+                    // formda kalır, hakedişten fazlası zaten talep/ödeme konusu değildir) ödeme güvenlidir
+                    // (Uygun). Bu artık iki-yönlü bir "eşitlik" kontrolü DEĞİL, tek-yönlü bir "yeterlilik"
+                    // kontrolüdür.
+                    else if (effectiveQty.Value >= item.Quantity - MaterialQuantityTolerance)
                     {
+                        var not = effectiveQty.Value > item.Quantity + MaterialQuantityTolerance
+                            ? $" (Formda hakedişteki miktardan fazlası kullanılmış görünüyor — ödeme yine de hakedişteki {hakedisStr} üzerinden yapılır.)"
+                            : string.Empty;
                         results.Add(ComparisonResultFactory.New(job.Id, page, storeLabel, AiComparisonItemType.Material, item.OriginalMaterialName,
-                            formStr, hakedisStr, AiComparisonStatus.Uygun, "Hakedişte talep edilen miktar servis formunda doğrulanmıştır.", item.Id, candidate.Mat.Id));
+                            formStr, hakedisStr, AiComparisonStatus.Uygun, $"Hakedişte talep edilen miktar servis formunda doğrulanmıştır.{not}", item.Id, candidate.Mat.Id));
                     }
                     else
                     {
                         results.Add(ComparisonResultFactory.New(job.Id, page, storeLabel, AiComparisonItemType.Material, item.OriginalMaterialName,
                             formStr, hakedisStr, AiComparisonStatus.UygunDegil,
-                            $"Hakedişte {hakedisStr} talep edilmiş, servis formunda {formStr} doğrulanmıştır.", item.Id, candidate.Mat.Id));
+                            $"Hakedişte {hakedisStr} talep edilmiş, servis formunda yalnızca {formStr} doğrulanmıştır — fazla ödeme riski vardır.", item.Id, candidate.Mat.Id));
                     }
                 }
                 else

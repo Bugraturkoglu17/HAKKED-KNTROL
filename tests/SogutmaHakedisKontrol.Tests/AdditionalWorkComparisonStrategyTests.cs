@@ -306,6 +306,43 @@ public class AdditionalWorkComparisonStrategyTests
         Assert.Contains("2", result.Explanation);
     }
 
+    /// <summary>Kullanıcı talebi: "Excelde 2 yazan bir malzeme formda 400 yazsa da Excele göre para
+    /// vereceğim için uygun say." — ödeme hakedişteki miktar üzerinden yapıldığından, formda hakedişten
+    /// FAZLA miktar görünmesi fazla ödeme riski taşımaz (yönlü/asimetrik miktar kontrolü).</summary>
+    [Fact]
+    public async Task FormdakiMiktarHakedistenCokDahaFazlaysa_UygunUretir()
+    {
+        using var db = TestDbFactory.Create();
+        var (_, check) = SeedCheck(db);
+        db.ProgressPaymentCheckItems.Add(new ProgressPaymentCheckItem
+        {
+            ProgressPaymentCheckId = check.Id, StoreCode = "1001", StoreName = "Ankara MM",
+            VisitDate = new DateTime(2026, 4, 5), MaintenanceFormNo = "15001",
+            IsServiceItem = false, OriginalMaterialName = "Filtre",
+            Quantity = 2, Unit = "adet", CompanyUnitPrice = 10, CompanyLineTotal = 20,
+            CreatedAt = DateTime.Now,
+        });
+        db.SaveChanges();
+
+        var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
+        {
+            DocumentType = "SERVICE_FORM", FormNumber = "15001", FormNumberConfidence = 0.95m,
+            Store = new AiStoreCandidateDto { CodeRaw = "1001", Confidence = 0.9m }, ServiceDate = "2026-04-05",
+            Materials = new List<AiMaterialExtractionDto>
+            {
+                new() { RawName = "Filtre", NormalizedName = "filtre", Quantity = 400, Unit = "adet", Confidence = 0.9m },
+            },
+        }));
+        var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
+        var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
+
+        var results = await pipeline.GetComparisonResultsAsync(job.Id);
+        var result = results.Single(r => r.ItemType == "Material");
+        Assert.Equal("Uygun", result.Status);
+        Assert.Contains("400", result.FormValue);
+        Assert.Contains("hakedişteki", result.Explanation);
+    }
+
     /// <summary>Spec örneği: hakedişte Solenoid Vana talep edilmiş ama formda hiç bulunmuyor → Formda Doğrulanamadı (Eksik).</summary>
     [Fact]
     public async Task ExceldeTalepEdilenMalzemeFormdaYoksa_EksikUretir()
