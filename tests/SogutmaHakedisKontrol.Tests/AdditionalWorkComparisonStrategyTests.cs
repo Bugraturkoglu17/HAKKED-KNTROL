@@ -487,10 +487,11 @@ public class AdditionalWorkComparisonStrategyTests
         Assert.Equal("Uygun", fee.Status);
     }
 
-    /// <summary>Aynı kural, ters yönde: AY genuinely farklıysa (Mart formu, Nisan hakedişi) hâlâ Tarih
-    /// Uyuşmazlığı üretilmeli — yalnızca GÜN farkı görmezden gelinir, AY farkı görmezden gelinmez.</summary>
+    /// <summary>Kullanıcı talebi (revize): "İlave İşlerdeki tarihle alakalı hataları kaldır, bu kategoride
+    /// önemli değil." — AY hatta YIL bile farklı olsa (Mart 2026 formu, Nisan 2026 hakedişi; hatta 2024
+    /// formu, 2026 hakedişi) İlave İşler'de artık Tarih Uyuşmazlığı asla üretilmez.</summary>
     [Fact]
-    public async Task FarkliAyTarihi_TarihUyusmazligiUretir()
+    public async Task FarkliAyVeyaYilTarihi_TarihUyusmazligiUretmez()
     {
         using var db = TestDbFactory.Create();
         var (_, check) = SeedCheck(db);
@@ -500,13 +501,15 @@ public class AdditionalWorkComparisonStrategyTests
         var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
         {
             DocumentType = "SERVICE_FORM", FormNumber = "15001", FormNumberConfidence = 0.95m,
-            Store = new AiStoreCandidateDto { CodeRaw = "1001", Confidence = 0.9m }, ServiceDate = "2026-03-20", // ay farklı
+            Store = new AiStoreCandidateDto { CodeRaw = "1001", Confidence = 0.9m }, ServiceDate = "2024-03-20", // hem ay hem yıl farklı
         }));
         var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
         var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
 
         var results = await pipeline.GetComparisonResultsAsync(job.Id);
-        Assert.Contains(results, r => r.Description == "Tarih Uyuşmazlığı");
+        Assert.DoesNotContain(results, r => r.Description == "Tarih Uyuşmazlığı");
+        var fee = results.Single(r => r.ItemType == "ServiceFee");
+        Assert.Equal("Uygun", fee.Status);
     }
 
     /// <summary>Gerçek olayda yakalanan hata: TextNormalizationHelper.NormalizeName kelimeler arasındaki
@@ -544,9 +547,57 @@ public class AdditionalWorkComparisonStrategyTests
         // Asıl kontrol edilen şey: ADAM SAAT kaleminin (eski hatayla hiç tetiklenmeyen) HİÇ ATLANMADAN
         // tespit edilmiş olması — bir ManHours sonucu üretilmesi bunu tek başına kanıtlar.
         var result = results.Single(r => r.ItemType == "ManHours");
-        // 08:00-16:00 = 8 saat çalışma - 4 saat kural = 4 ödenebilir saat; hakediş 8 saat istemiş → uyuşmuyor.
+        // 08:00-16:00 = 8 saat çalışma, TEK kişilik ziyaret olduğu için 2 saat düşülür (kullanıcı talebi)
+        // → 6 ödenebilir saat; hakediş 8 saat istemiş → uyuşmuyor.
         Assert.Equal("UygunDegil", result.Status);
-        Assert.Equal("4 saat", result.FormValue);
+        Assert.Equal("6 saat", result.FormValue);
         Assert.Equal("8 saat", result.HakedisValue);
+    }
+
+    /// <summary>Kullanıcı talebi: "2 kişinin 4 saat çalıştığı ... 2. kişinin verileri ilki ile aynı
+    /// olduğunda '' işareti kullanılmıştır ... herkes eşit miktarda çalışır ... kaç kişi olduklarını
+    /// tespit et ... 3 satırı da kaç saat çalıştığını kontrol etmesin ... eğer toplam saat altta
+    /// yazmıyorsa 'kişi sayısı × 1 kişinin çalışma süresi' diyebilirsin." — formda alt toplam YAZILMADIĞI
+    /// senaryoda, 2. personelin saatleri "" (aynı) işaretiyle yazıldığı için AI o satırın başlangıç/bitiş
+    /// saatini OKUYAMAMIŞ olsa bile (null), toplam KİŞİ SAYISI × İLK KİŞİNİN SÜRESİYLE hesaplanmalı —
+    /// eski satır-satır toplama yöntemiyle olduğu gibi tek satırın eksik okunması yüzünden AZ ÇIKMAMALIDIR.</summary>
+    [Fact]
+    public async Task IkinciPersonelinSaatiDittoIsaretiYuzundenOkunamazsa_KisiSayisiIleCarpilarakHesaplanir()
+    {
+        using var db = TestDbFactory.Create();
+        var (_, check) = SeedCheck(db);
+        db.ProgressPaymentCheckItems.Add(new ProgressPaymentCheckItem
+        {
+            ProgressPaymentCheckId = check.Id, StoreCode = "1001", StoreName = "Ankara MM",
+            VisitDate = new DateTime(2026, 4, 5), MaintenanceFormNo = "15001",
+            IsServiceItem = true, OriginalItemCode = "S3", OriginalMaterialName = "ADAM SAAT GUNDUZ /GECE (>=2. GUN)",
+            Quantity = 4, Unit = "saat", CompanyUnitPrice = 750, CompanyLineTotal = 3000,
+            CreatedAt = DateTime.Now,
+        });
+        db.SaveChanges();
+
+        var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
+        {
+            DocumentType = "SERVICE_FORM", FormNumber = "15001", FormNumberConfidence = 0.95m,
+            Store = new AiStoreCandidateDto { CodeRaw = "1001", Confidence = 0.9m }, ServiceDate = "2026-04-05",
+            // FormTotalHours BİLEREK verilmiyor — kullanıcının tarif ettiği "toplam saat altta yazmıyorsa" durumu.
+            Employees = new List<AiEmployeeExtractionDto>
+            {
+                new() { NameRaw = "Personel 1", StartTime = "14:00", EndTime = "18:00", Confidence = 0.9m }, // 4 saat
+                // "" (ditto) işareti yüzünden AI 2. personelin saatlerini okuyamamış — boş kalmış.
+                new() { NameRaw = "Personel 2", StartTime = null, EndTime = null, Confidence = 0.5m },
+            },
+        }));
+        var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
+        var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
+
+        var results = await pipeline.GetComparisonResultsAsync(job.Id);
+        var result = results.Single(r => r.ItemType == "ManHours");
+        // Eski (satır satır toplama) yöntemle: yalnızca Personel 1'in 4 saati sayılır → 4 saat toplam,
+        // 2 kişi kuralı gereği 4 saat düşülünce 0 ödenebilir saat çıkardı (YANLIŞ, gerçekte 8 adam-saat var).
+        // Yeni yöntemle: 2 kişi × 4 saat = 8 toplam adam-saat, 4 saat kural düşülünce 4 ödenebilir —
+        // hakedişin istediği 4 saatle tam örtüşüyor.
+        Assert.Equal("Uygun", result.Status);
+        Assert.Equal("4 saat", result.FormValue);
     }
 }

@@ -150,6 +150,13 @@ internal static class FormNumberMatcher
     private const decimal MinFormNumberConfidence = 0.4m;
     private const double MinStoreNameSimilarity = 0.5;
 
+    /// <summary>Strict: tam gün eşleşmesi aranır (Varsayılan/Gaz/Glikol). MonthOnly: yalnızca YIL+AY
+    /// karşılaştırılır, gün farkı yok sayılır. Skip: tarih hiç karşılaştırılmaz — kullanıcı talebi:
+    /// "İlave İşlerdeki tarihle alakalı hataları kaldır, bu kategoride önemli değil." (AdditionalWork,
+    /// hem malzeme/servis bedeli hem Adam-Saat satırları dahil — form/mağaza eşleşmesi hâlâ zorunludur,
+    /// yalnızca TARİH artık bu kategoride hiçbir zaman "Uygun Değil" üretmez.)</summary>
+    public enum DateCheckMode { Strict, MonthOnly, Skip }
+
     // Mağaza adı karşılaştırmasında anlamsız gürültü sayılan, karar üzerinde etkisi olmaması gereken
     // kelimeler (zincir/format ekleri, il adı, adres bağlaçları) — yalnızca mağaza eşleştirmede kullanılır,
     // TextNormalizationHelper.NormalizeName'e eklenmez çünkü malzeme adı gibi başka karşılaştırmaları bozar.
@@ -168,9 +175,9 @@ internal static class FormNumberMatcher
     /// </summary>
     public static (List<ProgressPaymentCheckItem>? Matched, AiComparisonResult? Error) Match(
         int jobId, AiDocumentPage page, List<ProgressPaymentCheckItem> checkItems, HashSet<string> overriddenMatchKeys,
-        bool monthOnlyDateCheck = false)
+        DateCheckMode dateCheckMode = DateCheckMode.Strict)
     {
-        var (matched, hardError, softIssue) = MatchCore(jobId, page, checkItems, monthOnlyDateCheck);
+        var (matched, hardError, softIssue) = MatchCore(jobId, page, checkItems, dateCheckMode);
         if (hardError != null) return (null, hardError);
         if (softIssue != null) return (null, softIssue);
         return (matched, null);
@@ -185,15 +192,10 @@ internal static class FormNumberMatcher
     /// null döner.
     /// </summary>
     public static (List<ProgressPaymentCheckItem>? Matched, AiComparisonResult? HardError, AiComparisonResult? SoftIssue) MatchWithSoftIssue(
-        int jobId, AiDocumentPage page, List<ProgressPaymentCheckItem> checkItems) => MatchCore(jobId, page, checkItems, monthOnlyDateCheck: false);
+        int jobId, AiDocumentPage page, List<ProgressPaymentCheckItem> checkItems) => MatchCore(jobId, page, checkItems, DateCheckMode.Strict);
 
-    /// <param name="monthOnlyDateCheck">Kullanıcı talebi: "İlave İşlerdeki tüm tarih hatalarını uygun
-    /// sayalım, sadece ay hatası varsa kontrol edelim." — true iken servis formu tarihiyle hakediş
-    /// tarihi arasında yalnızca YIL+AY karşılaştırılır, gün farkı asla "Tarih Uyuşmazlığı" üretmez.
-    /// Yalnızca AdditionalWorkComparisonStrategy bunu true geçer; diğer kategoriler (Gaz/Glikol/
-    /// Varsayılan) etkilenmez, hâlâ tam gün eşleşmesi arar.</param>
     private static (List<ProgressPaymentCheckItem>? Matched, AiComparisonResult? HardError, AiComparisonResult? SoftIssue) MatchCore(
-        int jobId, AiDocumentPage page, List<ProgressPaymentCheckItem> checkItems, bool monthOnlyDateCheck = false)
+        int jobId, AiDocumentPage page, List<ProgressPaymentCheckItem> checkItems, DateCheckMode dateCheckMode = DateCheckMode.Strict)
     {
         var label = StoreLabelFallback(page);
 
@@ -260,11 +262,13 @@ internal static class FormNumberMatcher
         }
 
         // 4) Tarih doğrulama — ikisi de doluyken farklıysa hata; biri boşsa (yetersiz veri) engelleme.
-        // monthOnlyDateCheck=true iken (İlave İşler) yalnızca YIL+AY karşılaştırılır — gün farkları
-        // (evrak/imza gecikmesi vb. çok yaygın) artık hiç "Tarih Uyuşmazlığı" üretmez.
-        var datesDiffer = page.ServiceDate.HasValue && first.VisitDate.HasValue && (monthOnlyDateCheck
-            ? (page.ServiceDate.Value.Year != first.VisitDate.Value.Year || page.ServiceDate.Value.Month != first.VisitDate.Value.Month)
-            : page.ServiceDate.Value.Date != first.VisitDate.Value.Date);
+        // MonthOnly (eski İlave İşler kuralı) yalnızca YIL+AY karşılaştırır, gün farkını yok sayar.
+        // Skip (kullanıcı talebi: "İlave İşlerdeki tarihle alakalı hataları kaldır, bu kategoride önemli
+        // değil.") tarihi HİÇ karşılaştırmaz — bu kategoride artık tarih asla "Uygun Değil" üretmez.
+        var datesDiffer = dateCheckMode != DateCheckMode.Skip
+            && page.ServiceDate.HasValue && first.VisitDate.HasValue && (dateCheckMode == DateCheckMode.MonthOnly
+                ? (page.ServiceDate.Value.Year != first.VisitDate.Value.Year || page.ServiceDate.Value.Month != first.VisitDate.Value.Month)
+                : page.ServiceDate.Value.Date != first.VisitDate.Value.Date);
         if (datesDiffer)
         {
             var softIssue = ComparisonResultFactory.New(jobId, page, hakedisStoreLabel, AiComparisonItemType.Material,
@@ -1109,9 +1113,10 @@ public class AdditionalWorkComparisonStrategy : ICategoryComparisonStrategy
 
         foreach (var page in pages)
         {
-            // monthOnlyDateCheck: true — kullanıcı talebi: "İlave İşlerdeki tüm tarih hatalarını uygun
-            // sayalım, sadece ay hatası varsa kontrol edelim." Gün farkı asla Tarih Uyuşmazlığı üretmez.
-            var (sameVisit, error) = FormNumberMatcher.Match(job.Id, page, checkItems, overriddenKeys, monthOnlyDateCheck: true);
+            // DateCheckMode.Skip — kullanıcı talebi: "İlave İşlerdeki tarihle alakalı hataları kaldır,
+            // bu kategoride önemli değil." Tarih artık bu kategoride hiç karşılaştırılmaz (form/mağaza
+            // eşleşmesi hâlâ zorunlu — yalnızca tarih farkı "Uygun Değil" üretmekten çıkarıldı).
+            var (sameVisit, error) = FormNumberMatcher.Match(job.Id, page, checkItems, overriddenKeys, FormNumberMatcher.DateCheckMode.Skip);
             if (error != null) { results.Add(error); continue; }
 
             var first = sameVisit![0];
