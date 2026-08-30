@@ -161,6 +161,76 @@ public class AdditionalWorkComparisonStrategyTests
         Assert.All(materialResults, r => Assert.NotNull(r.MatchedMaterialId));
     }
 
+    /// <summary>Kullanıcı talebi: gerçek bir servis formu fotoğrafından — teknisyen "Dolap Elektronik
+    /// Fan Motoru" resmi adını bilmediği için formda yalnızca "Sütlük Fanı" yazmış. Tam metin benzerliği
+    /// çok düşük çıkar ("dolap elektronik fan motoru" ~ "sutluk fani") ama "fan" ~ "fani" kelime/önek
+    /// örtüşmesi var — bu yeterli sayılmalı, miktar (adet) üzerinden doğrulama devam etmeli.</summary>
+    [Fact]
+    public async Task TeknisyenResmiOlmayanIsimYazmissa_AnahtarKelimeOrtusmesiyleEslesir()
+    {
+        using var db = TestDbFactory.Create();
+        var (_, check) = SeedCheck(db);
+        db.ProgressPaymentCheckItems.Add(new ProgressPaymentCheckItem
+        {
+            ProgressPaymentCheckId = check.Id, StoreCode = "1001", StoreName = "Ankara MM",
+            VisitDate = new DateTime(2026, 4, 5), MaintenanceFormNo = "15001",
+            IsServiceItem = false, OriginalMaterialName = "DOLAP ELEKTRONİK FAN MOTORU",
+            Quantity = 2, Unit = "adet", CompanyUnitPrice = 27.18m, CompanyLineTotal = 54.36m,
+            CreatedAt = DateTime.Now,
+        });
+        db.SaveChanges();
+
+        var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
+        {
+            DocumentType = "SERVICE_FORM", FormNumber = "15001", FormNumberConfidence = 0.95m,
+            Store = new AiStoreCandidateDto { CodeRaw = "1001", Confidence = 0.9m }, ServiceDate = "2026-04-05",
+            Materials = new List<AiMaterialExtractionDto>
+            {
+                new() { RawName = "Sütlük Fanı", NormalizedName = "sutluk fani", Quantity = 2, Unit = "adet", Confidence = 0.7m },
+            },
+        }));
+        var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
+        var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
+
+        var results = await pipeline.GetComparisonResultsAsync(job.Id);
+        var result = results.Single(r => r.ItemType == "Material");
+        Assert.Equal("Uygun", result.Status);
+    }
+
+    /// <summary>Aynı kural: "CAREL Modül Arayüz Adaptörü" için teknisyen yalnızca marka adını kısaltarak
+    /// "TOP Card" yazmış (gerçek olayda "CAR" okunmuş) — "car" ~ "carel" önek örtüşmesiyle eşleşmeli.</summary>
+    [Fact]
+    public async Task MarkaAdiKisaltilmissa_OnekOrtusmesiyleEslesir()
+    {
+        using var db = TestDbFactory.Create();
+        var (_, check) = SeedCheck(db);
+        db.ProgressPaymentCheckItems.Add(new ProgressPaymentCheckItem
+        {
+            ProgressPaymentCheckId = check.Id, StoreCode = "1001", StoreName = "Ankara MM",
+            VisitDate = new DateTime(2026, 4, 5), MaintenanceFormNo = "15001",
+            IsServiceItem = false, OriginalMaterialName = "CAREL MODÜL ARAYÜZ ADAPTÖRÜ",
+            Quantity = 8, Unit = "adet", CompanyUnitPrice = 10, CompanyLineTotal = 80,
+            CreatedAt = DateTime.Now,
+        });
+        db.SaveChanges();
+
+        var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
+        {
+            DocumentType = "SERVICE_FORM", FormNumber = "15001", FormNumberConfidence = 0.95m,
+            Store = new AiStoreCandidateDto { CodeRaw = "1001", Confidence = 0.9m }, ServiceDate = "2026-04-05",
+            Materials = new List<AiMaterialExtractionDto>
+            {
+                new() { RawName = "Car", NormalizedName = "car", Quantity = 8, Unit = "adet", Confidence = 0.6m },
+            },
+        }));
+        var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
+        var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
+
+        var results = await pipeline.GetComparisonResultsAsync(job.Id);
+        var result = results.Single(r => r.ItemType == "Material");
+        Assert.Equal("Uygun", result.Status);
+    }
+
     /// <summary>Spec örneği: hakedişte Filtre 3 adet talep edilmiş, formda 2 adet doğrulanmış → Miktar Uyuşmazlığı.</summary>
     [Fact]
     public async Task ExceldeTalepEdilenMiktarFormdakindenFarkliysa_UygunDegilUretir()

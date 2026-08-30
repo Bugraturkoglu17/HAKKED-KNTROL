@@ -8,6 +8,38 @@ using SogutmaHakedisKontrol.Infrastructure.Data;
 
 namespace SogutmaHakedisKontrol.Infrastructure.Services;
 
+/// <summary>Kullanıcı talebi: servis formunu dolduran teknisyen genelde katalogdaki TAM resmi adı
+/// bilmez — "Dolap Elektronik Fan Motoru" yerine yalnızca "Fan" ya da kendi ifadesiyle "Sütlük Fanı"
+/// yazar; "CAREL Modül Arayüz Adaptörü" yerine yalnızca marka adını "CAREL" ya da kısaltarak "CAR"
+/// yazar. Tam metin Levenshtein benzerliği (bkz. TextNormalizationHelper.SimilarityRatio) bu durumlarda
+/// çok düşük çıkıp gerçek bir eşleşmeyi "Eksik" gösterir. Bu yüzden iki isim arasında güçlü bir
+/// SÖZCÜK/ÖNEK örtüşmesi (ör. "fan" ~ "fani", "car" ~ "carel") de geçerli bir eşleşme kanıtı sayılır —
+/// miktar karşılaştırması (adet üzerinden) zaten ayrıca doğrulayacaktır, bu yüzden isim tarafında ÇOK
+/// katı olmaya gerek yoktur.</summary>
+internal static class MaterialNameMatcher
+{
+    // Çok kısa/genel kelimeler tek başına eşleşme kanıtı sayılmaz (yanlış pozitif riski) — malzeme
+    // adlarında sık geçen ama ayırt edici olmayan kelimeler.
+    private static readonly HashSet<string> StopWords = new()
+        { "ve", "ile", "icin", "bir", "bu", "adet", "set", "yeni", "eski" };
+    private const int MinKeywordLength = 3;
+
+    public static bool HasKeywordOverlap(string normalizedA, string normalizedB)
+    {
+        var wordsA = SignificantWords(normalizedA).ToList();
+        var wordsB = SignificantWords(normalizedB).ToList();
+        foreach (var a in wordsA)
+            foreach (var b in wordsB)
+                if (a.StartsWith(b, StringComparison.Ordinal) || b.StartsWith(a, StringComparison.Ordinal))
+                    return true;
+        return false;
+    }
+
+    private static IEnumerable<string> SignificantWords(string normalized) =>
+        normalized.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Where(w => w.Length >= MinKeywordLength && !StopWords.Contains(w));
+}
+
 internal static class ComparisonResultFactory
 {
     public static AiComparisonResult New(int jobId, AiDocumentPage page, string storeLabel,
@@ -427,13 +459,15 @@ public class DefaultCategoryComparisonStrategy : ICategoryComparisonStrategy
             {
                 var searchName = TextNormalizationHelper.NormalizeName(item.OriginalMaterialName);
                 var candidate = page.Materials
-                    .Select(m => (Mat: m, Score: TextNormalizationHelper.SimilarityRatio(searchName, TextNormalizationHelper.NormalizeName(m.NormalizedName ?? m.RawName))))
+                    .Select(m => (Mat: m, Score: TextNormalizationHelper.SimilarityRatio(searchName, TextNormalizationHelper.NormalizeName(m.NormalizedName ?? m.RawName)),
+                                   KeywordOverlap: MaterialNameMatcher.HasKeywordOverlap(searchName, TextNormalizationHelper.NormalizeName(m.NormalizedName ?? m.RawName))))
+                    .Where(x => x.Score >= 0.6 || x.KeywordOverlap)
                     .OrderByDescending(x => x.Score)
                     .FirstOrDefault();
 
                 var hakedisStr = $"{item.Quantity:0.##} {item.Unit}";
 
-                if (candidate.Mat != null && candidate.Score >= 0.6)
+                if (candidate.Mat != null)
                 {
                     var effectiveQty = candidate.Mat.UserCorrectedQuantity ?? candidate.Mat.Quantity;
                     var formStr = effectiveQty.HasValue ? $"{effectiveQty.Value:0.##} {candidate.Mat.UserCorrectedUnit ?? candidate.Mat.Unit}" : "Okunamadı";
@@ -1033,13 +1067,15 @@ public class AdditionalWorkComparisonStrategy : ICategoryComparisonStrategy
             {
                 var searchName = TextNormalizationHelper.NormalizeName(item.OriginalMaterialName);
                 var candidate = page.Materials
-                    .Select(m => (Mat: m, Score: TextNormalizationHelper.SimilarityRatio(searchName, TextNormalizationHelper.NormalizeName(m.NormalizedName ?? m.RawName))))
+                    .Select(m => (Mat: m, Score: TextNormalizationHelper.SimilarityRatio(searchName, TextNormalizationHelper.NormalizeName(m.NormalizedName ?? m.RawName)),
+                                   KeywordOverlap: MaterialNameMatcher.HasKeywordOverlap(searchName, TextNormalizationHelper.NormalizeName(m.NormalizedName ?? m.RawName))))
+                    .Where(x => x.Score >= 0.6 || x.KeywordOverlap)
                     .OrderByDescending(x => x.Score)
                     .FirstOrDefault();
 
                 var hakedisStr = $"{item.Quantity:0.##} {item.Unit}";
 
-                if (candidate.Mat != null && candidate.Score >= 0.6)
+                if (candidate.Mat != null)
                 {
                     var effectiveQty = candidate.Mat.UserCorrectedQuantity ?? candidate.Mat.Quantity;
                     var formStr = effectiveQty.HasValue ? $"{effectiveQty.Value:0.##} {candidate.Mat.UserCorrectedUnit ?? candidate.Mat.Unit}" : "Okunamadı";
