@@ -589,13 +589,20 @@ public class GasUsageComparisonStrategy : ICategoryComparisonStrategy
             var hakedisGasItems = sameVisit.Where(i => IsGas(i.OriginalMaterialName)).ToList();
             if (hakedisGasItems.Count > 0)
             {
-                var formGasKg = ExtractGasKg(page);
+                var (formGasKg, gasRawBeforeCorrection) = ExtractGasKg(page);
                 var hakedisGasKg = hakedisGasItems.Sum(i => i.Quantity);
                 var firstGasItemId = hakedisGasItems[0].Id;
 
                 AiComparisonStatus gasStatus;
                 string gasFormStr, gasExplanation;
                 var hakedisStr = $"{hakedisGasKg:0.##} kg";
+                // Tüpler 5 kg'dan başlar — AI'nın okuduğu değer bu yüzden otomatik düzeltilmiş olabilir
+                // (bkz. NormalizeGasReading). Düzeltme yapıldıysa açıklamada her zaman belirtilir, sonuç
+                // Uygun ya da Uygun Değil çıksa da fark etmez — kullanıcı "1,5 kg" yazsa bile bunun
+                // aslında "15 kg" okunduğunu bilmeli.
+                var correctionNote = gasRawBeforeCorrection.HasValue
+                    ? $" (AI formda {gasRawBeforeCorrection.Value:0.##} kg okudu; gaz tüpleri 5 kg'nin altında olamayacağından {formGasKg:0.##} kg olarak düzeltildi.)"
+                    : string.Empty;
 
                 if (!formGasKg.HasValue)
                 {
@@ -609,7 +616,7 @@ public class GasUsageComparisonStrategy : ICategoryComparisonStrategy
                     if (Math.Abs(formGasKg.Value - hakedisGasKg) <= GasQuantityTolerance)
                     {
                         gasStatus = AiComparisonStatus.Uygun;
-                        gasExplanation = "Hakedişteki gaz miktarı servis formuyla uyumlu.";
+                        gasExplanation = "Hakedişteki gaz miktarı servis formuyla uyumlu." + correctionNote;
                     }
                     else if (QuantityOcrHelper.IsDecimalShiftMatch(formGasKg.Value, hakedisGasKg, GasQuantityTolerance))
                     {
@@ -617,12 +624,12 @@ public class GasUsageComparisonStrategy : ICategoryComparisonStrategy
                         // hata (20→2, 15→1.5) — gerçek okuma tooltip'te görünür kalır, yalnızca Durum
                         // düzeltilir (bkz. Glikol ile aynı desen).
                         gasStatus = AiComparisonStatus.Uygun;
-                        gasExplanation = $"Servis formunda {gasFormStr} okunmuştur — muhtemel ondalık basamak okuma hatası nedeniyle hakedişteki {hakedisStr} ile eşleştirilmiş ve uygun kabul edilmiştir.";
+                        gasExplanation = $"Servis formunda {gasFormStr} okunmuştur — muhtemel ondalık basamak okuma hatası nedeniyle hakedişteki {hakedisStr} ile eşleştirilmiş ve uygun kabul edilmiştir.{correctionNote}";
                     }
                     else
                     {
                         gasStatus = AiComparisonStatus.UygunDegil;
-                        gasExplanation = $"Hakedişte {hakedisStr} gaz belirtilmiş, servis formunda {gasFormStr} tespit edilmiştir.";
+                        gasExplanation = $"Hakedişte {hakedisStr} gaz belirtilmiş, servis formunda {gasFormStr} tespit edilmiştir.{correctionNote}";
                     }
                 }
 
@@ -711,7 +718,22 @@ public class GasUsageComparisonStrategy : ICategoryComparisonStrategy
         }
     }
 
-    private static decimal? ExtractGasKg(AiDocumentPage page)
+    // Kullanıcı talebi: "tüpler 5 kg'dan başlar" — bir soğutucu gaz tüpü/dolumu fiziksel olarak bu
+    // değerin altında olamaz. AI'nın okuduğu "1,5 kg" / "2,5 kg" gibi bir değer bu yüzden GERÇEKTE
+    // "15 kg" / "25 kg" olup ondalık ayıracı yanlış konumlandırılmış bir OCR hatasıdır — bu düzeltme
+    // yalnızca AI'nın kendi okuması için geçerlidir (kullanıcının Düzelt ile ELLE girdiği bir değer asla
+    // otomatik çarpılmaz, kullanıcı ne yazdıysa odur).
+    private const decimal MinPhysicalGasCylinderKg = 5m;
+
+    /// <summary>Ham okumayı ve (varsa) fiziksel-minimum düzeltmesi uygulanmış son değeri birlikte döner
+    /// — çağıran taraf, bir düzeltme yapıldığında bunu açıklamaya yansıtabilsin diye.</summary>
+    private static (decimal? Value, decimal? RawBeforeCorrection) NormalizeGasReading(decimal raw)
+    {
+        if (raw > 0 && raw < MinPhysicalGasCylinderKg) return (raw * 10, raw);
+        return (raw, null);
+    }
+
+    private static (decimal? Value, decimal? RawBeforeCorrection) ExtractGasKg(AiDocumentPage page)
     {
         // Birden fazla "gaz" eşleşen malzeme olabilir: AI'nın orijinal okuduğu satır VE kullanıcının
         // manuel düzeltme için eklediği sentetik satır (bkz. CorrectSingleItemQuantityAsync). Kullanıcı
@@ -719,19 +741,19 @@ public class GasUsageComparisonStrategy : ICategoryComparisonStrategy
         // AI'nın orijinal, yanlış okuduğu satırı) seçip kullanıcının girdiği miktarı sessizce yok sayardı.
         var gasMaterials = page.Materials.Where(m => IsGas(m.RawName) || IsGas(m.NormalizedName)).ToList();
         var corrected = gasMaterials.FirstOrDefault(m => m.UserCorrectedQuantity.HasValue);
-        if (corrected != null) return corrected.UserCorrectedQuantity;
+        if (corrected != null) return (corrected.UserCorrectedQuantity, null); // kullanıcı girdisi — düzeltilmez
 
         var gasMaterial = gasMaterials.FirstOrDefault();
-        if (gasMaterial != null)
-            return gasMaterial.Quantity;
+        if (gasMaterial?.Quantity != null)
+            return NormalizeGasReading(gasMaterial.Quantity.Value);
 
         if (!string.IsNullOrEmpty(page.DescriptionRaw))
         {
             var match = GasKgRegex.Match(page.DescriptionRaw);
             if (match.Success && decimal.TryParse(match.Groups[1].Value.Replace(',', '.'), NumberStyles.Any, CultureInfo.InvariantCulture, out var v))
-                return v;
+                return NormalizeGasReading(v);
         }
-        return null;
+        return (null, null);
     }
 }
 

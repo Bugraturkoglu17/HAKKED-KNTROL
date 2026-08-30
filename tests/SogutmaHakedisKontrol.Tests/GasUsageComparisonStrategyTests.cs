@@ -97,10 +97,11 @@ public class GasUsageComparisonStrategyTests
         Assert.Equal("40 kg", result.HakedisValue);
     }
 
-    /// <summary>TEST 1b — OCR ondalık basamak hatası: hakedişte 20kg, formda "2kg" okunmuş (sondaki
-    /// sıfır düşmüş) → yine de UYGUN kabul edilir, ham okuma (2 kg) FormValue'de görünür kalır.</summary>
+    /// <summary>TEST 1b — kullanıcı talebi: "tüpler 5 kg'dan başlar", bu yüzden formda "2 kg" gibi
+    /// fiziksel olarak imkansız bir okuma otomatik olarak "20 kg"ya düzeltilir (yalnızca durumu değil,
+    /// GÖRÜNEN FormValue'yi de) — hakedişteki 20kg ile tam eşleşir, UYGUN olur.</summary>
     [Fact]
-    public async Task Test1b_OcrOndalikHatasi_2Kg20KgIleEslesir_UygunUretir()
+    public async Task Test1b_FizikselMinimumAltiOkuma_2Kg20KgOlarakDuzeltilirVeUygunUretir()
     {
         using var db = TestDbFactory.Create();
         var (_, check) = SeedCheck(db);
@@ -119,14 +120,15 @@ public class GasUsageComparisonStrategyTests
         var results = await pipeline.GetComparisonResultsAsync(job.Id);
         var result = results.Single(r => r.ItemType == "GasUsage");
         Assert.Equal("Uygun", result.Status);
-        Assert.Equal("2 kg", result.FormValue);
+        Assert.Equal("20 kg", result.FormValue);
         Assert.Equal("20 kg", result.HakedisValue);
+        Assert.Contains("5 kg", result.Explanation); // düzeltme notu açıklamada görünür kalmalı
     }
 
-    /// <summary>TEST 1c — OCR ondalık basamak hatası: hakedişte 15kg, formda "1,5kg" okunmuş (ondalık
-    /// nokta yanlışlıkla eklenmiş) → yine de UYGUN kabul edilir.</summary>
+    /// <summary>TEST 1c — aynı kural: formda "1,5 kg" (ondalık ayıracı yanlış konumlanmış, gaz tüpleri
+    /// 5 kg'nin altında olamaz) → otomatik "15 kg"ya düzeltilir, hakedişteki 15kg ile eşleşir, UYGUN olur.</summary>
     [Fact]
-    public async Task Test1c_OcrOndalikHatasi_1_5Kg15KgIleEslesir_UygunUretir()
+    public async Task Test1c_FizikselMinimumAltiOkuma_1_5Kg15KgOlarakDuzeltilirVeUygunUretir()
     {
         using var db = TestDbFactory.Create();
         var (_, check) = SeedCheck(db);
@@ -145,8 +147,9 @@ public class GasUsageComparisonStrategyTests
         var results = await pipeline.GetComparisonResultsAsync(job.Id);
         var result = results.Single(r => r.ItemType == "GasUsage");
         Assert.Equal("Uygun", result.Status);
-        Assert.Equal("1,5 kg", result.FormValue);
+        Assert.Equal("15 kg", result.FormValue);
         Assert.Equal("15 kg", result.HakedisValue);
+        Assert.Contains("5 kg", result.Explanation);
     }
 
     /// <summary>TEST 1d — Gerçekten farklı bir miktar (10x ilişkisi YOK) hâlâ UYGUN DEĞİL kalmalı —
@@ -171,6 +174,34 @@ public class GasUsageComparisonStrategyTests
         var results = await pipeline.GetComparisonResultsAsync(job.Id);
         var result = results.Single(r => r.ItemType == "GasUsage");
         Assert.Equal("UygunDegil", result.Status);
+    }
+
+    /// <summary>TEST 1e — fiziksel-minimum düzeltmesi yapılsa BİLE hakedişle eşleşmeyebilir (gerçek bir
+    /// hakediş/form farkı olabilir) — bu durumda Uygun Değil kalmalı ama açıklama, kullanıcının "1,5 kg
+    /// değil aslında 15 kg" yorumunu zaten yaptığını göstermeli (düzeltilmiş değer FormValue'de görünür,
+    /// ham okuma açıklamada kalır).</summary>
+    [Fact]
+    public async Task Test1e_FizikselMinimumAltiOkumaDuzeltilirAmaHakedisleYineDeUyusmazsaUygunDegilKalir()
+    {
+        using var db = TestDbFactory.Create();
+        var (_, check) = SeedCheck(db);
+        db.ProgressPaymentCheckItems.Add(GasItem(check.Id, "20961", "710", "5M Ankara", new DateTime(2026, 5, 21), 20));
+        db.SaveChanges();
+
+        var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
+        {
+            DocumentType = "SERVICE_FORM", FormNumber = "20961", FormNumberConfidence = 0.95m,
+            Store = new AiStoreCandidateDto { CodeRaw = "710", Confidence = 0.9m }, ServiceDate = "2026-05-21",
+            Materials = new List<AiMaterialExtractionDto> { GasMaterial(1.5m) }, // 15'e düzeltilir, hakediş 20 ister
+        }));
+        var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
+        var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
+
+        var results = await pipeline.GetComparisonResultsAsync(job.Id);
+        var result = results.Single(r => r.ItemType == "GasUsage");
+        Assert.Equal("UygunDegil", result.Status);
+        Assert.Equal("15 kg", result.FormValue); // düzeltilmiş değer — ham "1,5 kg" değil
+        Assert.Contains("1,5 kg", result.Explanation); // ham okuma şeffaflık için açıklamada kalmalı
     }
 
     /// <summary>TEST 2 — Form No/mağaza doğru ama servis formu tarihi Excel'deki tarihten farklı
