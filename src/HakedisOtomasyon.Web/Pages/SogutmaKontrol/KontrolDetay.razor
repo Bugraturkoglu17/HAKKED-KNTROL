@@ -93,9 +93,9 @@ else
             <ToolBarContent>
                 <MudGrid Spacing="1" AlignItems="AlignItems.Center">
                     <MudItem xs="12" md="3">
-                        <MudTextField @bind-Value="_searchText" Placeholder="Ara..."
+                        <MudTextField @key="_searchBoxKey" @bind-Value="_searchText" Placeholder="Ara..."
                                       Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
-                                      Immediate Dense Clearable OnClearButtonClick="@(() => _searchText = string.Empty)"
+                                      Immediate Dense Clearable OnClearButtonClick="ClearSearch"
                                       Variant="Variant.Outlined" Class="mt-0" />
                     </MudItem>
                     <MudItem xs="12" md="9">
@@ -233,12 +233,21 @@ else
     private List<ProgressPaymentCheckItemDto> _items = new();
     private bool _loading = true;
     private string _searchText = string.Empty;
+    // "x" (temizle) tıklanınca artırılır, MudTextField'ı sıfırdan yeniden oluşturmaya zorlar — yalnızca
+    // _searchText'i boşaltmak yetmiyordu (bkz. FormKontrol.razor'daki aynı alanın açıklaması).
+    private int _searchBoxKey;
     private string _statusFilter = "all";
     private int _bulkCorrectableCount;
 
     private int _pendingCount => _items.Count(i => i.MatchStatus == MaterialMatchStatus.FuzzyPending && !i.IsExcluded);
 
     protected override async Task OnParametersSetAsync() => await LoadAsync();
+
+    private void ClearSearch()
+    {
+        _searchText = string.Empty;
+        _searchBoxKey++;
+    }
 
     private async Task LoadAsync()
     {
