@@ -334,6 +334,14 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
         page.RequiresManualReview = x.RequiresManualReview;
         page.ManualReviewReason = x.Warnings is { Count: > 0 } ? string.Join(" ", x.Warnings) : null;
 
+        // Bir sayfa yeniden analiz edilirse (retry) ÖNCEKİ çalıştırmadan kalan personel/malzeme
+        // satırları temizlenmeden yeni satırlar eklenirse veri İKİLENİR (ör. 2 kişilik bir ekip yeniden
+        // analiz edilince 3 personel kaydı — eski birleşik + yeni ayrılmış ikisi birden — kalıp adam-saat
+        // hesabını bozar). Normal "başarısız sayfa" akışında bu koleksiyonlar zaten boştur (başarısız
+        // çağrı hiç veri yazmaz) ama savunma amaçlı burada da açıkça temizleniyor.
+        page.Employees.Clear();
+        page.Materials.Clear();
+
         foreach (var emp in x.Employees)
         {
             var start = TryParseTime(emp.StartTime);
