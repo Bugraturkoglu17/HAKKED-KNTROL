@@ -337,8 +337,23 @@ public static class ProgressPaymentExcelParser
         if (cell is null || cell.IsEmpty()) return false;
         if (cell.DataType == XLDataType.Number)
         {
-            value = (decimal)cell.GetDouble();
-            return true;
+            // Bazı dosyalarda (özellikle Excel dışı bir araçla üretilmiş/dışa aktarılmış hakedişlerde)
+            // formül hücresinin DataType'ı "Number" görünür ama hesaplanmış (cache'lenmiş) değer hiç
+            // yazılmamıştır — ClosedXML böyle bir hücreyi okurken "Specified cast is not valid"
+            // (InvalidCastException) fırlatır. Bu durum GİRDİDEKİ BİR BOZUKLUKTUR, kodun hatası değildir;
+            // tüm analizi çökertmek yerine bu tek hücreyi "okunamadı" (false) kabul edip devam ediyoruz —
+            // bu zaten diğer boş/parse edilemeyen hücrelerle aynı muameledir.
+            try
+            {
+                value = (decimal)cell.GetDouble();
+                return true;
+            }
+            catch (InvalidCastException)
+            {
+                value = 0;
+                // Aşağıdaki metin yoluna düşer — GetString() de genelde boş döner (cache'lenmemiş
+                // formül), bu durumda text yolu da false döndürür; sonuç: "değer yok" olarak işlenir.
+            }
         }
         var text = (cell.GetString() ?? string.Empty).Trim()
             .Replace("TL", "", StringComparison.OrdinalIgnoreCase)
