@@ -468,6 +468,7 @@ public class DefaultCategoryComparisonStrategy : ICategoryComparisonStrategy
         var pages = await _db.AiDocumentPages
             .Where(p => p.JobId == job.Id && p.DocumentType == AiDocumentType.ServiceForm)
             .Include(p => p.Materials)
+            .Include(p => p.Employees)
             .ToListAsync(cancellationToken);
 
         var checkItems = await _db.ProgressPaymentCheckItems
@@ -578,10 +579,15 @@ public class DefaultCategoryComparisonStrategy : ICategoryComparisonStrategy
                     }
                     else
                     {
+                        // Kullanıcı talebi: "1 çalışan varsa 2 saat düşülmelidir" — düşülen saat ekip
+                        // büyüklüğüne göre değişir (bkz. ManHoursCalculator), bu yüzden metinde SABİT "4 saat"
+                        // yazmak yerine gerçekte kaç kişi tespit edildiğine göre doğru rakam gösterilir.
+                        var namedEmployeeCount = page.Employees.Count(e => !string.IsNullOrWhiteSpace(e.NameRaw));
+                        var deductedHours = namedEmployeeCount == 1 ? "2" : "4";
                         results.Add(ComparisonResultFactory.New(job.Id, page, storeLabel, AiComparisonItemType.ManHours, "Adam-Saat",
                             formStr, hakedisStr, AiComparisonStatus.UygunDegil,
                             $"Formdaki çalışma sürelerine göre toplam {page.CalculatedManHours:0.##} adam-saat oluşmaktadır. " +
-                            $"Kural gereği 4 saat düşülerek en fazla {page.PayableManHours:0.##} adam-saat ödenebilir."));
+                            $"Kural gereği ({namedEmployeeCount} kişi) {deductedHours} saat düşülerek en fazla {page.PayableManHours:0.##} adam-saat ödenebilir."));
                     }
                 }
                 else
@@ -672,6 +678,7 @@ public class GasUsageComparisonStrategy : ICategoryComparisonStrategy
         var pages = await _db.AiDocumentPages
             .Where(p => p.JobId == job.Id && p.DocumentType == AiDocumentType.ServiceForm)
             .Include(p => p.Materials)
+            .Include(p => p.Employees)
             .ToListAsync(cancellationToken);
 
         var checkItems = await _db.ProgressPaymentCheckItems
@@ -901,6 +908,7 @@ public class GlycolUsageComparisonStrategy : ICategoryComparisonStrategy
         var pages = await _db.AiDocumentPages
             .Where(p => p.JobId == job.Id && p.DocumentType == AiDocumentType.ServiceForm)
             .Include(p => p.Materials)
+            .Include(p => p.Employees)
             .ToListAsync(cancellationToken);
 
         var checkItems = await _db.ProgressPaymentCheckItems
@@ -1096,6 +1104,7 @@ public class AdditionalWorkComparisonStrategy : ICategoryComparisonStrategy
         var pages = await _db.AiDocumentPages
             .Where(p => p.JobId == job.Id && p.DocumentType == AiDocumentType.ServiceForm)
             .Include(p => p.Materials)
+            .Include(p => p.Employees)
             .ToListAsync(cancellationToken);
 
         var checkItems = await _db.ProgressPaymentCheckItems
@@ -1206,10 +1215,15 @@ public class AdditionalWorkComparisonStrategy : ICategoryComparisonStrategy
                     }
                     else
                     {
+                        // Kullanıcı talebi: "1 çalışan varsa 2 saat düşülmelidir" — düşülen saat ekip
+                        // büyüklüğüne göre değişir (bkz. ManHoursCalculator), bu yüzden metinde SABİT "4 saat"
+                        // yazmak yerine gerçekte kaç kişi tespit edildiğine göre doğru rakam gösterilir.
+                        var namedEmployeeCount = page.Employees.Count(e => !string.IsNullOrWhiteSpace(e.NameRaw));
+                        var deductedHours = namedEmployeeCount == 1 ? "2" : "4";
                         results.Add(ComparisonResultFactory.New(job.Id, page, storeLabel, AiComparisonItemType.ManHours, "Adam-Saat",
                             formStr, hakedisStr, AiComparisonStatus.UygunDegil,
                             $"Formdaki çalışma sürelerine göre toplam {page.CalculatedManHours:0.##} adam-saat oluşmaktadır. " +
-                            $"Kural gereği 4 saat düşülerek en fazla {page.PayableManHours:0.##} adam-saat ödenebilir."));
+                            $"Kural gereği ({namedEmployeeCount} kişi) {deductedHours} saat düşülerek en fazla {page.PayableManHours:0.##} adam-saat ödenebilir."));
                     }
                 }
                 else

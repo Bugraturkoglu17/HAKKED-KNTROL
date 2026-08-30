@@ -377,6 +377,46 @@ public class AdditionalWorkComparisonStrategyTests
         Assert.Contains("hakedişteki", result.Explanation);
     }
 
+    /// <summary>Kullanıcı talebi: "eğer 1 çalışan varsa 2 saat düşülmelidir... kuralı şuan yok" —
+    /// gerçekte hesap doğru çalışıyordu (tek kişide 2 saat düşülüyordu) ama açıklama metni HER ZAMAN
+    /// sabit "4 saat düşülerek" yazıyordu, bu da kullanıcının kuralın çalışmadığını sanmasına yol açtı.
+    /// Açıklama artık gerçek kişi sayısı ve gerçekte düşülen saati göstermeli.</summary>
+    [Fact]
+    public async Task TekKisilikZiyaretteUyusmazlikAciklamasi_GercektenDusulenIkiSaatiGosterir()
+    {
+        using var db = TestDbFactory.Create();
+        var (_, check) = SeedCheck(db);
+        db.ProgressPaymentCheckItems.Add(new ProgressPaymentCheckItem
+        {
+            ProgressPaymentCheckId = check.Id, StoreCode = "1001", StoreName = "Ankara MM",
+            VisitDate = new DateTime(2026, 4, 5), MaintenanceFormNo = "15001",
+            IsServiceItem = true, OriginalItemCode = "S3", OriginalMaterialName = "ADAM SAAT GUNDUZ /GECE (>=2. GUN)",
+            Quantity = 2, Unit = "saat", CompanyUnitPrice = 750, CompanyLineTotal = 1500,
+            CreatedAt = DateTime.Now,
+        });
+        db.SaveChanges();
+
+        var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
+        {
+            DocumentType = "SERVICE_FORM", FormNumber = "15001", FormNumberConfidence = 0.95m,
+            Store = new AiStoreCandidateDto { CodeRaw = "1001", Confidence = 0.9m }, ServiceDate = "2026-04-05",
+            Employees = new List<AiEmployeeExtractionDto>
+            {
+                new() { NameRaw = "Sedat Avcı", StartTime = "09:00", EndTime = "16:00", Confidence = 0.9m }, // 7 saat, tek kişi
+            },
+        }));
+        var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
+        var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
+
+        var results = await pipeline.GetComparisonResultsAsync(job.Id);
+        var result = results.Single(r => r.ItemType == "ManHours");
+        // 7 saat toplam, tek kişi olduğu için 2 saat düşülür → 5 ödenebilir; hakediş 2 istiyor → uyuşmuyor.
+        Assert.Equal("UygunDegil", result.Status);
+        Assert.Equal("5 saat", result.FormValue);
+        Assert.Contains("(1 kişi) 2 saat düşülerek", result.Explanation);
+        Assert.DoesNotContain("4 saat düşülerek", result.Explanation);
+    }
+
     /// <summary>Spec örneği: hakedişte Solenoid Vana talep edilmiş ama formda hiç bulunmuyor → Formda Doğrulanamadı (Eksik).</summary>
     [Fact]
     public async Task ExceldeTalepEdilenMalzemeFormdaYoksa_EksikUretir()
