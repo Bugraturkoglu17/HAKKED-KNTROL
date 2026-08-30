@@ -389,14 +389,31 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
             .Include(p => p.Employees)
             .ToListAsync(cancellationToken);
 
-        // Adam-saat: yalnızca SERVICE_FORM sayfaları için
+        // Adam-saat: yalnızca SERVICE_FORM sayfaları için. Kullanıcı talebi: "herkes eşit miktarda
+        // çalışır, biri 3 saat biri 2 saat çalışmaz" — ekip aynı saatte çalışır, 2./3. kişinin satırında
+        // teknisyen "" (aynı) işareti kullanır; bu satırların süresini AYRI AYRI okumaya güvenmek yerine
+        // (ditto işaretli satırlarda AI süreyi boş/yanlış okuyabilir) kişi sayısı × (okunabilen herhangi
+        // bir satırın süresi) ile hesaplanır. Formun kendi yazdığı "Toplam" alanı varsa (FormTotalHoursRaw)
+        // ona öncelik verilir — o zaman kişi bazlı hesaba hiç gerek yoktur.
         foreach (var page in pages.Where(p => p.DocumentType == AiDocumentType.ServiceForm))
         {
-            var total = page.Employees.Where(e => e.HoursWorked.HasValue).Sum(e => e.HoursWorked!.Value);
+            var employees = page.Employees.Where(e => !string.IsNullOrWhiteSpace(e.NameRaw)).ToList();
+            var employeeCount = employees.Count;
+            var rowSum = page.Employees.Where(e => e.HoursWorked.HasValue).Sum(e => e.HoursWorked!.Value);
+            var oneDuration = employees.Select(e => e.HoursWorked).FirstOrDefault(h => h.HasValue);
+
+            decimal total;
+            if (page.FormTotalHoursRaw.HasValue)
+                total = page.FormTotalHoursRaw.Value;
+            else if (oneDuration.HasValue && employeeCount > 0)
+                total = employeeCount * oneDuration.Value;
+            else
+                total = rowSum;
+
             page.CalculatedManHours = total;
-            page.PayableManHours = _manHours.CalculatePayableHours(total);
+            page.PayableManHours = _manHours.CalculatePayableHours(total, employeeCount);
             page.FormTotalMatch = page.FormTotalHoursRaw.HasValue
-                ? Math.Abs(page.FormTotalHoursRaw.Value - total) <= ManHoursTolerance
+                ? Math.Abs(page.FormTotalHoursRaw.Value - rowSum) <= ManHoursTolerance
                 : null;
         }
 

@@ -16,7 +16,7 @@ public class ManHoursCalculatorTests
         var total = h1!.Value + h2!.Value;
 
         Assert.Equal(4m, total);
-        Assert.Equal(0m, _calc.CalculatePayableHours(total));
+        Assert.Equal(0m, _calc.CalculatePayableHours(total, employeeCount: 2));
     }
 
     [Fact]
@@ -27,7 +27,7 @@ public class ManHoursCalculatorTests
             .Sum();
 
         Assert.Equal(15m, total);
-        Assert.Equal(11m, _calc.CalculatePayableHours(total));
+        Assert.Equal(11m, _calc.CalculatePayableHours(total, employeeCount: 3));
     }
 
     [Fact]
@@ -38,7 +38,18 @@ public class ManHoursCalculatorTests
             .Sum();
 
         Assert.Equal(12m, total);
-        Assert.Equal(8m, _calc.CalculatePayableHours(total));
+        Assert.Equal(8m, _calc.CalculatePayableHours(total, employeeCount: 3));
+    }
+
+    /// <summary>Kullanıcı talebi: "sadece tek istisna 1 kişi giderse 2 toplam çalışma saatinden 2 saat
+    /// düşülür" — ekip (2+) için düşülen 4 saat kuralının aksine, TEK kişilik ziyarette yalnızca 2 saat düşülür.</summary>
+    [Fact]
+    public void TekKisiDortSaat_DortAdamSaat_OdenebilirIki()
+    {
+        var total = _calc.CalculateHours(TimeSpan.Parse("10:00"), TimeSpan.Parse("14:00"))!.Value;
+
+        Assert.Equal(4m, total);
+        Assert.Equal(2m, _calc.CalculatePayableHours(total, employeeCount: 1));
     }
 
     [Fact]
