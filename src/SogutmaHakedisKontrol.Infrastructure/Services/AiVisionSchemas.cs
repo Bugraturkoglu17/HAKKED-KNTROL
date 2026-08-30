@@ -58,6 +58,19 @@ public static class AiVisionSchemas
         EKLEME — sıra numarasını raw_name olarak yazmak ciddi bir hatadır. Yalnızca malzeme adı hanesinde
         gerçek el yazısı içerik gördüğün satırları çıkar; boş/numarasız-içeriksiz satırları tamamen atla.
 
+        ── ÇALIŞAN PERSONEL TABLOSU — SATIR SAYISI = KİŞİ SAYISI, '""' İŞARETİNİ BOŞ/ATLA SANMA ──
+        Sayfanın ortasındaki "Çalışan Personel Ad/Soyad" tablosunda KAÇ SATIRDA isim yazıyorsa O KADAR
+        KİŞİ çalışmıştır — bu sayı daha sonra hakedişte kişi başına düşülecek saat hesabında kullanılır,
+        bu yüzden employees dizisinin uzunluğu HER ZAMAN tablodaki dolu satır sayısına eşit olmalıdır,
+        eksik/fazla satır ciddi bir ödeme hatasına yol açar. Ekip aynı saatte çalıştığı için teknisyenler
+        genelde 2./3. satırın Tarih/Baş.Saat/Bitiş Saat (bazen isim) hanelerine değeri tekrar el yazısıyla
+        yazmak yerine '"' / '„' gibi bir TEKRAR (ditto) işareti koyar. Bu işareti gördüğünde o satırı
+        ASLA atlama veya employees dizisinden çıkarma — yine ayrı bir nesne ekle ve ditto işaretli her
+        alanı (start_time, end_time, gerekirse name_raw) BİR ÜST SATIRDAKİYLE AYNI değerle doldur; yalnızca
+        confidence'ı biraz düşük tutabilirsin. "Toplam: ... Adam / ... Saat" alanı çoğu zaman BOŞ
+        bırakılır — bu alana güvenme, kişi sayısını HER ZAMAN tablodaki isim satırlarını tek tek sayarak
+        belirle.
+
         ── SAYFA SINIFLANDIRMA ─────────────────────────────────────────────
         Yüklenen PDF tek tip belge değildir; üç farklı sayfa şablonu karışık sırayla bulunabilir:
 
