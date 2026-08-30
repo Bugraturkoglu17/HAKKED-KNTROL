@@ -89,6 +89,17 @@ public static class AiVisionSchemas
         bırakılır — bu alana güvenme, kişi sayısını HER ZAMAN tablodaki isim satırlarını tek tek sayarak
         belirle.
 
+        ── "TOPLAM: ... ADAM / ... SAAT" ALANINI ASLA BİRBİRİNE KARIŞTIRMA ──
+        Bu iki kutu FARKLI ŞEYLERDİR: "Adam" kutusu KİŞİ SAYISIDIR (ör. "3"), "Saat" kutusu ise TOPLAM
+        ÇALIŞMA SÜRESİDİR (ör. "12"). form_total_hours alanına YALNIZCA "Saat" kutusundaki sayı yazılır —
+        "Adam" kutusundaki kişi sayısını form_total_hours'a yazmak CİDDİ bir hatadır (ör. gerçekte 12 saat
+        çalışılmışken formda "3 Adam" yazdığı için form_total_hours'ı yanlışlıkla "3" yazmak). İki kutu
+        yan yana veya üst üste olduğu için karışması kolaydır — hangi sayının hangi etiketin (Adam/Saat)
+        ALTINDA/YANINDA olduğunu dikkatle ayırt et. Emin değilsen form_total_hours'ı null bırak, tahmin etme.
+        Ayrıca: "Adam" kutusundaki kişi sayısı, senin employees dizisine eklediğin isim satırı sayısından
+        FAZLAYSA, tabloyu tekrar tara — muhtemelen bir satırı (soluk yazı, ditto işareti vb. yüzünden)
+        atlamışsındır; employees dizisinin uzunluğu bu sayıyla eşleşmelidir.
+
         ── SAYFA SINIFLANDIRMA ─────────────────────────────────────────────
         Yüklenen PDF tek tip belge değildir; üç farklı sayfa şablonu karışık sırayla bulunabilir:
 
@@ -165,7 +176,7 @@ public static class AiVisionSchemas
             "maintenance_date": { "type": ["string", "null"], "description": "ISO 8601 yyyy-MM-dd, formun en altındaki tarih, yalnızca PERIODIC_MAINTENANCE_FORM" },
             "description_raw": { "type": ["string", "null"] },
             "work_performed_raw": { "type": ["string", "null"] },
-            "form_total_hours": { "type": ["number", "null"], "description": "Formda yazan toplam saat, varsa" },
+            "form_total_hours": { "type": ["number", "null"], "description": "Yalnızca 'Toplam: ... Saat' kutusundaki değer — 'Toplam: ... Adam' (kişi sayısı) kutusuyla ASLA karıştırma, o alan buraya yazılmaz." },
             "employees": {
               "type": "array",
               "items": {

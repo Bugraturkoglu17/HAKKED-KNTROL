@@ -410,8 +410,18 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
             var rowSum = page.Employees.Where(e => e.HoursWorked.HasValue).Sum(e => e.HoursWorked!.Value);
             var oneDuration = employees.Select(e => e.HoursWorked).FirstOrDefault(h => h.HasValue);
 
+            // Gerçek olayda yakalanan hata: aynı form iki farklı analizde form_total_hours olarak bir kez
+            // "8" (doğru), bir kez "3" (yanlış — muhtemelen "Toplam: 3 Adam" kişi sayısı kutusu "Saat"
+            // kutusuyla karıştırılmış) döndürdü; 2 kişi × 4 saat = 8 olduğu hâlde sistem yanlış "3"e
+            // güvenip 0 ödenebilir saat hesapladı. Matematiksel olarak toplam süre HİÇBİR ZAMAN tek bir
+            // kişinin süresinden AZ OLAMAZ (toplam = herkesin süresinin toplamıdır) — bu yüzden
+            // FormTotalHoursRaw, en az bir kişinin okunan süresinden düşükse güvenilmez sayılıp yok
+            // sayılır, kişi sayısı bazlı hesaba düşülür.
+            var formTotalIsImplausible = page.FormTotalHoursRaw.HasValue && oneDuration.HasValue
+                && page.FormTotalHoursRaw.Value < oneDuration.Value;
+
             decimal total;
-            if (page.FormTotalHoursRaw.HasValue)
+            if (page.FormTotalHoursRaw.HasValue && !formTotalIsImplausible)
                 total = page.FormTotalHoursRaw.Value;
             else if (oneDuration.HasValue && employeeCount > 0)
                 total = employeeCount * oneDuration.Value;

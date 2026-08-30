@@ -640,4 +640,47 @@ public class AdditionalWorkComparisonStrategyTests
         Assert.Equal("Uygun", result.Status);
         Assert.Equal("4 saat", result.FormValue);
     }
+
+    /// <summary>Gerçek olayda yakalanan hata: aynı form iki ayrı analizde form_total_hours olarak bir kez
+    /// doğru "8" (2 kişi × 4 saat), bir kez yanlış "3" (muhtemelen "Toplam: 3 Adam" kişi sayısı kutusuyla
+    /// karıştırılmış) döndürdü — sistem yanlış "3"e körü körüne güvenip 0 ödenebilir saat hesapladı.
+    /// Toplam süre hiçbir zaman TEK bir kişinin süresinden az olamayacağı için (toplam = herkesin
+    /// toplamıdır), bariz şekilde düşük/imkânsız bir form_total_hours artık yok sayılıp kişi sayısı
+    /// bazlı hesaba (2 × 4 = 8) düşülür.</summary>
+    [Fact]
+    public async Task FormTotalHoursTekKisininSuresindenAzsa_GuvenilmezSayilipKisiSayisiIleHesaplanir()
+    {
+        using var db = TestDbFactory.Create();
+        var (_, check) = SeedCheck(db);
+        db.ProgressPaymentCheckItems.Add(new ProgressPaymentCheckItem
+        {
+            ProgressPaymentCheckId = check.Id, StoreCode = "1001", StoreName = "Ankara MM",
+            VisitDate = new DateTime(2026, 4, 5), MaintenanceFormNo = "15001",
+            IsServiceItem = true, OriginalItemCode = "S3", OriginalMaterialName = "ADAM SAAT GUNDUZ /GECE (>=2. GUN)",
+            Quantity = 4, Unit = "saat", CompanyUnitPrice = 750, CompanyLineTotal = 3000,
+            CreatedAt = DateTime.Now,
+        });
+        db.SaveChanges();
+
+        var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
+        {
+            DocumentType = "SERVICE_FORM", FormNumber = "15001", FormNumberConfidence = 0.95m,
+            Store = new AiStoreCandidateDto { CodeRaw = "1001", Confidence = 0.9m }, ServiceDate = "2026-04-05",
+            FormTotalHours = 3m, // muhtemelen "3 Adam" kişi sayısı kutusuyla karışmış, imkansız derecede düşük
+            Employees = new List<AiEmployeeExtractionDto>
+            {
+                new() { NameRaw = "Personel 1", StartTime = "14:00", EndTime = "18:00", Confidence = 0.9m }, // 4 saat
+                new() { NameRaw = "Personel 2", StartTime = "14:00", EndTime = "18:00", Confidence = 0.9m }, // 4 saat
+            },
+        }));
+        var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
+        var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
+
+        var results = await pipeline.GetComparisonResultsAsync(job.Id);
+        var result = results.Single(r => r.ItemType == "ManHours");
+        // form_total_hours=3 yok sayılmalı (tek kişinin süresi olan 4'ten bile az) — 2×4=8 toplam,
+        // 4 saat kural düşülünce 4 ödenebilir, hakedişin istediği 4 saatle örtüşüp Uygun olmalı.
+        Assert.Equal("Uygun", result.Status);
+        Assert.Equal("4 saat", result.FormValue);
+    }
 }
