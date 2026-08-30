@@ -337,21 +337,23 @@ public class ProgressPaymentCheckService : IProgressPaymentCheckService
     }
 
     /// <summary>Seçilen kalem(ler)le ham malzeme adı/spec'i BİREBİR aynı olan, aynı kontrol içindeki
-    /// DİĞER bekleyen (FuzzyPending) kalemleri de bulup listeye ekler — kullanıcı bir eşleşmeyi tek
-    /// satırda onayladığında, aynı malzeme Excel'de kaç kez geçerse geçsin hepsi otomatik eşleşsin
-    /// diye (tek satır arama diyaloğu ve "turuncu kuyruk" grup diyaloğu artık aynı davranışı verir).
-    /// Zaten Onaylanmış/Reddedilmiş (ManuallyMatched/Exact/Unmatched) kalemlere DOKUNULMAZ — yalnızca
-    /// hâlâ FuzzyPending durumunda olanlar genişletmeye dahil edilir.</summary>
+    /// DİĞER TÜM kalemleri de bulup listeye ekler — kullanıcı talebi: "birini düzeltirsem aynı olan tüm
+    /// malzemeler düzeltilmelidir". Mevcut durumları (Unmatched/FuzzyPending/Exact/ManuallyMatched)
+    /// FARK ETMEZ — kullanıcı bir satırı elle "Yeniden Eşleştir" ile düzelttiğinde, bu kasıtlı bir
+    /// düzeltme eylemidir ve aynı ham malzemenin (aynı ad+ölçü) Excel'de kaç kez geçtiği fark etmeksizin
+    /// hepsine uygulanmalıdır — daha önce başka bir (yanlış) kaleme otomatik eşleşmiş olmaları bile bu
+    /// düzeltmeyi engellemez. Yalnızca kullanıcının kontrol dışı bıraktığı (IsExcluded) satırlar hariç
+    /// tutulur — o satırlar zaten kontrol kapsamı dışıdır.</summary>
     private async Task<List<ProgressPaymentCheckItem>> ExpandToSameKeyPendingAsync(int checkId, List<ProgressPaymentCheckItem> seedItems)
     {
         var keys = seedItems
             .Select(i => (Name: i.OriginalMaterialName.Trim(), Spec: (i.OriginalMaterialSpec ?? "").Trim()))
             .ToHashSet();
 
-        var pending = await _db.ProgressPaymentCheckItems
-            .Where(i => i.ProgressPaymentCheckId == checkId && i.MatchStatus == MaterialMatchStatus.FuzzyPending)
+        var all = await _db.ProgressPaymentCheckItems
+            .Where(i => i.ProgressPaymentCheckId == checkId && !i.IsExcluded)
             .ToListAsync();
-        var siblings = pending.Where(i => keys.Contains((i.OriginalMaterialName.Trim(), (i.OriginalMaterialSpec ?? "").Trim())));
+        var siblings = all.Where(i => keys.Contains((i.OriginalMaterialName.Trim(), (i.OriginalMaterialSpec ?? "").Trim())));
 
         return seedItems.Concat(siblings).GroupBy(i => i.Id).Select(g => g.First()).ToList();
     }

@@ -81,4 +81,38 @@ public class ProgressPaymentCheckServiceMatchTests
         // Farklı malzeme adına sahip satır dokunulmamış (hâlâ FuzzyPending) kalmalı.
         Assert.Equal(MaterialMatchStatus.FuzzyPending, refreshed.Single(i => i.Id == other.Id).MatchStatus);
     }
+
+    /// <summary>Kullanıcı talebi: "birini düzeltirsem aynı olan tüm malzemeler düzeltilmelidir" — yalnızca
+    /// hâlâ FuzzyPending olanlar değil, DAHA ÖNCE (yanlış) bir kaleme otomatik/manuel eşleşmiş olan aynı
+    /// ham ad/spec'e sahip kalemler de "Yeniden Eşleştir" ile düzeltildiğinde birlikte düzeltilmeli.</summary>
+    [Fact]
+    public async Task ResolveMatchAsync_DahaOnceYanlisEslesmisAyniHamAdliKalem_DeDuzeltilir()
+    {
+        var (db, svc, check, catalogItem) = Seed();
+
+        var wrongCatalogItem = new UnitPriceItem
+        {
+            UnitPriceListId = catalogItem.UnitPriceListId, MaterialName = "YANLIŞ MALZEME", Spec = "X",
+            Unit = "kg", Price = 1m, Currency = "EUR", NormalizedName = "yanlis malzeme x",
+            IsActive = true, CreatedAt = DateTime.Now,
+        };
+        db.UnitPriceItems.Add(wrongCatalogItem);
+        db.SaveChanges();
+
+        var a = PendingItem(check.Id, "5M ANKARA");
+        var b = PendingItem(check.Id, "KÜÇÜKESAT ANKARA M MİGROS");
+        // b, daha önce YANLIŞ bir kaleme çoktan eşleştirilmiş (artık FuzzyPending değil) — gerçek olayda
+        // aynı malzemenin farklı satırları farklı zamanlarda/nedenlerle yanlış eşleşmiş olabilir.
+        b.MatchStatus = MaterialMatchStatus.ManuallyMatched;
+        b.MatchedUnitPriceItemId = wrongCatalogItem.Id;
+        b.MatchConfidence = 1.0m;
+        db.ProgressPaymentCheckItems.AddRange(a, b);
+        db.SaveChanges();
+
+        await svc.ResolveMatchAsync(check.Id, new List<int> { a.Id }, catalogItem.Id, saveAsAlias: false, "İNTİKOŞ");
+
+        var refreshedB = db.ProgressPaymentCheckItems.Single(i => i.Id == b.Id);
+        Assert.Equal(catalogItem.Id, refreshedB.MatchedUnitPriceItemId);
+        Assert.Equal(MaterialMatchStatus.ManuallyMatched, refreshedB.MatchStatus);
+    }
 }
