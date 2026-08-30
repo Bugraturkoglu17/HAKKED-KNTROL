@@ -437,4 +437,37 @@ public class GasUsageComparisonStrategyTests
         Assert.Equal("Uygun", after.Status);
         Assert.Equal("10 kg", after.FormValue);
     }
+
+    /// <summary>Gerçek olay yerinde yakalandı: AI, "Yol" (200 km yol masrafı) adlı bir servis formu
+    /// satırını NormalizedName="gaz" olarak YANLIŞ sınıflandırmıştı — ExtractGasKg, RawName'de "gaz"
+    /// geçmese bile NormalizedName'e güvenip bu satırı gaz miktarı sanıp 200 kg okumuştu (gerçek gaz
+    /// malzemesi aynı sayfada 10 kg olarak doğru okunmuşken). Kullanıcı talebi net: yalnızca formda
+    /// GERÇEKTEN "404" veya "gaz" ifadesi GEÇEN satırlar sayılmalı — AI'nın (yanlış olabilecek)
+    /// NormalizedName sınıflandırması buna asla öncelik alamaz.</summary>
+    [Fact]
+    public async Task ExtractGasKg_YanlisSiniflandirilmisNormalizedNameGazDegil_GercekGazMalzemesiKullanilir()
+    {
+        using var db = TestDbFactory.Create();
+        var (_, check) = SeedCheck(db);
+        db.ProgressPaymentCheckItems.Add(GasItem(check.Id, "70040", "710", "5M Ankara", new DateTime(2026, 5, 21), 10));
+        db.SaveChanges();
+
+        var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
+        {
+            DocumentType = "SERVICE_FORM", FormNumber = "70040", FormNumberConfidence = 0.95m,
+            Store = new AiStoreCandidateDto { CodeRaw = "710", Confidence = 0.9m }, ServiceDate = "2026-05-21",
+            Materials = new List<AiMaterialExtractionDto>
+            {
+                // Gerçek olaydaki bire bir hata: RawName açıkça gaz DEĞİL ama NormalizedName yanlışlıkla "gaz".
+                new() { RawName = "Yol", NormalizedName = "gaz", Quantity = 200, Unit = "km", Confidence = 0.8m },
+                new() { RawName = "R404a Soğutucu Akışkan", NormalizedName = "gaz", Quantity = 10, Unit = "kg", Confidence = 0.9m },
+            },
+        }));
+        var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
+        var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
+
+        var result = (await pipeline.GetComparisonResultsAsync(job.Id)).Single(r => r.ItemType == "GasUsage");
+        Assert.Equal("Uygun", result.Status);
+        Assert.Equal("10 kg", result.FormValue); // "Yol"un 200'ü DEĞİL, gerçek gaz malzemesinin 10'u
+    }
 }

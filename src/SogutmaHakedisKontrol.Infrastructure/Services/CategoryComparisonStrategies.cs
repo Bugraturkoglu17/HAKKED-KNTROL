@@ -542,6 +542,15 @@ public class GasUsageComparisonStrategy : ICategoryComparisonStrategy
         return GasKeywords.Any(k => norm.Contains(k));
     }
 
+    /// <summary>AI'nın bir servis formu satırına verdiği NormalizedName her zaman güvenilir değildir —
+    /// gerçek bir olayda "Yol" (200 km yol masrafı) adlı bir satır NormalizedName="gaz" olarak
+    /// etiketlenmiş ve gaz miktarı olarak 200 kg okunmuştu. Kullanıcı talebi net: yalnızca formda
+    /// GERÇEKTEN "404" veya "gaz" ifadesi GEÇEN satırlar sayılmalı — bu yüzden burada NormalizedName
+    /// yalnızca RawName tamamen boşsa (nadir bir veri eksikliği) yedek olarak kullanılır, RawName varken
+    /// AI'nın (yanlış olabilecek) sınıflandırması asla RawName'in üstüne çıkamaz.</summary>
+    private static bool IsGasMaterial(AiPageMaterial m) =>
+        IsGas(!string.IsNullOrWhiteSpace(m.RawName) ? m.RawName : m.NormalizedName);
+
     private readonly AppDbContext _db;
     public GasUsageComparisonStrategy(AppDbContext db) => _db = db;
 
@@ -739,7 +748,7 @@ public class GasUsageComparisonStrategy : ICategoryComparisonStrategy
         // manuel düzeltme için eklediği sentetik satır (bkz. CorrectSingleItemQuantityAsync). Kullanıcı
         // düzeltmesi HER ZAMAN önceliklidir — aksi halde FirstOrDefault sırayla ilk eşleşeni (genelde
         // AI'nın orijinal, yanlış okuduğu satırı) seçip kullanıcının girdiği miktarı sessizce yok sayardı.
-        var gasMaterials = page.Materials.Where(m => IsGas(m.RawName) || IsGas(m.NormalizedName)).ToList();
+        var gasMaterials = page.Materials.Where(IsGasMaterial).ToList();
         var corrected = gasMaterials.FirstOrDefault(m => m.UserCorrectedQuantity.HasValue);
         if (corrected != null) return (corrected.UserCorrectedQuantity, null); // kullanıcı girdisi — düzeltilmez
 
