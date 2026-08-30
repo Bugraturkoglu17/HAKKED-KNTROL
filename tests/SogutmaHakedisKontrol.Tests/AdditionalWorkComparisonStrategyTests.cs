@@ -231,6 +231,46 @@ public class AdditionalWorkComparisonStrategyTests
         Assert.Equal("Uygun", result.Status);
     }
 
+    /// <summary>Gerçek bir servis formu fotoğrafından yakalandı: hakediş kalemi "CAREL DIŞ ORTAM PROBU
+    /// METAL UÇLU" (3 adet); AYNI formda hem "Carel Dijital" (1 ad.) HEM "prob" (3 ad.) yazılı. Yalnızca
+    /// marka adına ("carel") bakan bir eşleştirme yanlışlıkla "Carel Dijital"ı seçip miktar uyuşmazlığı
+    /// (1 ≠ 3) üretiyordu — CAREL bu katalogda MODÜL/TERMOSTAT/PROB gibi tamamen farklı ürünlerde ortak
+    /// geçtiği için marka adı tek başına ayırt edici değildir. Daha spesifik "prob"~"probu" örtüşmesi
+    /// olduğu için doğru satır ("prob", 3 adet) seçilmeli ve miktar tam eşleşmeli → Uygun.</summary>
+    [Fact]
+    public async Task AyniMarkadanFarkliUrunlerVarsa_SpesifikKelimeyeSahipDogruUrunSecilir()
+    {
+        using var db = TestDbFactory.Create();
+        var (_, check) = SeedCheck(db);
+        db.ProgressPaymentCheckItems.Add(new ProgressPaymentCheckItem
+        {
+            ProgressPaymentCheckId = check.Id, StoreCode = "1001", StoreName = "Ankara MM",
+            VisitDate = new DateTime(2026, 4, 5), MaintenanceFormNo = "15001",
+            IsServiceItem = false, OriginalMaterialName = "CAREL DIŞ ORTAM PROBU METAL UÇLU",
+            Quantity = 3, Unit = "adet", CompanyUnitPrice = 10, CompanyLineTotal = 30,
+            CreatedAt = DateTime.Now,
+        });
+        db.SaveChanges();
+
+        var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
+        {
+            DocumentType = "SERVICE_FORM", FormNumber = "15001", FormNumberConfidence = 0.95m,
+            Store = new AiStoreCandidateDto { CodeRaw = "1001", Confidence = 0.9m }, ServiceDate = "2026-04-05",
+            Materials = new List<AiMaterialExtractionDto>
+            {
+                new() { RawName = "Carel Dijitol", NormalizedName = "Carel Dijital", Quantity = 1, Unit = "Ad.", Confidence = 0.9m },
+                new() { RawName = "prob", NormalizedName = "prob", Quantity = 3, Unit = "Ad.", Confidence = 0.9m },
+            },
+        }));
+        var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
+        var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
+
+        var results = await pipeline.GetComparisonResultsAsync(job.Id);
+        var result = results.Single(r => r.ItemType == "Material");
+        Assert.Equal("Uygun", result.Status);
+        Assert.Equal("3 Ad.", result.FormValue); // "prob" (3 ad.) seçilmiş olmalı, "Carel Dijital" (1 ad.) DEĞİL
+    }
+
     /// <summary>Spec örneği: hakedişte Filtre 3 adet talep edilmiş, formda 2 adet doğrulanmış → Miktar Uyuşmazlığı.</summary>
     [Fact]
     public async Task ExceldeTalepEdilenMiktarFormdakindenFarkliysa_UygunDegilUretir()

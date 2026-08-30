@@ -22,17 +22,38 @@ internal static class MaterialNameMatcher
     // adlarında sık geçen ama ayırt edici olmayan kelimeler.
     private static readonly HashSet<string> StopWords = new()
         { "ve", "ile", "icin", "bir", "bu", "adet", "set", "yeni", "eski" };
+
+    // Gerçek olayda yakalanan hata: hakediş kalemi "CAREL DIŞ ORTAM PROBU METAL UÇLU", formda AYNI
+    // sayfada hem "Carel Dijital" (1 ad.) HEM "prob" (3 ad.) yazıyordu — yalnızca marka adına ("carel")
+    // bakan bir örtüşme, doğru/spesifik olan "prob"u değil yanlışlıkla "Carel Dijital"ı seçiyordu (CAREL
+    // markası bu katalogda MODÜL/TERMOSTAT/PROB gibi birbirinden tamamen farklı birden fazla üründe ortak
+    // geçiyor). Bu kelimeler TEK BAŞINA asla yeterli sayılmaz — yalnızca DAHA SPESİFİK bir örtüşme HİÇBİR
+    // adayda yoksa son çare olarak kullanılır (bkz. GetOverlapKind).
+    private static readonly HashSet<string> GenericBrandWords = new() { "carel" };
+
     private const int MinKeywordLength = 3;
 
-    public static bool HasKeywordOverlap(string normalizedA, string normalizedB)
+    public enum OverlapKind { None, Generic, Specific }
+
+    /// <summary>Specific: ayırt edici bir kelime/önek örtüşmesi var (ör. "fan"~"fanı", "prob"~"probu") —
+    /// güvenilir eşleşme kanıtıdır. Generic: örtüşme yalnızca <see cref="GenericBrandWords"/>'ten
+    /// (ör. "carel") ibarettir — TEK BAŞINA aynı markanın FARKLI ürünlerini birbirinden ayırt edemez,
+    /// yalnızca daha spesifik bir aday hiç yoksa son çare olarak kullanılmalıdır.</summary>
+    public static OverlapKind GetOverlapKind(string normalizedA, string normalizedB)
     {
         var wordsA = SignificantWords(normalizedA).ToList();
         var wordsB = SignificantWords(normalizedB).ToList();
+        var sawGeneric = false;
         foreach (var a in wordsA)
+        {
             foreach (var b in wordsB)
-                if (a.StartsWith(b, StringComparison.Ordinal) || b.StartsWith(a, StringComparison.Ordinal))
-                    return true;
-        return false;
+            {
+                if (!a.StartsWith(b, StringComparison.Ordinal) && !b.StartsWith(a, StringComparison.Ordinal)) continue;
+                if (GenericBrandWords.Contains(a) || GenericBrandWords.Contains(b)) sawGeneric = true;
+                else return OverlapKind.Specific;
+            }
+        }
+        return sawGeneric ? OverlapKind.Generic : OverlapKind.None;
     }
 
     private static IEnumerable<string> SignificantWords(string normalized) =>
@@ -458,12 +479,23 @@ public class DefaultCategoryComparisonStrategy : ICategoryComparisonStrategy
             foreach (var item in sameVisit.Where(i => !i.IsServiceItem))
             {
                 var searchName = TextNormalizationHelper.NormalizeName(item.OriginalMaterialName);
-                var candidate = page.Materials
+                var scoredMaterials = page.Materials
                     .Select(m => (Mat: m, Score: TextNormalizationHelper.SimilarityRatio(searchName, TextNormalizationHelper.NormalizeName(m.NormalizedName ?? m.RawName)),
-                                   KeywordOverlap: MaterialNameMatcher.HasKeywordOverlap(searchName, TextNormalizationHelper.NormalizeName(m.NormalizedName ?? m.RawName))))
-                    .Where(x => x.Score >= 0.6 || x.KeywordOverlap)
+                                   Overlap: MaterialNameMatcher.GetOverlapKind(searchName, TextNormalizationHelper.NormalizeName(m.NormalizedName ?? m.RawName))))
+                    .ToList();
+                // Önce SPESİFİK bir örtüşme (ör. "prob"~"probu") arar — aynı sayfada birden fazla aynı
+                // markadan ("CAREL...") ama FARKLI ürün varsa, yalnızca marka adına bakan bir eşleştirme
+                // yanlış olanı seçebilir (bkz. MaterialNameMatcher.GenericBrandWords). Hiçbir spesifik aday
+                // yoksa GENEL (yalnızca marka) örtüşmesine son çare olarak düşülür.
+                var candidate = scoredMaterials.Where(x => x.Score >= 0.6 || x.Overlap == MaterialNameMatcher.OverlapKind.Specific)
                     .OrderByDescending(x => x.Score)
                     .FirstOrDefault();
+                if (candidate.Mat == null)
+                {
+                    candidate = scoredMaterials.Where(x => x.Overlap == MaterialNameMatcher.OverlapKind.Generic)
+                        .OrderByDescending(x => x.Score)
+                        .FirstOrDefault();
+                }
 
                 var hakedisStr = $"{item.Quantity:0.##} {item.Unit}";
 
@@ -1066,12 +1098,23 @@ public class AdditionalWorkComparisonStrategy : ICategoryComparisonStrategy
             foreach (var item in sameVisit.Where(i => !i.IsServiceItem))
             {
                 var searchName = TextNormalizationHelper.NormalizeName(item.OriginalMaterialName);
-                var candidate = page.Materials
+                var scoredMaterials = page.Materials
                     .Select(m => (Mat: m, Score: TextNormalizationHelper.SimilarityRatio(searchName, TextNormalizationHelper.NormalizeName(m.NormalizedName ?? m.RawName)),
-                                   KeywordOverlap: MaterialNameMatcher.HasKeywordOverlap(searchName, TextNormalizationHelper.NormalizeName(m.NormalizedName ?? m.RawName))))
-                    .Where(x => x.Score >= 0.6 || x.KeywordOverlap)
+                                   Overlap: MaterialNameMatcher.GetOverlapKind(searchName, TextNormalizationHelper.NormalizeName(m.NormalizedName ?? m.RawName))))
+                    .ToList();
+                // Önce SPESİFİK bir örtüşme (ör. "prob"~"probu") arar — aynı sayfada birden fazla aynı
+                // markadan ("CAREL...") ama FARKLI ürün varsa, yalnızca marka adına bakan bir eşleştirme
+                // yanlış olanı seçebilir (bkz. MaterialNameMatcher.GenericBrandWords). Hiçbir spesifik aday
+                // yoksa GENEL (yalnızca marka) örtüşmesine son çare olarak düşülür.
+                var candidate = scoredMaterials.Where(x => x.Score >= 0.6 || x.Overlap == MaterialNameMatcher.OverlapKind.Specific)
                     .OrderByDescending(x => x.Score)
                     .FirstOrDefault();
+                if (candidate.Mat == null)
+                {
+                    candidate = scoredMaterials.Where(x => x.Overlap == MaterialNameMatcher.OverlapKind.Generic)
+                        .OrderByDescending(x => x.Score)
+                        .FirstOrDefault();
+                }
 
                 var hakedisStr = $"{item.Quantity:0.##} {item.Unit}";
 

@@ -199,7 +199,8 @@ else
                         <MudItem xs="12" md="4">
                             <MudTextField @bind-Value="_searchText" Placeholder="Mağaza veya kalem ara..."
                                           Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
-                                          Immediate Dense Clearable Variant="Variant.Outlined" Class="mt-0" />
+                                          Immediate Dense Clearable OnClearButtonClick="@(() => _searchText = string.Empty)"
+                                          Variant="Variant.Outlined" Class="mt-0" />
                         </MudItem>
                         <MudItem xs="12" md="6">
                             <MudChipSet T="string" SelectionMode="SelectionMode.SingleSelection"

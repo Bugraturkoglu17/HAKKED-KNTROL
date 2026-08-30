@@ -95,7 +95,8 @@ else
                     <MudItem xs="12" md="3">
                         <MudTextField @bind-Value="_searchText" Placeholder="Ara..."
                                       Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
-                                      Immediate Dense Clearable Variant="Variant.Outlined" Class="mt-0" />
+                                      Immediate Dense Clearable OnClearButtonClick="@(() => _searchText = string.Empty)"
+                                      Variant="Variant.Outlined" Class="mt-0" />
                     </MudItem>
                     <MudItem xs="12" md="9">
                         <MudChipSet T="string" SelectionMode="SelectionMode.SingleSelection"
