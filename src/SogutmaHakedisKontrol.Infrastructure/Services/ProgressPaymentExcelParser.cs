@@ -173,6 +173,7 @@ public static class ProgressPaymentExcelParser
             // MİKTAR" + "KESİLEN MİKTAR" + "ONAYLANAN MİKTAR" aynı satırda) SOLDAKİ/İLK kolon esas
             // alınır; sağdaki türetilmiş/ek kolonlar (kesinti, onay tutarı vb.) üzerine yazmaz.
             var cols = new Dictionary<string, int>();
+            int sequenceNoCol = 0; // "SIRA NO" — asla gerçek bir form/belge numarası DEĞİLDİR (bkz. aşağı)
             foreach (var cell in row.CellsUsed())
             {
                 var norm = Normalize(cell.GetString());
@@ -182,7 +183,14 @@ public static class ProgressPaymentExcelParser
                 else if (norm == "format") cols.TryAdd("format", col);
                 else if (norm == "tarih") cols.TryAdd("tarih", col);
                 else if (norm.Contains("bakimformno") || norm.Contains("servisformno") || norm.Contains("formno")
-                         || norm.Contains("sirano") || norm.Contains("belgeno")) cols.TryAdd("bakimformno", col);
+                         || norm.Contains("belgeno")) cols.TryAdd("bakimformno", col);
+                // "SIRA NO" yalnızca satır sırası/indeksidir (1,2,3...), gerçek bir form/belge numarasıyla
+                // HİÇ ilgisi yoktur — gerçek olayda "İlave İşler" dosyasında SIRA NO, BAKIM FORM NO'dan
+                // önceki bir kolondaydı; eskiden ikisi aynı OR grubunda olduğu için TryAdd SIRA NO'yu
+                // kilitleyip gerçek BAKIM FORM NO kolonunun hiç okunmamasına, dolayısıyla TÜM form
+                // eşleştirmesinin (144 kalemin tamamı) çökmesine yol açıyordu. Artık yalnızca gerçek bir
+                // form no kolonu HİÇ bulunamazsa en son çare olarak aşağıda kullanılır.
+                else if (norm.Contains("sirano")) sequenceNoCol = col;
                 else if (norm.Contains("malzemekodu")) cols.TryAdd("malzemekodu", col);
                 else if (norm.Contains("malzemeadi")) cols.TryAdd("malzemeadi", col);
                 else if (norm.Contains("malzemetipi")) cols.TryAdd("malzemetipi", col);
@@ -191,6 +199,11 @@ public static class ProgressPaymentExcelParser
                 else if (norm == "fiyat" || norm.Contains("birimfiyat")) cols.TryAdd("fiyat", col);
                 else if (norm == "toplam") cols.TryAdd("toplam", col);
             }
+
+            // Gerçek bir form/belge no kolonu bu satırda hiç bulunamadıysa, SIRA NO'yu son çare olarak
+            // kullan — bazı eski/basit hakediş dosyalarında form no ayrı bir kolon olarak hiç yoktur.
+            if (!cols.ContainsKey("bakimformno") && sequenceNoCol > 0)
+                cols["bakimformno"] = sequenceNoCol;
 
             if (cols.ContainsKey("malzemeadi") && cols.ContainsKey("miktari"))
             {

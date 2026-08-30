@@ -69,4 +69,56 @@ public class ProgressPaymentExcelParserTests
         Assert.Equal("15527", item.MaintenanceFormNo); // bare "FORM NO" başlığı da tanınmalı
         Assert.Equal("1234", item.StoreCode);
     }
+
+    /// <summary>Gerçek bir olayda yakalanan CİDDİ hata: İlave İşler hakediş dosyasında "SIRA NO" (A
+    /// sütunu, yalnızca 1,2,3... satır indeksi) "BAKIM FORM NO" (F sütunu, gerçek fiziksel form
+    /// numarası) sütunundan ÖNCE geliyordu. Eskiden ikisi aynı eşleştirme grubunda olduğu için
+    /// (ör. "sirano" da "bakimformno" sayılıyordu) TryAdd SIRA NO'yu kilitleyip gerçek form no hiç
+    /// okunmuyordu — bu da TÜM hakedişin (144 kalemin tamamı) form numarasıyla eşleşmesini imkansız
+    /// hale getirip her satırı "Form Eksik"/"Form No Yerine Mağazadan Eşleşti" olarak işaretliyordu.
+    /// SIRA NO artık yalnızca gerçek bir form no kolonu HİÇ bulunamazsa son çare olarak kullanılır.</summary>
+    [Fact]
+    public void SiraNoSutunu_GercekFormNoSutunuVarken_HicKullanilmaz()
+    {
+        using var wb = new XLWorkbook();
+        var ws = wb.Worksheets.Add("MALZ HAKEDIS");
+
+        int headerRow = 8;
+        ws.Cell(headerRow, 1).Value = "SIRA NO";       // A — yanıltıcı, gerçek olayda F'den önce
+        ws.Cell(headerRow, 2).Value = "MAĞAZA KODU";
+        ws.Cell(headerRow, 3).Value = "MAĞAZA ADI";
+        ws.Cell(headerRow, 4).Value = "FORMAT";
+        ws.Cell(headerRow, 5).Value = "TARİH";
+        ws.Cell(headerRow, 6).Value = "BAKIM FORM NO"; // F — asıl gerçek form no
+        ws.Cell(headerRow, 7).Value = "MALZEME KODU";
+        ws.Cell(headerRow, 8).Value = "MALZEME ADI";
+        ws.Cell(headerRow, 9).Value = "MİKTARI";
+        ws.Cell(headerRow, 10).Value = "BİRİMİ";
+        ws.Cell(headerRow, 11).Value = "FİYAT";
+        ws.Cell(headerRow, 12).Value = "TOPLAM";
+
+        int dataRow = headerRow + 1;
+        ws.Cell(dataRow, 1).Value = 1; // SIRA NO — yalnızca satır indeksi
+        ws.Cell(dataRow, 2).Value = "383";
+        ws.Cell(dataRow, 3).Value = "G.O.PAŞA ANKARA MM MİGROS";
+        ws.Cell(dataRow, 4).Value = "MM";
+        ws.Cell(dataRow, 5).Value = new DateTime(2026, 4, 25);
+        ws.Cell(dataRow, 6).Value = "19060"; // BAKIM FORM NO — gerçek fiziksel form numarası
+        ws.Cell(dataRow, 7).Value = "S1";
+        ws.Cell(dataRow, 8).Value = "1 EKIP ŞEHİR İÇİ SERVİS BEDELİ";
+        ws.Cell(dataRow, 9).Value = 1;
+        ws.Cell(dataRow, 10).Value = "set";
+        ws.Cell(dataRow, 11).Value = 2750;
+        ws.Cell(dataRow, 12).Value = 2750;
+
+        using var ms = new MemoryStream();
+        wb.SaveAs(ms);
+        ms.Position = 0;
+
+        var preview = ProgressPaymentExcelParser.Parse(ms, "test.xlsx");
+
+        Assert.Empty(preview.Errors);
+        var item = Assert.Single(preview.Items);
+        Assert.Equal("19060", item.MaintenanceFormNo); // "1" (SIRA NO) DEĞİL — gerçek form no
+    }
 }
