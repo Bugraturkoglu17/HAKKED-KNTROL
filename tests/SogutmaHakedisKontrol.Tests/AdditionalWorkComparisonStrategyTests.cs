@@ -197,6 +197,40 @@ public class AdditionalWorkComparisonStrategyTests
         Assert.Equal("Uygun", result.Status);
     }
 
+    /// <summary>Kullanıcı talebi: "formdaki 'hortum' ifadesi 'FLEX BORU' demek, bunu AI yorumlayabilir." —
+    /// kelimeler kökten farklı olduğu için önek örtüşmesi yakalayamaz, elle onaylı eş anlamlı grubu ile eşleşmeli.</summary>
+    [Fact]
+    public async Task TeknisyenEsAnlamliGunlukKelimeYazmissa_EsAnlamliGrupOrtusmesiyleEslesir()
+    {
+        using var db = TestDbFactory.Create();
+        var (_, check) = SeedCheck(db);
+        db.ProgressPaymentCheckItems.Add(new ProgressPaymentCheckItem
+        {
+            ProgressPaymentCheckId = check.Id, StoreCode = "1001", StoreName = "Ankara MM",
+            VisitDate = new DateTime(2026, 4, 5), MaintenanceFormNo = "15001",
+            IsServiceItem = false, OriginalMaterialName = "FLEX BORU",
+            Quantity = 1, Unit = "adet", CompanyUnitPrice = 15m, CompanyLineTotal = 15m,
+            CreatedAt = DateTime.Now,
+        });
+        db.SaveChanges();
+
+        var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
+        {
+            DocumentType = "SERVICE_FORM", FormNumber = "15001", FormNumberConfidence = 0.95m,
+            Store = new AiStoreCandidateDto { CodeRaw = "1001", Confidence = 0.9m }, ServiceDate = "2026-04-05",
+            Materials = new List<AiMaterialExtractionDto>
+            {
+                new() { RawName = "Hortum", NormalizedName = "hortum", Quantity = 1, Unit = "adet", Confidence = 0.7m },
+            },
+        }));
+        var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
+        var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
+
+        var results = await pipeline.GetComparisonResultsAsync(job.Id);
+        var result = results.Single(r => r.ItemType == "Material");
+        Assert.Equal("Uygun", result.Status);
+    }
+
     /// <summary>Aynı kural: "CAREL Modül Arayüz Adaptörü" için teknisyen yalnızca marka adını kısaltarak
     /// "TOP Card" yazmış (gerçek olayda "CAR" okunmuş) — "car" ~ "carel" önek örtüşmesiyle eşleşmeli.</summary>
     [Fact]

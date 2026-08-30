@@ -31,14 +31,26 @@ internal static class MaterialNameMatcher
     // adayda yoksa son çare olarak kullanılır (bkz. GetOverlapKind).
     private static readonly HashSet<string> GenericBrandWords = new() { "carel" };
 
+    // Kullanıcı talebi: "formdaki 'hortum' ifadesi 'FLEX BORU' demek, bunu AI yorumlayabilir." — teknisyen
+    // resmi/katalog kelimesini değil günlük dildeki eş anlamlısını yazabilir; bu durumda kelimeler kökten
+    // FARKLIDIR (önek/kök örtüşmesi bunu yakalayamaz), bu yüzden küçük, elle onaylanmış bir eş anlamlı
+    // grupları listesiyle tolere edilir. Aynı gruptaki herhangi iki kelime SPESİFİK (güvenilir) eşleşme
+    // kanıtı sayılır — grup elle seçildiği için yanlış pozitif riski düşüktür (bkz. GenericBrandWords'ün
+    // aksine, burada tesadüfen ortak marka değil, kasıtlı olarak eş anlamlı kabul edilen kelimeler var).
+    private static readonly List<HashSet<string>> SynonymGroups = new()
+    {
+        new() { "hortum", "flex" }, // "Sütlük hortumu" ~ "FLEX BORU"
+    };
+
     private const int MinKeywordLength = 3;
 
     public enum OverlapKind { None, Generic, Specific }
 
-    /// <summary>Specific: ayırt edici bir kelime/önek örtüşmesi var (ör. "fan"~"fanı", "prob"~"probu") —
-    /// güvenilir eşleşme kanıtıdır. Generic: örtüşme yalnızca <see cref="GenericBrandWords"/>'ten
-    /// (ör. "carel") ibarettir — TEK BAŞINA aynı markanın FARKLI ürünlerini birbirinden ayırt edemez,
-    /// yalnızca daha spesifik bir aday hiç yoksa son çare olarak kullanılmalıdır.</summary>
+    /// <summary>Specific: ayırt edici bir kelime/önek örtüşmesi ya da bilinen bir eş anlamlı örtüşmesi var
+    /// (ör. "fan"~"fanı", "prob"~"probu", "hortum"~"flex") — güvenilir eşleşme kanıtıdır. Generic: örtüşme
+    /// yalnızca <see cref="GenericBrandWords"/>'ten (ör. "carel") ibarettir — TEK BAŞINA aynı markanın
+    /// FARKLI ürünlerini birbirinden ayırt edemez, yalnızca daha spesifik bir aday hiç yoksa son çare
+    /// olarak kullanılmalıdır.</summary>
     public static OverlapKind GetOverlapKind(string normalizedA, string normalizedB)
     {
         var wordsA = SignificantWords(normalizedA).ToList();
@@ -48,7 +60,9 @@ internal static class MaterialNameMatcher
         {
             foreach (var b in wordsB)
             {
-                if (!a.StartsWith(b, StringComparison.Ordinal) && !b.StartsWith(a, StringComparison.Ordinal)) continue;
+                var isPrefixMatch = a.StartsWith(b, StringComparison.Ordinal) || b.StartsWith(a, StringComparison.Ordinal);
+                var isSynonymMatch = !isPrefixMatch && SynonymGroups.Any(g => g.Contains(a) && g.Contains(b));
+                if (!isPrefixMatch && !isSynonymMatch) continue;
                 if (GenericBrandWords.Contains(a) || GenericBrandWords.Contains(b)) sawGeneric = true;
                 else return OverlapKind.Specific;
             }
