@@ -372,6 +372,10 @@ public partial class WpfApp : System.Windows.Application
                         ["UnitPriceCellRef"] = "TEXT",
                         ["LineTotalCellRef"] = "TEXT",
                         ["PriceCorrectionApplied"] = "INTEGER NOT NULL DEFAULT 0",
+                        // İLAVE İŞLER: Excel'deki "Mağazalar" master sayfasından (İşyeri No → IlAdi)
+                        // mağaza koduyla eşleştirilerek doldurulur — şehir içi/şehir dışı servis bedeli
+                        // türünün Excel'e göre doğrulanması için (bkz. AdditionalWorkComparisonStrategy).
+                        ["StoreCity"] = "TEXT",
                     };
                     foreach (var (colName, colType) in newColumns)
                     {
@@ -595,6 +599,9 @@ public partial class WpfApp : System.Windows.Application
                     ["SecondaryFormValue"] = "TEXT",
                     ["SecondaryHakedisValue"] = "TEXT",
                     ["SecondaryStatus"] = "INTEGER",
+                    // İLAVE İŞLER: Material satırlarında "Düzelt" butonunun hangi AiPageMaterial'i
+                    // düzelteceğini bilmesi için (bkz. AiComparisonResult.MatchedMaterialId).
+                    ["MatchedMaterialId"] = "INTEGER",
                 };
                 foreach (var (colName, colType) in newColumns)
                 {

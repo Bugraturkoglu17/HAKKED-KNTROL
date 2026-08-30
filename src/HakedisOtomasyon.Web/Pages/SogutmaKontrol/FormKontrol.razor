@@ -368,6 +368,13 @@ else
                                                    Color="Color.Default" OnClick="@(() => CorrectQuantityAsync(context))" />
                                 </MudTooltip>
                             }
+                            @if (context.ItemType == "Material" && context.MatchedMaterialId.HasValue)
+                            {
+                                <MudTooltip Text="Formdan okunan miktarı düzelt">
+                                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                                                   Color="Color.Default" OnClick="@(() => CorrectMaterialQuantityAsync(context))" />
+                                </MudTooltip>
+                            }
                         }
                     </MudTd>
                 </RowTemplate>
@@ -619,6 +626,22 @@ else
         await Pipeline.CorrectMaterialAsync(material.Id, correction.Item1, correction.Item2, correction.Item3);
         await LoadJobAsync();
         Snackbar.Add("Malzeme güncellendi.", Severity.Success);
+    }
+
+    // İLAVE İŞLER (ve Malzeme bazlı diğer kategoriler) tablosundaki "Düzelt" kalemi — üstteki Manuel
+    // Kontrol panelinden farklı olarak Uygun/Uygun Değil FARK ETMEKSİZİN her Material satırında görünür
+    // (bkz. context.MatchedMaterialId koşulu). Aynı dialog/akış (CorrectMaterialAsync) yeniden kullanılır,
+    // yalnızca satırdan gerçek AiPageMaterialDto'ya bu şekilde ulaşılır.
+    private async Task CorrectMaterialQuantityAsync(AiComparisonResultDto result)
+    {
+        if (result.MatchedMaterialId is not { } materialId) return;
+        var material = _pages.SelectMany(p => p.Materials).FirstOrDefault(m => m.Id == materialId);
+        if (material is null)
+        {
+            Snackbar.Add("Malzeme kaydı bulunamadı — sayfa yeniden yüklenmiş olabilir.", Severity.Warning);
+            return;
+        }
+        await CorrectMaterialAsync(material);
     }
 
     private async Task OverrideResultAsync(AiComparisonResultDto result)

@@ -61,6 +61,12 @@ public static class ProgressPaymentExcelParser
         if (icmalSheet != null)
             preview.DetectedCompanyGrandTotal = SumIcmalTotal(icmalSheet);
 
+        // ── "Mağazalar" master sayfası: mağaza kodu → il eşlemesi (İLAVE İŞLER'de şehir içi/şehir dışı
+        // servis bedeli TÜRÜNÜN doğru talep edilip edilmediğini Excel'den doğrulamak için gerekli — bkz.
+        // AdditionalWorkComparisonStrategy. Bu sayfa ana veri sayfasında (MALZ HAKEDİŞ) yoktur, yalnızca
+        // burada "İşyeri No"/"IlAdi" kolonlarıyla bulunur.) ──
+        var storeCityByCode = BuildStoreCityMap(wb);
+
         // ── EUR kuru önerisi (yalnızca öneri — kullanıcı onaylamadan kullanılmaz) ──
         var (rate, source) = FindSuggestedEurRate(wb);
         if (rate.HasValue)
@@ -99,6 +105,7 @@ public static class ProgressPaymentExcelParser
             var magazaKodu = CellText(row, colMagazaKodu);
             var magazaAdi = CellText(row, colMagazaAdi);
             if (!string.IsNullOrWhiteSpace(magazaKodu)) storeCodes.Add(magazaKodu);
+            storeCityByCode.TryGetValue(TextNormalizationHelper.NormalizeCode(magazaKodu), out var magazaIli);
 
             bool isService = !decimal.TryParse(malzemeKodu, NumberStyles.Any, CultureInfo.InvariantCulture, out _)
                               && !string.IsNullOrWhiteSpace(malzemeKodu);
@@ -127,6 +134,7 @@ public static class ProgressPaymentExcelParser
                 StoreCode = string.IsNullOrWhiteSpace(magazaKodu) ? null : magazaKodu,
                 StoreName = string.IsNullOrWhiteSpace(magazaAdi) ? null : magazaAdi,
                 StoreFormat = CellText(row, colFormat) is { Length: > 0 } fmt ? fmt : null,
+                StoreCity = string.IsNullOrWhiteSpace(magazaIli) ? null : magazaIli,
                 VisitDate = tarih,
                 MaintenanceFormNo = CellText(row, colFormNo) is { Length: > 0 } fn ? fn : null,
                 OriginalItemCode = string.IsNullOrWhiteSpace(malzemeKodu) ? null : malzemeKodu,
@@ -242,6 +250,48 @@ public static class ProgressPaymentExcelParser
             ? $"{TurkishMonthName(month.Value)} {year.Value}"
             : null;
         return (company, year, month, periodLabel);
+    }
+
+    /// <summary>"Mağazalar" master sayfasından (varsa) mağaza kodu → il eşlemesi çıkarır. Bu sayfa
+    /// firmanın TÜM mağazalarını listeler (İşyeri No | Isyeri Adi | Bölge | Marka Adı | Format Adı |
+    /// Adres | IlAdi | IlceAdi) — ana veri sayfasında (MALZ HAKEDIS) il bilgisi hiç yoktur, bu yüzden
+    /// İLAVE İŞLER'in "şehir içi/şehir dışı" doğrulaması (Excel referanstır — bkz.
+    /// AdditionalWorkComparisonStrategy) yalnızca bu sayfa üzerinden yapılabilir. Sayfa yoksa (bu
+    /// kategoriye özel, diğer hakediş türlerinde gerekmez) boş sözlük döner — çağıran taraf
+    /// TryGetValue ile güvenle kullanır.</summary>
+    private static Dictionary<string, string> BuildStoreCityMap(XLWorkbook wb)
+    {
+        var map = new Dictionary<string, string>();
+        var sheet = wb.Worksheets.FirstOrDefault(s => Normalize(s.Name).Contains("magazalar"));
+        if (sheet is null || sheet.IsEmpty()) return map;
+
+        int lastRow = sheet.LastRowUsed()?.RowNumber() ?? 0;
+        int searchLimit = Math.Min(10, lastRow);
+        int colCode = 0, colCity = 0, headerRow = 0;
+
+        for (int r = 1; r <= searchLimit; r++)
+        {
+            var row = sheet.Row(r);
+            if (row.IsEmpty()) continue;
+            foreach (var cell in row.CellsUsed())
+            {
+                var norm = Normalize(cell.GetString());
+                if (norm.Contains("isyerino")) colCode = cell.Address.ColumnNumber;
+                else if (norm.Contains("iladi")) colCity = cell.Address.ColumnNumber;
+            }
+            if (colCode > 0 && colCity > 0) { headerRow = r; break; }
+            colCode = 0; colCity = 0; // bu satır başlık değilmiş, sıfırla ve devam et
+        }
+        if (headerRow == 0) return map;
+
+        foreach (var row in sheet.RowsUsed().Where(r => r.RowNumber() > headerRow))
+        {
+            var code = TextNormalizationHelper.NormalizeCode(CellText(row, colCode));
+            var city = CellText(row, colCity);
+            if (code.Length == 0 || city.Length == 0) continue;
+            map[code] = city; // aynı kod tekrar ederse sonuncusu kazanır — kaynak veri tekil olmalı
+        }
+        return map;
     }
 
     private static decimal SumIcmalTotal(IXLWorksheet ws)

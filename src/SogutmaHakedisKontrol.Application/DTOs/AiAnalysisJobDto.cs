@@ -159,6 +159,9 @@ public class AiComparisonResultDto
     public string? FormFilePath { get; set; }
     public string? FormFileName { get; set; }
     public int? FormPageNumberInFile { get; set; }
+
+    // ── ItemType=Material satırlarında "Düzelt" butonu için — bkz. AiComparisonResult.MatchedMaterialId ──
+    public int? MatchedMaterialId { get; set; }
 }
 
 /// <summary>"Mağaza Eşleşmesi" kartının detay listesindeki tek bir 🔴 satırı.</summary>

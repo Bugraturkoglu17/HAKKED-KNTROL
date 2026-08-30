@@ -55,6 +55,7 @@ public class ProgressPaymentCheckItemDto
     public string? StoreCode { get; set; }
     public string? StoreName { get; set; }
     public string? StoreFormat { get; set; }
+    public string? StoreCity { get; set; }
     public DateTime? VisitDate { get; set; }
     public string? MaintenanceFormNo { get; set; }
 

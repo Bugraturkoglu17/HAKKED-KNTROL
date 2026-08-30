@@ -194,6 +194,7 @@ public class ProgressPaymentCheckService : IProgressPaymentCheckService
                 StoreCode = dto.StoreCode,
                 StoreName = dto.StoreName,
                 StoreFormat = dto.StoreFormat,
+                StoreCity = dto.StoreCity,
                 VisitDate = dto.VisitDate,
                 MaintenanceFormNo = dto.MaintenanceFormNo,
                 OriginalItemCode = dto.OriginalItemCode,

@@ -720,6 +720,7 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
                 FormFilePath = fileInfo.FilePath,
                 FormFileName = fileInfo.FileName,
                 FormPageNumberInFile = fileInfo.PageNumberInFile,
+                MatchedMaterialId = r.MatchedMaterialId,
             };
         }).ToList();
     }

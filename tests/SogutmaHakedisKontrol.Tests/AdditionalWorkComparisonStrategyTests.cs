@@ -53,13 +53,18 @@ public class AdditionalWorkComparisonStrategyTests
         return new AiAnalysisPipelineService(db, vision, rasterizer, manHours, usage, appPath, categoryProfiles, comparisonStrategies);
     }
 
-    private static ProgressPaymentCheckItem ServiceFeeItem(int checkId, string formNo, string storeCode, DateTime date) => new()
+    // Gerçek hakediş dosyasında ("İÇ ANADOLU_İNTİKOŞ MİGROS SOĞUTMA İLAVE İŞLER") birebir doğrulanmış
+    // metinler — MALZEME KODU S1/S2, adlar sonunda tek boşlukla bitiyor. storeCity varsayılan olarak
+    // "ANKARA" — bu yüzden varsayılan çağrı şehir içi ile eşleşir (mevcut testlerin orijinal niyeti).
+    private static ProgressPaymentCheckItem ServiceFeeItem(int checkId, string formNo, string storeCode, DateTime date,
+        string feeCode = "S1", string? storeCity = "ANKARA") => new()
     {
         ProgressPaymentCheckId = checkId,
-        StoreCode = storeCode, StoreName = "Ankara MM",
+        StoreCode = storeCode, StoreName = "Ankara MM", StoreCity = storeCity,
         VisitDate = date, MaintenanceFormNo = formNo,
-        IsServiceItem = true, OriginalMaterialName = "ŞEHİRİÇİ SERVİS ÜCRETİ",
-        Quantity = 1, Unit = "adet", CompanyUnitPrice = 2750, CompanyLineTotal = 2750,
+        IsServiceItem = true, OriginalItemCode = feeCode,
+        OriginalMaterialName = feeCode == "S2" ? "1 EKIP ŞEHİR DIŞI SERVİS BEDELİ " : "1 EKIP ŞEHİR İÇİ SERVİS BEDELİ ",
+        Quantity = 1, Unit = "set", CompanyUnitPrice = 2750, CompanyLineTotal = 2750,
         CreatedAt = DateTime.Now,
     };
 
@@ -151,6 +156,9 @@ public class AdditionalWorkComparisonStrategyTests
         Assert.All(materialResults, r => Assert.Equal("Uygun", r.Status));
         Assert.Contains(materialResults, r => r.Description == "Filtre");
         Assert.Contains(materialResults, r => r.Description == "Yağ");
+        // Kullanıcı talebi: "miktar hatalıysa düzeltebilmem lazım" — tablodaki Düzelt butonu bu alana
+        // bakar (bkz. FormKontrol.razor CorrectMaterialQuantityAsync); eşleşen bir malzeme olduğu için dolu olmalı.
+        Assert.All(materialResults, r => Assert.NotNull(r.MatchedMaterialId));
     }
 
     /// <summary>Spec örneği: hakedişte Filtre 3 adet talep edilmiş, formda 2 adet doğrulanmış → Miktar Uyuşmazlığı.</summary>
@@ -271,5 +279,145 @@ public class AdditionalWorkComparisonStrategyTests
         Assert.Equal(2, feeResults.Count);
         Assert.All(feeResults, r => Assert.Equal("Uygun", r.Status));
         Assert.DoesNotContain(feeResults, r => r.Description == "Mükerrer Servis Ücreti");
+    }
+
+    /// <summary>Kullanıcı talebi: "Ankara dışındaki illere gidiyorsa Excelden kontrol edilip '1 EKİP
+    /// ŞEHİR DIŞI SERVİS BEDELİ' verilmelidir. Ankara içi ise şehir içidir. Bunu formdan bulmana gerek
+    /// yok." — mağaza Konya'da (Excel'deki "Mağazalar" sayfasından gelen StoreCity) ama hakedişte
+    /// yanlışlıkla ŞEHİR İÇİ (S1) talep edilmiş → Uygun Değil, doğru türü açıklamada belirtmeli.</summary>
+    [Fact]
+    public async Task AnkaraDisindakiMagazayaSehirIciTalepEdilmisse_UygunDegilUretir()
+    {
+        using var db = TestDbFactory.Create();
+        var (_, check) = SeedCheck(db);
+        db.ProgressPaymentCheckItems.Add(ServiceFeeItem(check.Id, "15001", "3039", new DateTime(2026, 4, 5), feeCode: "S1", storeCity: "KONYA"));
+        db.SaveChanges();
+
+        var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
+        {
+            DocumentType = "SERVICE_FORM", FormNumber = "15001", FormNumberConfidence = 0.95m,
+            Store = new AiStoreCandidateDto { CodeRaw = "3039", Confidence = 0.9m }, ServiceDate = "2026-04-05",
+        }));
+        var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
+        var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
+
+        var results = await pipeline.GetComparisonResultsAsync(job.Id);
+        var result = results.Single(r => r.ItemType == "ServiceFee");
+        Assert.Equal("UygunDegil", result.Status);
+        Assert.Contains("KONYA", result.Explanation);
+        Assert.Contains("şehir dışı", result.Explanation);
+        Assert.Equal("şehir dışı", result.HakedisValue);
+        Assert.Equal("şehir içi", result.FormValue);
+    }
+
+    /// <summary>Aynı kural, ters yönde: Ankara'daki bir mağazaya yanlışlıkla ŞEHİR DIŞI (S2) talep
+    /// edilmişse de Uygun Değil olmalı.</summary>
+    [Fact]
+    public async Task AnkaradakiMagazayaSehirDisiTalepEdilmisse_UygunDegilUretir()
+    {
+        using var db = TestDbFactory.Create();
+        var (_, check) = SeedCheck(db);
+        db.ProgressPaymentCheckItems.Add(ServiceFeeItem(check.Id, "15001", "383", new DateTime(2026, 4, 5), feeCode: "S2", storeCity: "ANKARA"));
+        db.SaveChanges();
+
+        var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
+        {
+            DocumentType = "SERVICE_FORM", FormNumber = "15001", FormNumberConfidence = 0.95m,
+            Store = new AiStoreCandidateDto { CodeRaw = "383", Confidence = 0.9m }, ServiceDate = "2026-04-05",
+        }));
+        var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
+        var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
+
+        var results = await pipeline.GetComparisonResultsAsync(job.Id);
+        var result = results.Single(r => r.ItemType == "ServiceFee");
+        Assert.Equal("UygunDegil", result.Status);
+        Assert.Contains("ANKARA", result.Explanation);
+        Assert.Contains("şehir içi", result.Explanation);
+    }
+
+    /// <summary>Doğru eşleşme: Ankara dışı bir mağazaya doğru şekilde ŞEHİR DIŞI (S2) talep edilmiş → Uygun.</summary>
+    [Fact]
+    public async Task AnkaraDisindakiMagazayaSehirDisiDogruTalepEdilmisse_UygunUretir()
+    {
+        using var db = TestDbFactory.Create();
+        var (_, check) = SeedCheck(db);
+        db.ProgressPaymentCheckItems.Add(ServiceFeeItem(check.Id, "15001", "2294", new DateTime(2026, 4, 5), feeCode: "S2", storeCity: "ZONGULDAK"));
+        db.SaveChanges();
+
+        var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
+        {
+            DocumentType = "SERVICE_FORM", FormNumber = "15001", FormNumberConfidence = 0.95m,
+            Store = new AiStoreCandidateDto { CodeRaw = "2294", Confidence = 0.9m }, ServiceDate = "2026-04-05",
+        }));
+        var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
+        var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
+
+        var results = await pipeline.GetComparisonResultsAsync(job.Id);
+        var result = results.Single(r => r.ItemType == "ServiceFee");
+        Assert.Equal("Uygun", result.Status);
+    }
+
+    /// <summary>Mağazanın hangi ilde olduğu Excel'deki "Mağazalar" listesinden bulunamazsa (StoreCity
+    /// null) — otomatik karar verilmemeli, Manuel Kontrol'e düşmeli.</summary>
+    [Fact]
+    public async Task MagazaIliBulunamazsa_ManuelKontrolUretir()
+    {
+        using var db = TestDbFactory.Create();
+        var (_, check) = SeedCheck(db);
+        db.ProgressPaymentCheckItems.Add(ServiceFeeItem(check.Id, "15001", "9999", new DateTime(2026, 4, 5), feeCode: "S1", storeCity: null));
+        db.SaveChanges();
+
+        var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
+        {
+            DocumentType = "SERVICE_FORM", FormNumber = "15001", FormNumberConfidence = 0.95m,
+            Store = new AiStoreCandidateDto { CodeRaw = "9999", Confidence = 0.9m }, ServiceDate = "2026-04-05",
+        }));
+        var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
+        var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
+
+        var results = await pipeline.GetComparisonResultsAsync(job.Id);
+        var result = results.Single(r => r.ItemType == "ServiceFee");
+        Assert.Equal("ManuelKontrol", result.Status);
+    }
+
+    /// <summary>Gerçek olayda yakalanan hata: TextNormalizationHelper.NormalizeName kelimeler arasındaki
+    /// boşluğu KORUR (yalnızca dizi boşluğu tek boşluğa indirger) — bu yüzden eski ".Contains(\"adamsaat\")"
+    /// (boşluksuz) kontrolü, gerçek metin "ADAM SAAT ..." (boşluklu) normalize edildiğinde ASLA
+    /// eşleşmiyordu. Artık MALZEME KODU (S3/S4) ile eşleştiriliyor — gerçek dosyadan doğrulanmış.</summary>
+    [Fact]
+    public async Task AdamSaatKalemiGercekMalzemeKoduIleTespitEdilir()
+    {
+        using var db = TestDbFactory.Create();
+        var (_, check) = SeedCheck(db);
+        db.ProgressPaymentCheckItems.Add(new ProgressPaymentCheckItem
+        {
+            ProgressPaymentCheckId = check.Id, StoreCode = "1001", StoreName = "Ankara MM",
+            VisitDate = new DateTime(2026, 4, 5), MaintenanceFormNo = "15001",
+            IsServiceItem = true, OriginalItemCode = "S3", OriginalMaterialName = "ADAM SAAT GUNDUZ /GECE (>=2. GUN)",
+            Quantity = 8, Unit = "saat", CompanyUnitPrice = 750, CompanyLineTotal = 6000,
+            CreatedAt = DateTime.Now,
+        });
+        db.SaveChanges();
+
+        var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
+        {
+            DocumentType = "SERVICE_FORM", FormNumber = "15001", FormNumberConfidence = 0.95m,
+            Store = new AiStoreCandidateDto { CodeRaw = "1001", Confidence = 0.9m }, ServiceDate = "2026-04-05",
+            Employees = new List<AiEmployeeExtractionDto>
+            {
+                new() { NameRaw = "Personel 1", StartTime = "08:00", EndTime = "16:00", Confidence = 0.9m },
+            },
+        }));
+        var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
+        var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
+
+        var results = await pipeline.GetComparisonResultsAsync(job.Id);
+        // Asıl kontrol edilen şey: ADAM SAAT kaleminin (eski hatayla hiç tetiklenmeyen) HİÇ ATLANMADAN
+        // tespit edilmiş olması — bir ManHours sonucu üretilmesi bunu tek başına kanıtlar.
+        var result = results.Single(r => r.ItemType == "ManHours");
+        // 08:00-16:00 = 8 saat çalışma - 4 saat kural = 4 ödenebilir saat; hakediş 8 saat istemiş → uyuşmuyor.
+        Assert.Equal("UygunDegil", result.Status);
+        Assert.Equal("4 saat", result.FormValue);
+        Assert.Equal("8 saat", result.HakedisValue);
     }
 }

@@ -17,6 +17,11 @@ public class AiComparisonResult
     public int? SourcePageId { get; set; }
     public int? ProgressPaymentCheckItemId { get; set; }
 
+    // ItemType=Material satırlarında, servis formunda eşleşen AiPageMaterial'in kimliği — UI'da "Düzelt"
+    // butonunun hangi malzemeyi düzelteceğini bilmesi için (bkz. AiAnalysisPipelineService.CorrectMaterialAsync).
+    // Eşleşen malzeme yoksa (ör. "Eksik" durumu) null kalır — o satır için düzeltilecek bir şey yoktur.
+    public int? MatchedMaterialId { get; set; }
+
     public AiComparisonItemType ItemType { get; set; }
     public string Description { get; set; } = string.Empty;
 

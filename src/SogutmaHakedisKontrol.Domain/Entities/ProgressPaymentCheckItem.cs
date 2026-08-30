@@ -24,6 +24,10 @@ public class ProgressPaymentCheckItem
     public string? StoreName { get; set; }
     public string? StoreFormat { get; set; }
     public int? MatchedStoreId { get; set; }   // Mağaza ana listesiyle eşleşme (AI karşılaştırması için)
+    // Hakediş Excel'indeki "Mağazalar" master sayfasından (İşyeri No → IlAdi) mağaza koduyla eşleştirilerek
+    // dolar — İLAVE İŞLER'de şehir içi/şehir dışı servis bedeli TÜRÜNÜN doğru talep edilip edilmediğini
+    // (Excel referanstır, formdan bulunmaz) doğrulamak için kullanılır (bkz. AdditionalWorkComparisonStrategy).
+    public string? StoreCity { get; set; }
     public DateTime? VisitDate { get; set; }
     public string? MaintenanceFormNo { get; set; }
 
