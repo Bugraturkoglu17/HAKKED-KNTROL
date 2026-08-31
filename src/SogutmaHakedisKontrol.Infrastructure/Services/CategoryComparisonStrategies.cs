@@ -39,7 +39,8 @@ internal static class MaterialNameMatcher
     // aksine, burada tesadüfen ortak marka değil, kasıtlı olarak eş anlamlı kabul edilen kelimeler var).
     private static readonly List<HashSet<string>> SynonymGroups = new()
     {
-        new() { "hortum", "flex" }, // "Sütlük hortumu" ~ "FLEX BORU"
+        new() { "hortum", "flex", "filex" }, // "Sütlük hortumu" ~ "FLEX BORU" ~ "Filex" (yaygın yazım hatası)
+        new() { "solenoid", "selenoid" }, // "SOLENOİD GÖVDE"/"SOLENOİD BOBİNİ" ~ "Selenoid valf" (yaygın yazım hatası — o/e karışıklığı)
     };
 
     private const int MinKeywordLength = 3;
