@@ -266,6 +266,42 @@ public class AdditionalWorkComparisonStrategyTests
         Assert.Equal("Uygun", result.Status);
     }
 
+    /// <summary>Gerçek olayda yakalanan hata: form "Su Selenoidi" yazıyor (Türkçe çekim eki almış hali) —
+    /// "selenoidi" kelimesi grup üyesi "selenoid"in TAM önek örtüşmesini bozar (o/e farkı + ek birleşince),
+    /// bu yüzden eş anlamlı grup üyeliği kelimenin grup üyesiyle BAŞLAYIP BAŞLAMADIĞINA bakılarak
+    /// kontrol edilmelidir — yalnızca tam kelime eşitliği yeterli değildir.</summary>
+    [Fact]
+    public async Task SolenoidTurkceCekimEkiAlmissa_YineDeEslesir()
+    {
+        using var db = TestDbFactory.Create();
+        var (_, check) = SeedCheck(db);
+        db.ProgressPaymentCheckItems.Add(new ProgressPaymentCheckItem
+        {
+            ProgressPaymentCheckId = check.Id, StoreCode = "1001", StoreName = "Ankara MM",
+            VisitDate = new DateTime(2026, 4, 5), MaintenanceFormNo = "15001",
+            IsServiceItem = false, OriginalMaterialName = "SOLENOİD GÖVDE",
+            Quantity = 1, Unit = "adet", CompanyUnitPrice = 200m, CompanyLineTotal = 200m,
+            CreatedAt = DateTime.Now,
+        });
+        db.SaveChanges();
+
+        var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
+        {
+            DocumentType = "SERVICE_FORM", FormNumber = "15001", FormNumberConfidence = 0.95m,
+            Store = new AiStoreCandidateDto { CodeRaw = "1001", Confidence = 0.9m }, ServiceDate = "2026-04-05",
+            Materials = new List<AiMaterialExtractionDto>
+            {
+                new() { RawName = "Su Selenoidi", NormalizedName = "Su Selenoidi", Quantity = 1, Unit = "adet", Confidence = 0.7m },
+            },
+        }));
+        var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
+        var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
+
+        var results = await pipeline.GetComparisonResultsAsync(job.Id);
+        var result = results.Single(r => r.ItemType == "Material");
+        Assert.Equal("Uygun", result.Status);
+    }
+
     /// <summary>Kullanıcı talebi: "FLEX BORU" formda "Filex" olarak da yazılabiliyor (yaygın yazım hatası).</summary>
     [Fact]
     public async Task FlexFilexYaziHatasi_EsAnlamliGrupOrtusmesiyleEslesir()

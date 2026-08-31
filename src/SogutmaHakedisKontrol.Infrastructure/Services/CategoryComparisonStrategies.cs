@@ -62,7 +62,12 @@ internal static class MaterialNameMatcher
             foreach (var b in wordsB)
             {
                 var isPrefixMatch = a.StartsWith(b, StringComparison.Ordinal) || b.StartsWith(a, StringComparison.Ordinal);
-                var isSynonymMatch = !isPrefixMatch && SynonymGroups.Any(g => g.Contains(a) && g.Contains(b));
+                // Türkçe eklemeli bir dildir — "selenoid" formda çekim eki almış "selenoidi"/"selenoidin"
+                // gibi görünebilir (o/e yazım hatasıyla birleşince "solenoid"~"selenoidi" arasındaki tam
+                // önek örtüşmesi bozulur). Bu yüzden grup üyeliği TAM KELİME eşitliği yerine, kelimenin
+                // grup üyelerinden BİRİYLE BAŞLAYIP BAŞLAMADIĞINA bakılarak kontrol edilir.
+                var isSynonymMatch = !isPrefixMatch && SynonymGroups.Any(g =>
+                    g.Any(s => a.StartsWith(s, StringComparison.Ordinal)) && g.Any(s => b.StartsWith(s, StringComparison.Ordinal)));
                 if (!isPrefixMatch && !isSynonymMatch) continue;
                 if (GenericBrandWords.Contains(a) || GenericBrandWords.Contains(b)) sawGeneric = true;
                 else return OverlapKind.Specific;
