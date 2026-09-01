@@ -204,11 +204,11 @@ public class GasUsageComparisonStrategyTests
         Assert.Contains("1,5 kg", result.Explanation); // ham okuma şeffaflık için açıklamada kalmalı
     }
 
-    /// <summary>TEST 2 — Form No/mağaza doğru ama servis formu tarihi Excel'deki tarihten farklı
-    /// (AŞAMA 1 deseni — Glikol ile aynı): satırın ANA konusu Tarih Uyuşmazlığı'dır, ama gaz miktarı
-    /// bağımsız hesaplanıp ikincil alanlara (SecondaryFormValue/HakedisValue/Status) yazılır.</summary>
+    /// <summary>TEST 2 — Form No/mağaza doğru ama servis formunun AYI Excel'deki aydan farklı (kullanıcı
+    /// talebi: Gaz Kullanım'da yalnızca AY farkı hataya sayılır) — satırın ANA konusu Tarih Uyuşmazlığı'dır,
+    /// ama gaz miktarı bağımsız hesaplanıp ikincil alanlara (SecondaryFormValue/HakedisValue/Status) yazılır.</summary>
     [Fact]
-    public async Task Test2_TarihUyusmazligindaGazMiktariIkincilAlanlaraYazilir()
+    public async Task Test2_AyFarkliysaTarihUyusmazligindaGazMiktariIkincilAlanlaraYazilir()
     {
         using var db = TestDbFactory.Create();
         var (_, check) = SeedCheck(db);
@@ -219,7 +219,7 @@ public class GasUsageComparisonStrategyTests
         {
             DocumentType = "SERVICE_FORM", FormNumber = "20807", FormNumberConfidence = 0.95m,
             Store = new AiStoreCandidateDto { CodeRaw = "3134", Confidence = 0.9m },
-            ServiceDate = "2016-05-16", // yıl OCR hatası — Excel'de 2026
+            ServiceDate = "2026-04-16", // AY farklı (Nisan/Mayıs) — Excel'de Mayıs
             Materials = new List<AiMaterialExtractionDto> { GasMaterial(10) },
         }));
         var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
@@ -232,6 +232,33 @@ public class GasUsageComparisonStrategyTests
         Assert.Equal("10 kg", result.SecondaryFormValue);
         Assert.Equal("10 kg", result.SecondaryHakedisValue);
         Assert.Equal("Uygun", result.SecondaryStatus);
+    }
+
+    /// <summary>TEST 2b — kullanıcı talebi: "GAZ hakkedişlerinde sadece ay hatalarını baz alalım, gün ve
+    /// yıl olanları doğru say" — servis formunun YILI VE GÜNÜ Excel'deki tarihten farklı olsa bile (AY
+    /// aynıysa) artık bir Tarih Uyuşmazlığı üretilmez, normal tek satırlık Uygun sonucu döner.</summary>
+    [Fact]
+    public async Task Test2b_YilVeGunFarkliAmaAyAyniysa_TarihUyusmazligiUretmezUygunKalir()
+    {
+        using var db = TestDbFactory.Create();
+        var (_, check) = SeedCheck(db);
+        db.ProgressPaymentCheckItems.Add(GasItem(check.Id, "20807", "3134", "MJET Hoşdere Ankara", new DateTime(2026, 5, 16), 10));
+        db.SaveChanges();
+
+        var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
+        {
+            DocumentType = "SERVICE_FORM", FormNumber = "20807", FormNumberConfidence = 0.95m,
+            Store = new AiStoreCandidateDto { CodeRaw = "3134", Confidence = 0.9m },
+            ServiceDate = "2016-05-20", // yıl VE gün farklı, AY aynı (Mayıs) — artık uyuşmazlık sayılmaz
+            Materials = new List<AiMaterialExtractionDto> { GasMaterial(10) },
+        }));
+        var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
+        var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
+
+        var results = await pipeline.GetComparisonResultsAsync(job.Id);
+        var result = results.Single(r => r.ItemType == "GasUsage");
+        Assert.Equal("Uygun", result.Status);
+        Assert.Equal("10 kg", result.HakedisValue);
     }
 
     /// <summary>TEST 3 — Form No Excel'de yok, mağaza da eşleşmiyor → FORM HAKEDİŞTE BULUNAMADI

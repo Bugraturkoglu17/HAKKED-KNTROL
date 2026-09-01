@@ -156,12 +156,15 @@ internal static class FormNumberMatcher
     private const decimal MinFormNumberConfidence = 0.4m;
     private const double MinStoreNameSimilarity = 0.5;
 
-    /// <summary>Strict: tam gün eşleşmesi aranır (Varsayılan/Gaz/Glikol). MonthOnly: yalnızca YIL+AY
-    /// karşılaştırılır, gün farkı yok sayılır. Skip: tarih hiç karşılaştırılmaz — kullanıcı talebi:
+    /// <summary>Strict: tam gün eşleşmesi aranır (Varsayılan/Glikol). MonthOnly: YIL+AY karşılaştırılır,
+    /// gün farkı yok sayılır. MonthNumberOnly: yalnızca AY NUMARASI (1-12) karşılaştırılır — hem GÜN hem
+    /// YIL farkı yok sayılır (kullanıcı talebi — Gaz Kullanım: "sadece ay hatalarını baz alalım, gün ve
+    /// yıl olanları doğru say"; AI'nin yıl OCR hatası — 2016↔2026 gibi — çok yaygın olduğu için yıl
+    /// artık bu kategoride hiç dikkate alınmaz). Skip: tarih hiç karşılaştırılmaz — kullanıcı talebi:
     /// "İlave İşlerdeki tarihle alakalı hataları kaldır, bu kategoride önemli değil." (AdditionalWork,
     /// hem malzeme/servis bedeli hem Adam-Saat satırları dahil — form/mağaza eşleşmesi hâlâ zorunludur,
     /// yalnızca TARİH artık bu kategoride hiçbir zaman "Uygun Değil" üretmez.)</summary>
-    public enum DateCheckMode { Strict, MonthOnly, Skip }
+    public enum DateCheckMode { Strict, MonthOnly, MonthNumberOnly, Skip }
 
     // Mağaza adı karşılaştırmasında anlamsız gürültü sayılan, karar üzerinde etkisi olmaması gereken
     // kelimeler (zincir/format ekleri, il adı, adres bağlaçları) — yalnızca mağaza eşleştirmede kullanılır,
@@ -198,7 +201,8 @@ internal static class FormNumberMatcher
     /// null döner.
     /// </summary>
     public static (List<ProgressPaymentCheckItem>? Matched, AiComparisonResult? HardError, AiComparisonResult? SoftIssue) MatchWithSoftIssue(
-        int jobId, AiDocumentPage page, List<ProgressPaymentCheckItem> checkItems) => MatchCore(jobId, page, checkItems, DateCheckMode.Strict);
+        int jobId, AiDocumentPage page, List<ProgressPaymentCheckItem> checkItems, DateCheckMode dateCheckMode = DateCheckMode.Strict) =>
+        MatchCore(jobId, page, checkItems, dateCheckMode);
 
     private static (List<ProgressPaymentCheckItem>? Matched, AiComparisonResult? HardError, AiComparisonResult? SoftIssue) MatchCore(
         int jobId, AiDocumentPage page, List<ProgressPaymentCheckItem> checkItems, DateCheckMode dateCheckMode = DateCheckMode.Strict)
@@ -272,9 +276,12 @@ internal static class FormNumberMatcher
         // Skip (kullanıcı talebi: "İlave İşlerdeki tarihle alakalı hataları kaldır, bu kategoride önemli
         // değil.") tarihi HİÇ karşılaştırmaz — bu kategoride artık tarih asla "Uygun Değil" üretmez.
         var datesDiffer = dateCheckMode != DateCheckMode.Skip
-            && page.ServiceDate.HasValue && first.VisitDate.HasValue && (dateCheckMode == DateCheckMode.MonthOnly
-                ? (page.ServiceDate.Value.Year != first.VisitDate.Value.Year || page.ServiceDate.Value.Month != first.VisitDate.Value.Month)
-                : page.ServiceDate.Value.Date != first.VisitDate.Value.Date);
+            && page.ServiceDate.HasValue && first.VisitDate.HasValue && dateCheckMode switch
+            {
+                DateCheckMode.MonthOnly => page.ServiceDate.Value.Year != first.VisitDate.Value.Year || page.ServiceDate.Value.Month != first.VisitDate.Value.Month,
+                DateCheckMode.MonthNumberOnly => page.ServiceDate.Value.Month != first.VisitDate.Value.Month,
+                _ => page.ServiceDate.Value.Date != first.VisitDate.Value.Date,
+            };
         if (datesDiffer)
         {
             var softIssue = ComparisonResultFactory.New(jobId, page, hakedisStoreLabel, AiComparisonItemType.Material,
@@ -704,7 +711,10 @@ public class GasUsageComparisonStrategy : ICategoryComparisonStrategy
             // döner — böylece gaz miktarı BAĞIMSIZ olarak hesaplanıp AYNI SATIRA eklenebilir (bkz. Glikol
             // ile aynı desen — GlycolUsageComparisonStrategy). Yalnızca gerçekten eşleşen bir kayıt yoksa
             // (hardError — form no okunamadı/Excel'de yok/mükerrer) hiçbir hesaplama yapılamaz.
-            var (sameVisit, hardError, softIssue) = FormNumberMatcher.MatchWithSoftIssue(job.Id, page, checkItems);
+            // DateCheckMode.MonthNumberOnly: kullanıcı talebi — "GAZ hakkedişlerinde sadece ay hatalarını
+            // baz alalım, gün ve yıl olanları doğru say" (AI'nin yıl OCR hatası — 2016↔2026 gibi — çok
+            // yaygın olduğu için bu kategoride artık yalnızca AY NUMARASI karşılaştırılır).
+            var (sameVisit, hardError, softIssue) = FormNumberMatcher.MatchWithSoftIssue(job.Id, page, checkItems, FormNumberMatcher.DateCheckMode.MonthNumberOnly);
             if (hardError != null) { results.Add(hardError); continue; }
 
             foreach (var item in sameVisit!) checkItemPageId.TryAdd(item.Id, page.Id);
