@@ -756,6 +756,7 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
                 FormFileName = fileInfo.FileName,
                 FormPageNumberInFile = fileInfo.PageNumberInFile,
                 MatchedMaterialId = r.MatchedMaterialId,
+                SourcePageId = r.SourcePageId,
             };
         }).ToList();
     }
@@ -882,6 +883,49 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
         await _db.SaveChangesAsync();
 
         await RecomputeComparisonForJobAsync(page.JobId);
+    }
+
+    /// <summary>İlave İşler tablosundaki "Adam-Saat" satırı için: kullanıcı formdan kendi okuduğu adam-saati
+    /// girer, AI'nin PayableManHours hesabının YERİNE geçer. Sonuç yine otomatik hesaplanır (bkz.
+    /// CategoryComparisonStrategies'teki effectiveManHours kullanımı).</summary>
+    public async Task CorrectManHoursAsync(int resultId, decimal correctedHours, string? note)
+    {
+        var result = await _db.AiComparisonResults.FindAsync(resultId)
+            ?? throw new InvalidOperationException("Karşılaştırma sonucu bulunamadı.");
+        if (result.SourcePageId is null)
+            throw new InvalidOperationException("Bu satırın bağlı olduğu bir servis formu sayfası yok, adam-saat düzeltilemez.");
+
+        var page = await _db.AiDocumentPages.FindAsync(result.SourcePageId.Value)
+            ?? throw new InvalidOperationException("Sayfa kaydı bulunamadı.");
+
+        page.UserCorrectedPayableManHours = correctedHours;
+        page.UserCorrectedManHoursNote = note;
+        page.UserCorrectedManHoursAt = DateTime.Now;
+        await _db.SaveChangesAsync();
+
+        await RecomputeComparisonForJobAsync(result.JobId);
+    }
+
+    /// <summary>İlave İşler tablosundaki "Mağaza Uyuşmazlığı"/"Mağaza Doğrulanamadı" satırı için: kullanıcı
+    /// formdan kendi okuduğu mağaza kodunu/adını girer, AI'nin StoreCodeRaw/StoreNameRaw okumasının
+    /// YERİNE geçer (bkz. FormNumberMatcher.EffectiveStoreCodeRaw/EffectiveStoreNameRaw). Sonuç yine
+    /// otomatik hesaplanır — kör bir onay değildir.</summary>
+    public async Task CorrectStoreReadingAsync(int resultId, string correctedStoreRaw, string? note)
+    {
+        var result = await _db.AiComparisonResults.FindAsync(resultId)
+            ?? throw new InvalidOperationException("Karşılaştırma sonucu bulunamadı.");
+        if (result.SourcePageId is null)
+            throw new InvalidOperationException("Bu satırın bağlı olduğu bir servis formu sayfası yok, mağaza düzeltilemez.");
+
+        var page = await _db.AiDocumentPages.FindAsync(result.SourcePageId.Value)
+            ?? throw new InvalidOperationException("Sayfa kaydı bulunamadı.");
+
+        page.UserCorrectedStoreRaw = correctedStoreRaw;
+        page.UserCorrectedStoreNote = note;
+        page.UserCorrectedStoreAt = DateTime.Now;
+        await _db.SaveChangesAsync();
+
+        await RecomputeComparisonForJobAsync(result.JobId);
     }
 
     private async Task RecomputeComparisonForJobAsync(int jobId)

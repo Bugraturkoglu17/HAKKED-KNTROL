@@ -40,6 +40,17 @@ public class AiDocumentPage
     public decimal? PayableManHours { get; set; }
     public bool? FormTotalMatch { get; set; }
 
+    // ── Kullanıcı düzeltmeleri (AI'nin yanlış/eksik okuduğu alanlar için) ──
+    // Doluysa, ilgili karşılaştırma stratejisi AI'nin kendi okumasının YERİNE bunu kullanır — kör bir
+    // onay değil, gerçek bir düzeltilmiş ölçüm/okumadır; sonuç (Uygun/Uygun Değil) yine otomatik hesaplanır.
+    public decimal? UserCorrectedPayableManHours { get; set; }
+    public string? UserCorrectedManHoursNote { get; set; }
+    public DateTime? UserCorrectedManHoursAt { get; set; }
+
+    public string? UserCorrectedStoreRaw { get; set; }  // hem kod hem ad karşılaştırmasında kullanılır
+    public string? UserCorrectedStoreNote { get; set; }
+    public DateTime? UserCorrectedStoreAt { get; set; }
+
     // ── Periyodik bakım + servis çakışma sonucu ──────────────────────────
     public bool ServiceFeeRejectedDueToMaintenance { get; set; }
 

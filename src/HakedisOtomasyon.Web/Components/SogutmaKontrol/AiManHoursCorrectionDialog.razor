@@ -1,0 +1,53 @@
+@using SogutmaHakedisKontrol.Application.DTOs
+
+<MudDialog Style="min-width:420px">
+    <TitleContent><MudText Typo="Typo.h6">Adam-Saat Düzelt</MudText></TitleContent>
+    <DialogContent>
+        <MudText Typo="Typo.body2" Class="mb-1" Style="font-weight:600">@Result.StoreLabel</MudText>
+        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-3 d-block">
+            Hakedişte talep edilen: @(Result.HakedisValue ?? "—")
+        </MudText>
+        <MudGrid Spacing="2">
+            <MudItem xs="12">
+                <MudNumericField T="decimal?" @bind-Value="_hours" Immediate="true" Label="Formda Okuduğunuz Adam-Saat" Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentText="saat" Autofocus />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_note" Label="Not (opsiyonel)" Variant="Variant.Outlined" Lines="2" />
+            </MudItem>
+        </MudGrid>
+        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-2 d-block">
+            Girdiğiniz adam-saat hakedişteki değerle otomatik karşılaştırılır — eşleşirse "Uygun",
+            farklıysa "Uygun Değil" olarak işaretlenir. Bu bir onay değil, gerçek bir ölçümdür.
+        </MudText>
+        @if (_error != null)
+        {
+            <MudAlert Severity="Severity.Error" Dense Class="mt-2">@_error</MudAlert>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => MudDialog.Cancel())">İptal</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Submit">Kaydet</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public AiComparisonResultDto Result { get; set; } = null!;
+
+    private decimal? _hours;
+    private string? _note;
+    private string? _error;
+
+    // Not: Kaydet düğmesi kasıtlı olarak asla "Disabled" değil — bkz. AiQuantityCorrectionDialog'daki
+    // aynı gerekçe (MudNumericField bağlı değeri anlık güncellenmeyebiliyor).
+    private void Submit()
+    {
+        if (_hours is null)
+        {
+            _error = "Lütfen formda okuduğunuz adam-saati girin.";
+            return;
+        }
+        _error = null;
+        MudDialog.Close(DialogResult.Ok((_hours, _note)));
+    }
+}

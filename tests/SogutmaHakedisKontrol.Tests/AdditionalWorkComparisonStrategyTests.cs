@@ -787,4 +787,91 @@ public class AdditionalWorkComparisonStrategyTests
         Assert.Equal("Uygun", result.Status);
         Assert.Equal("4 saat", result.FormValue);
     }
+
+    /// <summary>Kullanıcı talebi: "Adam Saat ve Mağaza düzeltmeleri yapılabilmelidir — formda okuduğum
+    /// değeri girebileceğim bir kalem simgesi konulmalıdır." Adam-Saat satırında AI'nin hesapladığı değer
+    /// yanlışsa/eksikse kullanıcı gerçek değeri girer; sonuç (Uygun/Uygun Değil) yine otomatik hesaplanır —
+    /// kör bir onay değildir.</summary>
+    [Fact]
+    public async Task AdamSaatUyusmazligindaKullaniciDuzeltirse_DuzeltilenDegerleYenidenDegerlendirilir()
+    {
+        using var db = TestDbFactory.Create();
+        var (_, check) = SeedCheck(db);
+        db.ProgressPaymentCheckItems.Add(new ProgressPaymentCheckItem
+        {
+            ProgressPaymentCheckId = check.Id, StoreCode = "1001", StoreName = "Ankara MM",
+            VisitDate = new DateTime(2026, 4, 5), MaintenanceFormNo = "15001",
+            IsServiceItem = true, OriginalItemCode = "S3", OriginalMaterialName = "ADAM SAAT GUNDUZ /GECE (>=2. GUN)",
+            Quantity = 8, Unit = "saat", CompanyUnitPrice = 750, CompanyLineTotal = 6000,
+            CreatedAt = DateTime.Now,
+        });
+        db.SaveChanges();
+
+        var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
+        {
+            DocumentType = "SERVICE_FORM", FormNumber = "15001", FormNumberConfidence = 0.95m,
+            Store = new AiStoreCandidateDto { CodeRaw = "1001", Confidence = 0.9m }, ServiceDate = "2026-04-05",
+            Employees = new List<AiEmployeeExtractionDto>
+            {
+                new() { NameRaw = "Personel 1", StartTime = "08:00", EndTime = "16:00", Confidence = 0.9m }, // 8 saat, tek kişi → 2 saat düşülür → 6 ödenebilir
+            },
+        }));
+        var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
+        var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
+
+        var results = await pipeline.GetComparisonResultsAsync(job.Id);
+        var manHours = results.Single(r => r.ItemType == "ManHours");
+        Assert.Equal("UygunDegil", manHours.Status); // 6 ödenebilir ≠ hakedişin istediği 8
+
+        await pipeline.CorrectManHoursAsync(manHours.Id, 8m, "Formda gördüğüm gerçek adam-saat");
+
+        var updated = await pipeline.GetComparisonResultsAsync(job.Id);
+        var corrected = updated.Single(r => r.ItemType == "ManHours");
+        Assert.Equal("Uygun", corrected.Status);
+        Assert.Equal("8 saat", corrected.FormValue);
+    }
+
+    /// <summary>Kullanıcı talebi: "Mağaza düzeltmeleri yapılabilmelidir — formda okuduğum mağaza kodu/adını
+    /// yazıp sistem karşılaştırsın." AI mağaza kodunu yanlış okuduğunda ("9999") kullanıcı gerçek kodu
+    /// ("1001") girer — sistem bunu hakedişteki mağazayla otomatik karşılaştırıp uyuşmazlığı giderir.</summary>
+    [Fact]
+    public async Task MagazaUyusmazligindaKullaniciDuzeltirse_DuzeltmeyeGoreYenidenDegerlendirilir()
+    {
+        using var db = TestDbFactory.Create();
+        var (_, check) = SeedCheck(db);
+        // Not: ServiceFeeItem() yardımcı fonksiyonu StoreName="Ankara MM" kullanır — "Ankara"/"MM" ikisi de
+        // NormalizeStoreNameCore'un attığı gürültü kelimeleridir, bu yüzden isim karşılaştırması hep
+        // "Inconclusive"e düşer. Gerçek bir Mismatch (kod VE isim belirgin şekilde farklı) üretmek için
+        // ayırt edici bir mağaza adı ("Kahramankazan") kullanan kendi kalemimizi ekliyoruz.
+        db.ProgressPaymentCheckItems.Add(new ProgressPaymentCheckItem
+        {
+            ProgressPaymentCheckId = check.Id,
+            StoreCode = "1001", StoreName = "Kahramankazan Migros", StoreCity = "ANKARA",
+            VisitDate = new DateTime(2026, 4, 5), MaintenanceFormNo = "15001",
+            IsServiceItem = true, OriginalItemCode = "S1", OriginalMaterialName = "1 EKIP ŞEHİR İÇİ SERVİS BEDELİ ",
+            Quantity = 1, Unit = "set", CompanyUnitPrice = 2750, CompanyLineTotal = 2750,
+            CreatedAt = DateTime.Now,
+        });
+        db.SaveChanges();
+
+        var vision = new FakeAiVisionClient(_ => Success(new AiPageExtractionDto
+        {
+            DocumentType = "SERVICE_FORM", FormNumber = "15001", FormNumberConfidence = 0.95m,
+            Store = new AiStoreCandidateDto { CodeRaw = "9999", NameRaw = "İstanbul Kadıköy Migros", Confidence = 0.9m },
+            ServiceDate = "2026-04-05",
+        }));
+        var pipeline = BuildPipeline(db, vision, new FakePdfPageRasterizer(1));
+        var job = await pipeline.RunAsync(check.Id, new List<(byte[], string)> { (new byte[] { 0 }, "servis.pdf") }, null, null, null);
+
+        var results = await pipeline.GetComparisonResultsAsync(job.Id);
+        var mismatch = results.Single(r => r.Description == "Mağaza Uyuşmazlığı");
+        Assert.Equal("UygunDegil", mismatch.Status);
+        Assert.NotNull(mismatch.SourcePageId);
+
+        await pipeline.CorrectStoreReadingAsync(mismatch.Id, "1001", "Formda gördüğüm kod buydu");
+
+        var updated = await pipeline.GetComparisonResultsAsync(job.Id);
+        Assert.DoesNotContain(updated, r => r.Description == "Mağaza Uyuşmazlığı");
+        Assert.Contains(updated, r => r.ItemType == "ServiceFee" && r.Status == "Uygun");
+    }
 }

@@ -165,6 +165,7 @@ public partial class WpfApp : System.Windows.Application
                 MigrateSogutmaFormNumberSchema(sogutmaDb);
                 MigrateSogutmaOverrideSchema(sogutmaDb);
                 MigrateSogutmaGlycolSecondarySchema(sogutmaDb);
+                MigrateSogutmaPageCorrectionSchema(sogutmaDb);
             }
             catch (Exception ex)
             {
@@ -616,6 +617,47 @@ public partial class WpfApp : System.Windows.Application
         catch (Exception ex)
         {
             LogError("Soğutma glikol ikincil alan şema migrasyonu hatası", ex);
+        }
+    }
+
+    /// <summary>Adam-Saat ve Mağaza Uyuşmazlığı satırlarında kullanıcının "formdan okuduğum değer bu"
+    /// düzeltmesini kaydedebilmesi için AiDocumentPages tablosuna yeni sütunlar ekler.</summary>
+    private static void MigrateSogutmaPageCorrectionSchema(SogutmaHakedisKontrol.Infrastructure.Data.AppDbContext db)
+    {
+        try
+        {
+            var conn = db.Database.GetDbConnection();
+            conn.Open();
+            try
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = "PRAGMA table_info(AiDocumentPages)";
+                var cols = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                using (var reader = cmd.ExecuteReader())
+                    while (reader.Read()) cols.Add(reader.GetString(1));
+
+                var newColumns = new Dictionary<string, string>
+                {
+                    ["UserCorrectedPayableManHours"] = "TEXT",
+                    ["UserCorrectedManHoursNote"] = "TEXT",
+                    ["UserCorrectedManHoursAt"] = "TEXT",
+                    ["UserCorrectedStoreRaw"] = "TEXT",
+                    ["UserCorrectedStoreNote"] = "TEXT",
+                    ["UserCorrectedStoreAt"] = "TEXT",
+                };
+                foreach (var (colName, colType) in newColumns)
+                {
+                    if (cols.Contains(colName)) continue;
+                    using var alter = conn.CreateCommand();
+                    alter.CommandText = $"ALTER TABLE \"AiDocumentPages\" ADD COLUMN \"{colName}\" {colType}";
+                    alter.ExecuteNonQuery();
+                }
+            }
+            finally { conn.Close(); }
+        }
+        catch (Exception ex)
+        {
+            LogError("Soğutma sayfa düzeltme şema migrasyonu hatası", ex);
         }
     }
 

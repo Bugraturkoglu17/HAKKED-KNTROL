@@ -37,6 +37,16 @@ public interface IAiAnalysisPipelineService
     /// <summary>Belirsiz mağaza eşleşmesini kullanıcı elle onaylar/düzeltir.</summary>
     Task CorrectPageStoreAsync(int pageId, int storeId);
 
+    /// <summary>"Adam-Saat" satırında AI'nin hesapladığı/okuduğu değer yanlışsa, kullanıcının formdan
+    /// kendi okuduğu adam-saati girer — yeniden hesaplandığında bu değer hakedişteki değerle otomatik
+    /// karşılaştırılır (eşleşirse Uygun, farklıysa Uygun Değil), kör bir onay değildir.</summary>
+    Task CorrectManHoursAsync(int resultId, decimal correctedHours, string? note);
+
+    /// <summary>"Mağaza Uyuşmazlığı"/"Mağaza Doğrulanamadı" satırında kullanıcının formdan kendi okuduğu
+    /// mağaza kodu/adını girer — yeniden hesaplandığında sistem bunu hakedişteki mağazayla otomatik
+    /// karşılaştırır (eşleşirse Uygun, farklıysa Uygun Değil kalır), kör bir onay değildir.</summary>
+    Task CorrectStoreReadingAsync(int resultId, string correctedStoreRaw, string? note);
+
     /// <summary>Kullanıcı, AI'nin "Uygun" dışı verdiği bir sonucu manuel inceleme sonrası "Uygun" olarak
     /// onaylar — kalıcıdır (AiComparisonOverride), sonuç recompute ile silinip yeniden üretilse bile
     /// tekrar uygulanır. Export'ta bu satır artık "Uygun" sayıldığı için kontrol notu almaz.</summary>

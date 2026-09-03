@@ -160,6 +160,9 @@ public class AiComparisonResultDto
     public string? FormFileName { get; set; }
     public int? FormPageNumberInFile { get; set; }
 
+    // ── Adam-Saat/Mağaza "Düzelt" butonları için — bu satırın bağlı olduğu AiDocumentPage.Id (varsa) ──
+    public int? SourcePageId { get; set; }
+
     // ── ItemType=Material satırlarında "Düzelt" butonu için — bkz. AiComparisonResult.MatchedMaterialId ──
     public int? MatchedMaterialId { get; set; }
 }

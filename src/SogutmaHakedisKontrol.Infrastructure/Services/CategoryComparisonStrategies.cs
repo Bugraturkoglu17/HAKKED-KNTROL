@@ -257,16 +257,18 @@ internal static class FormNumberMatcher
         var storeCheck = CompareStore(page, first);
         if (storeCheck == StoreCheck.Mismatch)
         {
+            var effectiveStoreLabel = EffectiveStoreCodeRaw(page) ?? EffectiveStoreNameRaw(page);
             var softIssue = ComparisonResultFactory.New(jobId, page, hakedisStoreLabel, AiComparisonItemType.Material,
-                "Mağaza Uyuşmazlığı", page.StoreCodeRaw ?? page.StoreNameRaw, hakedisStoreLabel, AiComparisonStatus.UygunDegil,
-                $"\"{page.FormNumber}\" numaralı form üzerindeki mağaza {(page.StoreCodeRaw ?? page.StoreNameRaw)} olarak okunmuştur " +
+                "Mağaza Uyuşmazlığı", effectiveStoreLabel, hakedisStoreLabel, AiComparisonStatus.UygunDegil,
+                $"\"{page.FormNumber}\" numaralı form üzerindeki mağaza {effectiveStoreLabel} olarak okunmuştur " +
                 $"ancak hakediş Excelindeki aynı form numarası farklı mağazaya ({hakedisStoreLabel}) aittir.", first.Id);
             return (group, null, softIssue);
         }
         if (storeCheck == StoreCheck.Inconclusive)
         {
+            var effectiveStoreLabel = EffectiveStoreCodeRaw(page) ?? EffectiveStoreNameRaw(page);
             var softIssue = ComparisonResultFactory.New(jobId, page, hakedisStoreLabel, AiComparisonItemType.Material,
-                "Mağaza Doğrulanamadı", page.StoreCodeRaw ?? page.StoreNameRaw, hakedisStoreLabel, AiComparisonStatus.ManuelKontrol,
+                "Mağaza Doğrulanamadı", effectiveStoreLabel, hakedisStoreLabel, AiComparisonStatus.ManuelKontrol,
                 $"\"{page.FormNumber}\" numaralı formdaki mağaza bilgisi hakediş kaydıyla yeterli güvenle karşılaştırılamadı — manuel kontrol edilmelidir.", first.Id);
             return (group, null, softIssue);
         }
@@ -304,7 +306,7 @@ internal static class FormNumberMatcher
     /// </summary>
     private static List<ProgressPaymentCheckItem>? TryMatchByStoreAndDate(AiDocumentPage page, List<ProgressPaymentCheckItem> checkItems)
     {
-        if (string.IsNullOrWhiteSpace(page.StoreCodeRaw) && string.IsNullOrWhiteSpace(page.StoreNameRaw))
+        if (string.IsNullOrWhiteSpace(EffectiveStoreCodeRaw(page)) && string.IsNullOrWhiteSpace(EffectiveStoreNameRaw(page)))
             return null; // hiç mağaza ipucu yoksa yedek eşleştirme de imkansızdır
 
         var visitGroups = checkItems
@@ -312,8 +314,8 @@ internal static class FormNumberMatcher
             .GroupBy(i => (Store: TextNormalizationHelper.NormalizeCode(i.StoreCode ?? i.StoreName ?? string.Empty), Date: i.VisitDate?.Date))
             .ToList();
 
-        var formCode = TextNormalizationHelper.NormalizeCode(page.StoreCodeRaw ?? string.Empty);
-        var formNameCore = NormalizeStoreNameCore(page.StoreNameRaw);
+        var formCode = TextNormalizationHelper.NormalizeCode(EffectiveStoreCodeRaw(page) ?? string.Empty);
+        var formNameCore = NormalizeStoreNameCore(EffectiveStoreNameRaw(page));
 
         bool IsStoreMatch(ProgressPaymentCheckItem item)
         {
@@ -348,7 +350,7 @@ internal static class FormNumberMatcher
         var hakedisStoreLabel = first.StoreName ?? first.StoreCode ?? "Bilinmeyen Mağaza";
         var softIssue = ComparisonResultFactory.New(jobId, page, hakedisStoreLabel, AiComparisonItemType.Material,
             "Form No Yerine Mağazadan Eşleşti", page.FormNumber, first.MaintenanceFormNo, AiComparisonStatus.ManuelKontrol,
-            $"Form numarası {formNoSorunu} — bunun yerine mağaza bilgisi ({page.StoreCodeRaw ?? page.StoreNameRaw}) " +
+            $"Form numarası {formNoSorunu} — bunun yerine mağaza bilgisi ({EffectiveStoreCodeRaw(page) ?? EffectiveStoreNameRaw(page)}) " +
             $"kullanılarak \"{hakedisStoreLabel}\" / \"{first.MaintenanceFormNo}\" numaralı hakediş kaydıyla eşleştirildi. " +
             "Lütfen doğruluğunu kontrol edin.", first.Id);
         return (group, null, softIssue);
@@ -369,12 +371,12 @@ internal static class FormNumberMatcher
     /// </summary>
     private static StoreCheck CompareStore(AiDocumentPage page, ProgressPaymentCheckItem item)
     {
-        var formCode = TextNormalizationHelper.NormalizeCode(page.StoreCodeRaw ?? string.Empty);
+        var formCode = TextNormalizationHelper.NormalizeCode(EffectiveStoreCodeRaw(page) ?? string.Empty);
         var itemCode = TextNormalizationHelper.NormalizeCode(item.StoreCode ?? string.Empty);
         if (!string.IsNullOrEmpty(formCode) && !string.IsNullOrEmpty(itemCode) && formCode == itemCode)
             return StoreCheck.Matched; // Durum 1/3
 
-        var formNameCore = NormalizeStoreNameCore(page.StoreNameRaw);
+        var formNameCore = NormalizeStoreNameCore(EffectiveStoreNameRaw(page));
         var itemNameCore = NormalizeStoreNameCore(item.StoreName);
         var namesComparable = !string.IsNullOrEmpty(formNameCore) && !string.IsNullOrEmpty(itemNameCore);
 
@@ -392,6 +394,14 @@ internal static class FormNumberMatcher
 
         return StoreCheck.Inconclusive; // Durum 6 — ne kod ne isim güvenilir şekilde doğrulanabiliyor
     }
+
+    /// <summary>Kullanıcı formdaki mağazayı elle düzeltmişse (UserCorrectedStoreRaw), AI'nin ham okumasının
+    /// YERİNE bunu kullan — serbest metin olduğundan hem kod hem ad karşılaştırmasında aynı değer denenir.</summary>
+    private static string? EffectiveStoreCodeRaw(AiDocumentPage page) =>
+        !string.IsNullOrWhiteSpace(page.UserCorrectedStoreRaw) ? page.UserCorrectedStoreRaw : page.StoreCodeRaw;
+
+    private static string? EffectiveStoreNameRaw(AiDocumentPage page) =>
+        !string.IsNullOrWhiteSpace(page.UserCorrectedStoreRaw) ? page.UserCorrectedStoreRaw : page.StoreNameRaw;
 
     /// <summary>
     /// Mağaza adı benzerliği — SIRA BAĞIMSIZ karşılaştırır: formdaki serbest metin (ör. "İŞİN YERİ"
@@ -430,7 +440,7 @@ internal static class FormNumberMatcher
         return string.Join(' ', tokens);
     }
 
-    private static string StoreLabelFallback(AiDocumentPage page) => page.StoreNameRaw ?? page.StoreCodeRaw ?? "Bilinmeyen Mağaza";
+    private static string StoreLabelFallback(AiDocumentPage page) => EffectiveStoreNameRaw(page) ?? EffectiveStoreCodeRaw(page) ?? "Bilinmeyen Mağaza";
 
     /// <summary>Bu sınıfın ürettiği 5 hata türünün Description etiketleri — tek kaynak, hem detay
     /// tablosunun bu satırları filtrelemesi (bkz. FormKontrol.razor) hem de mutabakat özetinin (bkz.
@@ -581,11 +591,12 @@ public class DefaultCategoryComparisonStrategy : ICategoryComparisonStrategy
             if (hakedisManHoursItems.Count > 0)
             {
                 var hakedisManHours = hakedisManHoursItems.Sum(i => i.Quantity);
-                if (page.PayableManHours.HasValue)
+                var effectiveManHours = page.UserCorrectedPayableManHours ?? page.PayableManHours;
+                if (effectiveManHours.HasValue)
                 {
-                    var formStr = $"{page.PayableManHours.Value:0.##} saat";
+                    var formStr = $"{effectiveManHours.Value:0.##} saat";
                     var hakedisStr = $"{hakedisManHours:0.##} saat";
-                    if (Math.Abs(page.PayableManHours.Value - hakedisManHours) <= ManHoursTolerance)
+                    if (Math.Abs(effectiveManHours.Value - hakedisManHours) <= ManHoursTolerance)
                     {
                         results.Add(ComparisonResultFactory.New(job.Id, page, storeLabel, AiComparisonItemType.ManHours, "Adam-Saat",
                             formStr, hakedisStr, AiComparisonStatus.Uygun, "Formdaki çalışma sürelerine göre hesaplanan adam-saat hakedişle uyumlu."));
@@ -600,7 +611,7 @@ public class DefaultCategoryComparisonStrategy : ICategoryComparisonStrategy
                         results.Add(ComparisonResultFactory.New(job.Id, page, storeLabel, AiComparisonItemType.ManHours, "Adam-Saat",
                             formStr, hakedisStr, AiComparisonStatus.UygunDegil,
                             $"Formdaki çalışma sürelerine göre toplam {page.CalculatedManHours:0.##} adam-saat oluşmaktadır. " +
-                            $"Kural gereği ({namedEmployeeCount} kişi) {deductedHours} saat düşülerek en fazla {page.PayableManHours:0.##} adam-saat ödenebilir."));
+                            $"Kural gereği ({namedEmployeeCount} kişi) {deductedHours} saat düşülerek en fazla {effectiveManHours:0.##} adam-saat ödenebilir."));
                     }
                 }
                 else
@@ -1220,11 +1231,12 @@ public class AdditionalWorkComparisonStrategy : ICategoryComparisonStrategy
             if (hakedisManHoursItems.Count > 0)
             {
                 var hakedisManHours = hakedisManHoursItems.Sum(i => i.Quantity);
-                if (page.PayableManHours.HasValue)
+                var effectiveManHours = page.UserCorrectedPayableManHours ?? page.PayableManHours;
+                if (effectiveManHours.HasValue)
                 {
-                    var formStr = $"{page.PayableManHours.Value:0.##} saat";
+                    var formStr = $"{effectiveManHours.Value:0.##} saat";
                     var hakedisStr = $"{hakedisManHours:0.##} saat";
-                    if (Math.Abs(page.PayableManHours.Value - hakedisManHours) <= ManHoursTolerance)
+                    if (Math.Abs(effectiveManHours.Value - hakedisManHours) <= ManHoursTolerance)
                     {
                         results.Add(ComparisonResultFactory.New(job.Id, page, storeLabel, AiComparisonItemType.ManHours, "Adam-Saat",
                             formStr, hakedisStr, AiComparisonStatus.Uygun, "Formdaki çalışma sürelerine göre hesaplanan adam-saat hakedişle uyumlu."));
@@ -1239,7 +1251,7 @@ public class AdditionalWorkComparisonStrategy : ICategoryComparisonStrategy
                         results.Add(ComparisonResultFactory.New(job.Id, page, storeLabel, AiComparisonItemType.ManHours, "Adam-Saat",
                             formStr, hakedisStr, AiComparisonStatus.UygunDegil,
                             $"Formdaki çalışma sürelerine göre toplam {page.CalculatedManHours:0.##} adam-saat oluşmaktadır. " +
-                            $"Kural gereği ({namedEmployeeCount} kişi) {deductedHours} saat düşülerek en fazla {page.PayableManHours:0.##} adam-saat ödenebilir."));
+                            $"Kural gereği ({namedEmployeeCount} kişi) {deductedHours} saat düşülerek en fazla {effectiveManHours:0.##} adam-saat ödenebilir."));
                     }
                 }
                 else

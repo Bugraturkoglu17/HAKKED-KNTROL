@@ -376,6 +376,20 @@ else
                                                    Color="Color.Default" OnClick="@(() => CorrectMaterialQuantityAsync(context))" />
                                 </MudTooltip>
                             }
+                            @if (context.ItemType == "ManHours" && context.SourcePageId.HasValue)
+                            {
+                                <MudTooltip Text="Formdan okuduğunuz adam-saati girin">
+                                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                                                   Color="Color.Default" OnClick="@(() => CorrectManHoursAsync(context))" />
+                                </MudTooltip>
+                            }
+                            @if ((context.Description == "Mağaza Uyuşmazlığı" || context.Description == "Mağaza Doğrulanamadı") && context.SourcePageId.HasValue)
+                            {
+                                <MudTooltip Text="Formdan okuduğunuz mağaza kodu/adını girin">
+                                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                                                   Color="Color.Default" OnClick="@(() => CorrectStoreReadingAsync(context))" />
+                                </MudTooltip>
+                            }
                         }
                     </MudTd>
                 </RowTemplate>
@@ -675,6 +689,32 @@ else
         await Pipeline.CorrectSingleItemQuantityAsync(result.Id, correction.Item1.Value, correction.Item2, correction.Item3);
         await LoadJobAsync();
         Snackbar.Add("Miktar kaydedildi ve karşılaştırıldı.", Severity.Success);
+    }
+
+    // Kör "Onay ver"den FARKLI: burada gerçek bir adam-saat girilir, hakedişteki değerle otomatik
+    // karşılaştırılıp Uygun/Uygun Değil sonucu sistem tarafından belirlenir (bkz. AiManHoursCorrectionDialog).
+    private async Task CorrectManHoursAsync(AiComparisonResultDto result)
+    {
+        var parameters = new DialogParameters { ["Result"] = result };
+        var dialog = await DialogService.ShowAsync<AiManHoursCorrectionDialog>("Adam-Saat Düzelt", parameters);
+        var dialogResult = await dialog.Result;
+        if (dialogResult.Canceled || dialogResult.Data is not ValueTuple<decimal?, string?> correction || correction.Item1 is null) return;
+        await Pipeline.CorrectManHoursAsync(result.Id, correction.Item1.Value, correction.Item2);
+        await LoadJobAsync();
+        Snackbar.Add("Adam-saat kaydedildi ve karşılaştırıldı.", Severity.Success);
+    }
+
+    // Kör "Onay ver"den FARKLI: burada gerçek bir mağaza kodu/adı girilir, hakedişteki mağazayla otomatik
+    // karşılaştırılıp Uygun/Uygun Değil sonucu sistem tarafından belirlenir (bkz. AiStoreCorrectionDialog).
+    private async Task CorrectStoreReadingAsync(AiComparisonResultDto result)
+    {
+        var parameters = new DialogParameters { ["Result"] = result };
+        var dialog = await DialogService.ShowAsync<AiStoreReadingCorrectionDialog>("Mağazayı Düzelt", parameters);
+        var dialogResult = await dialog.Result;
+        if (dialogResult.Canceled || dialogResult.Data is not ValueTuple<string?, string?> correction || string.IsNullOrWhiteSpace(correction.Item1)) return;
+        await Pipeline.CorrectStoreReadingAsync(result.Id, correction.Item1, correction.Item2);
+        await LoadJobAsync();
+        Snackbar.Add("Mağaza kaydedildi ve karşılaştırıldı.", Severity.Success);
     }
 
     // "Formu Göster": zaten diskte duran orijinal PDF'i (AI analizinden BAĞIMSIZ, ek bir sayfa görseli
