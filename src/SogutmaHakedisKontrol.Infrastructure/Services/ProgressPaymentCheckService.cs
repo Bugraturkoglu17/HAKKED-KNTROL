@@ -727,9 +727,13 @@ public class ProgressPaymentCheckService : IProgressPaymentCheckService
             .OrderByDescending(j => j.CreatedAt)
             .Select(j => (int?)j.Id)
             .FirstOrDefaultAsync();
+        // Kullanıcı talebi: export'ta yalnızca kesinleşmiş sorunlar (Uygun Değil/Eksik) görünsün —
+        // Manuel Kontrol (henüz karara bağlanmamış, onay bekleyen) satırlar firmaya giden dosyada
+        // gereksiz/yanlış izlenim vermesin diye not eklenmez.
         var formIssuesByItemId = latestJobId.HasValue
             ? await _db.AiComparisonResults
-                .Where(r => r.JobId == latestJobId.Value && r.ProgressPaymentCheckItemId != null && r.Status != AiComparisonStatus.Uygun)
+                .Where(r => r.JobId == latestJobId.Value && r.ProgressPaymentCheckItemId != null
+                    && (r.Status == AiComparisonStatus.UygunDegil || r.Status == AiComparisonStatus.Eksik))
                 .GroupBy(r => r.ProgressPaymentCheckItemId!.Value)
                 .ToDictionaryAsync(g => g.Key, g => string.Join(" ", g.Select(r => r.Explanation)))
             : new Dictionary<int, string>();
@@ -801,18 +805,19 @@ public class ProgressPaymentCheckService : IProgressPaymentCheckService
         return outPath;
     }
 
-    /// <summary>Export'ta sadece problemli satırlara not yazılır — Uygun satırların not hücresi boş kalır (firmaya gidecek dosyada gereksiz not olmaz).</summary>
+    /// <summary>Export'ta sadece KESİNLEŞMİŞ sorunlara (fiyat hatası/eşleşmeyen/birim uyuşmazlığı) not
+    /// yazılır. Kullanıcı talebi: "Sadece uygun olmayanlar, hatalı olanlar, eşleşmeyenler gösterilmeli;
+    /// manuel kontrol ve onay bekleyenler export alırken gözükmemeli" — bu yüzden Uygun, OnayBekliyor
+    /// (tahmini eşleşme onay bekliyor), KontrolDisi (kullanıcı göz simgesiyle kontrol dışı bıraktı) ve
+    /// KontrolGerekli (henüz işlenmemiş/manuel inceleme) satırlarının not hücresi boş kalır.</summary>
     private static string BuildExportNote(ProgressPaymentCheckItem item) => item.ControlStatus switch
     {
-        CheckItemControlStatus.Uygun => string.Empty,
         CheckItemControlStatus.FiyatHatasi => item.PriceCorrectionApplied
             ? $"Birim fiyat {item.CompanyUnitPrice:N2} TL yerine onaylı {item.ApprovedUnitPriceTry:N2} TL olarak düzeltilmiştir."
             : $"Firma birim fiyatı ({item.CompanyUnitPrice:N2} TL) onaylı birim fiyattan ({item.ApprovedUnitPriceTry:N2} TL) farklıdır. Kontrol edilmelidir.",
         CheckItemControlStatus.BirimFiyatBulunamadi => "Onaylı birim fiyat listesinde karşılığı bulunamadı. Kontrol edilmelidir.",
         CheckItemControlStatus.BirimUyusmazligi => "Hakedişteki birim ile onaylı birim fiyat birimi uyuşmamaktadır.",
-        CheckItemControlStatus.OnayBekliyor => "Tahmini eşleşme kullanıcı onayı bekliyor. Manuel inceleme gereklidir.",
-        CheckItemControlStatus.KontrolDisi => "Kullanıcı tarafından kontrol dışı bırakılmıştır.",
-        _ => string.IsNullOrWhiteSpace(item.ControlNote) ? "Manuel inceleme gereken kalem." : item.ControlNote!,
+        _ => string.Empty,
     };
 
     private static string ControlStatusLabel(CheckItemControlStatus s) => s switch

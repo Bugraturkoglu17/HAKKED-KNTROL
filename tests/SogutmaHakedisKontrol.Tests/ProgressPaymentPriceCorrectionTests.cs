@@ -314,4 +314,112 @@ public class ProgressPaymentPriceCorrectionTests
 
         Assert.Contains("servis formunda bulunamamıştır", noteText);
     }
+
+    /// <summary>Kullanıcı talebi: "Manuel kontrol ve onay bekleyenler export alırken gözükmemeli" —
+    /// Form/AI kontrolünde ManuelKontrol durumundaki bir sonuç henüz kesinleşmediği için export'ta
+    /// satıra not olarak eklenmemeli (yalnızca UygunDegil/Eksik eklenir, bkz. bir önceki test).</summary>
+    [Fact]
+    public async Task Export_ManuelKontrolDurumundakiAiSonucuNotOlarakEklenmez()
+    {
+        var (svc, db) = CreateService();
+        var listId = await CreatePriceListAsync(db, "TESTFIRMA", "TEST BÖLGE");
+        db.UnitPriceItems.Add(new UnitPriceItem
+        {
+            UnitPriceListId = listId, MaterialName = "Uygun Malzeme", Price = 10m, Currency = "TRY",
+            NormalizedName = new MaterialMatchingService(db).Normalize("Uygun Malzeme"), IsActive = true, CreatedAt = DateTime.Now,
+        });
+        await db.SaveChangesAsync();
+
+        var bytes = BuildHakedisWorkbook("Uygun Malzeme", miktar: 1, fiyat: 10);
+        using var stream = new MemoryStream(bytes);
+        var parsed = ProgressPaymentExcelParser.Parse(stream, "test.xlsx");
+        var check = await CreateAndAttachCheckAsync(svc, listId, "TESTFIRMA", "TEST BÖLGE", "SABİT FİYAT", 2026, 4, "Nisan 2026", "test.xlsx", bytes, null, parsed);
+        var item = Assert.Single(await svc.GetItemsAsync(check.Id));
+
+        var job = new AiAnalysisJob { ProgressPaymentCheckId = check.Id, Status = AiJobStatus.Completed, CreatedAt = DateTime.Now };
+        db.AiAnalysisJobs.Add(job);
+        await db.SaveChangesAsync();
+        db.AiComparisonResults.Add(new AiComparisonResult
+        {
+            JobId = job.Id, ProgressPaymentCheckItemId = item.Id, StoreLabel = "Test Mağaza",
+            ItemType = AiComparisonItemType.Material, Description = "Uygun Malzeme",
+            Status = AiComparisonStatus.ManuelKontrol,
+            Explanation = "Servis formundaki mağaza bilgisi yeterli güvenle doğrulanamadı.",
+            CreatedAt = DateTime.Now,
+        });
+        await db.SaveChangesAsync();
+
+        var outPath = await svc.ExportControlledExcelAsync(check.Id);
+        using var outWb = new XLWorkbook(outPath);
+        var outWs = outWb.Worksheet("NİSAN");
+        var noteText = outWs.Cell(2, 6).GetString();
+
+        Assert.True(string.IsNullOrWhiteSpace(noteText));
+    }
+
+    /// <summary>Kullanıcı talebi: "Göz simgesine basıp kontrol dışı bıraktıysam export aldığımda
+    /// Excel'de gözükmesin." Kontrol dışı bırakılan satır — altında fiyat hatası olsa bile — export'ta
+    /// hiçbir not almaz (kullanıcı bilerek bu satırı kontrol kapsamı dışında bıraktı).</summary>
+    [Fact]
+    public async Task Export_KontrolDisiBirakilanSatirNotAlmaz()
+    {
+        var (svc, db) = CreateService();
+        var listId = await CreatePriceListAsync(db, "TESTFIRMA", "TEST BÖLGE");
+        db.UnitPriceItems.Add(new UnitPriceItem
+        {
+            UnitPriceListId = listId, MaterialName = "Bakır Boru 3/8", Price = 5m, Currency = "TRY",
+            NormalizedName = new MaterialMatchingService(db).Normalize("Bakır Boru 3/8"), IsActive = true, CreatedAt = DateTime.Now,
+        });
+        await db.SaveChangesAsync();
+
+        var bytes = BuildHakedisWorkbook("Bakır Boru 3/8", miktar: 2, fiyat: 10); // firma 10 TL yazmış, onaylı 5 TL — normalde Fiyat Hatası
+        using var stream = new MemoryStream(bytes);
+        var parsed = ProgressPaymentExcelParser.Parse(stream, "test.xlsx");
+        var check = await CreateAndAttachCheckAsync(svc, listId, "TESTFIRMA", "TEST BÖLGE", "SABİT FİYAT", 2026, 4, "Nisan 2026", "test.xlsx", bytes, null, parsed);
+        var item = Assert.Single(await svc.GetItemsAsync(check.Id));
+        Assert.Equal(CheckItemControlStatus.FiyatHatasi, item.ControlStatus);
+
+        await svc.ExcludeItemAsync(item.Id, true);
+        var itemsAfterExclude = await svc.GetItemsAsync(check.Id);
+        Assert.Equal(CheckItemControlStatus.KontrolDisi, Assert.Single(itemsAfterExclude).ControlStatus);
+
+        var outPath = await svc.ExportControlledExcelAsync(check.Id);
+        using var outWb = new XLWorkbook(outPath);
+        var outWs = outWb.Worksheet("NİSAN");
+        var noteText = outWs.Cell(2, 6).GetString();
+
+        Assert.True(string.IsNullOrWhiteSpace(noteText));
+    }
+
+    /// <summary>Kullanıcı talebi: "Onay bekleyenler export alırken gözükmemeli." Tahmini eşleşme
+    /// (turuncu kuyruk, OnayBekliyor) henüz kullanıcı onayı almadığı için kesinleşmiş bir sorun
+    /// sayılmaz — export'ta not olarak görünmemeli.</summary>
+    [Fact]
+    public async Task Export_OnayBekleyenSatirNotAlmaz()
+    {
+        var (svc, db) = CreateService();
+        var listId = await CreatePriceListAsync(db, "TESTFIRMA", "TEST BÖLGE");
+        var bytes = BuildHakedisWorkbook("Bilinmeyen Parça", miktar: 1, fiyat: 42);
+        using var stream = new MemoryStream(bytes);
+        var parsed = ProgressPaymentExcelParser.Parse(stream, "test.xlsx");
+        var check = await CreateAndAttachCheckAsync(svc, listId, "TESTFIRMA", "TEST BÖLGE", "SABİT FİYAT", 2026, 4, "Nisan 2026", "test.xlsx", bytes, null, parsed);
+        var item = Assert.Single(await svc.GetItemsAsync(check.Id));
+
+        // Turuncu kuyruk (tahmini eşleşme) durumunu doğrudan simüle et — asıl kontrol edilen şey
+        // RecalculateAsync'in bu MatchStatus'ü OnayBekliyor'a çevirmesi ve export'un buna not YAZMAMASI.
+        var dbItem = await db.ProgressPaymentCheckItems.FindAsync(item.Id);
+        dbItem!.MatchStatus = MaterialMatchStatus.FuzzyPending;
+        await db.SaveChangesAsync();
+        await svc.RecalculateAsync(check.Id);
+
+        var itemsAfter = await svc.GetItemsAsync(check.Id);
+        Assert.Equal(CheckItemControlStatus.OnayBekliyor, Assert.Single(itemsAfter).ControlStatus);
+
+        var outPath = await svc.ExportControlledExcelAsync(check.Id);
+        using var outWb = new XLWorkbook(outPath);
+        var outWs = outWb.Worksheet("NİSAN");
+        var noteText = outWs.Cell(2, 6).GetString();
+
+        Assert.True(string.IsNullOrWhiteSpace(noteText));
+    }
 }
