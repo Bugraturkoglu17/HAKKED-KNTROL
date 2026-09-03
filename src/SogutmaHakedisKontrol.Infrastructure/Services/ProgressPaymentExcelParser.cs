@@ -1,5 +1,7 @@
 using System.Globalization;
+using System.IO.Compression;
 using System.Text.RegularExpressions;
+using System.Xml.Linq;
 using ClosedXML.Excel;
 using SogutmaHakedisKontrol.Application.DTOs;
 using SogutmaHakedisKontrol.Domain.Enums;
@@ -21,7 +23,9 @@ public static class ProgressPaymentExcelParser
     public static ProgressPaymentImportPreviewDto Parse(Stream stream, string fileName)
     {
         var preview = new ProgressPaymentImportPreviewDto();
-        using var wb = new XLWorkbook(stream);
+        using var ms = new MemoryStream();
+        stream.CopyTo(ms);
+        using var wb = OpenWorkbook(ms.ToArray());
 
         // ── Başlık/dönem/firma bilgisi ve satır sayfası tespiti ──────────
         IXLWorksheet? dataSheet = null;
@@ -156,6 +160,211 @@ public static class ProgressPaymentExcelParser
         preview.Items = items;
         preview.DebugMessages.Add($"Veri sayfası: '{dataSheet.Name}', başlık satırı: {headerRowNumber}.");
         return preview;
+    }
+
+    // ------------------------------------------------------------------ //
+    //  HARİCİ BAĞLANTI (EXTERNAL LINK) ONARIMI
+    // ------------------------------------------------------------------ //
+
+    /// <summary>Bazı Excel dosyaları (genelde başka bir çalışma kitabından kopyala-yapıştırla oluşturulmuş
+    /// hücreler nedeniyle) "harici bağlantı" (external link) meta verisi içerir — hücrelerin GÖRÜNEN
+    /// değerleri statiktir, ama dosyanın içinde hâlâ "başka bir dosyaya referans" kaydı kalmıştır.
+    /// ClosedXML bu meta veriyi ayrıştıramaz ve NotImplementedException fırlatır ("References from other
+    /// files are not yet implemented") — dosyanın gerçek verisiyle hiçbir ilgisi olmayan bir hatadır.
+    /// ÖNEMLİ (gerçek olayda tespit edildi): bu hata çoğunlukla <see cref="XLWorkbook"/> CONSTRUCTOR'INDA
+    /// değil, İLK formül hücresi bir yerlerde ".GetString()"/".GetDouble()" ile okunduğunda (ClosedXML'in
+    /// CalcEngine'i o hücreyi hesaplamaya çalışırken) fırlatılıyor — yani "önce normal aç, hata alırsan
+    /// onar" (reaktif) yaklaşımı ÇALIŞMAZ, çünkü açma işleminin kendisi başarılı görünüp asıl patlama
+    /// çağrı zincirinin çok daha derininde (ör. FindSuggestedEurRate) gerçekleşir ve o noktada onarım artık
+    /// devreye giremez. Bu yüzden PROAKTİF davranılır: dosya AÇILMADAN ÖNCE harici bağlantı içerip
+    /// içermediği kontrol edilir, içeriyorsa onarım baştan (hiç normal açmayı denemeden) uygulanır — hücre
+    /// DEĞERLERİ hiç etkilenmez, yalnızca artık kullanılmayan "başka dosyaya bağlantı"/formül kaydı
+    /// silinir. Onarım başarısız olursa kullanıcıya elle nasıl düzelteceğini anlatan net bir Türkçe hata
+    /// verir.</summary>
+    private static XLWorkbook OpenWorkbook(byte[] bytes)
+    {
+        if (HasExternalLinks(bytes))
+        {
+            if (!TryStripExternalLinks(bytes, out var repaired))
+            {
+                throw new InvalidOperationException(
+                    "Bu Excel dosyası başka bir çalışma kitabına (dosyaya) referans veren gizli bağlantılar " +
+                    "içeriyor ve otomatik olarak temizlenemedi. Excel'de dosyayı açıp \"Veri\" sekmesinden " +
+                    "\"Bağlantıları Düzenle\" → \"Bağlantıları Kaldır\" seçeneğini kullanıp tekrar kaydettikten " +
+                    "sonra yeniden yükleyin.");
+            }
+            bytes = repaired;
+        }
+
+        try
+        {
+            return new XLWorkbook(new MemoryStream(bytes));
+        }
+        catch (NotImplementedException ex) when (ex.Message.Contains("References from other files", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                "Bu Excel dosyası başka bir çalışma kitabına (dosyaya) referans veren gizli bağlantılar " +
+                "içeriyor ve otomatik olarak temizlenemedi. Excel'de dosyayı açıp \"Veri\" sekmesinden " +
+                "\"Bağlantıları Düzenle\" → \"Bağlantıları Kaldır\" seçeneğini kullanıp tekrar kaydettikten " +
+                "sonra yeniden yükleyin.", ex);
+        }
+    }
+
+    /// <summary>Açmadan önce ucuz bir kontrol: .xlsx paketinde xl/externalLinks/* parçası var mı? Bu,
+    /// TryStripExternalLinks'in de kullandığı aynı sinyaldir — burada AYRI tutulmasının sebebi, açma
+    /// işleminden ÖNCE (bkz. OpenWorkbook'taki not) karar verebilmektir.</summary>
+    private static bool HasExternalLinks(byte[] bytes)
+    {
+        try
+        {
+            using var ms = new MemoryStream(bytes);
+            using var zip = new ZipArchive(ms, ZipArchiveMode.Read);
+            return zip.Entries.Any(e => e.FullName.StartsWith("xl/externalLinks/", StringComparison.OrdinalIgnoreCase));
+        }
+        catch
+        {
+            return false; // geçerli bir .xlsx/zip değilse burada karar vermeye çalışma, normal açma dener
+        }
+    }
+
+    /// <summary>.xlsx bir ZIP paketidir — harici bağlantı kaydı DÖRT yerde durur: xl/externalLinks/* (asıl
+    /// bağlantı parçaları), xl/workbook.xml içindeki &lt;externalReferences&gt; elemanı,
+    /// xl/_rels/workbook.xml.rels + [Content_Types].xml içindeki ilgili kayıtlar — VE (gerçek olayda
+    /// yakalanan, en kritik kısım) tek tek hücre FORMÜLLERİ. Yalnızca externalLinks parçalarını silmek
+    /// YETERSİZDİR: "[1]SayfaAdı!..." biçiminde AÇIKÇA harici referans içeren formüller ayrı bir
+    /// NotImplementedException kaynağıdır, AMA gerçek olayda ayrıca ClosedXML'in kendi hesaplama motoru
+    /// (CalcEngine) sayfa-içi, TAMAMEN YEREL bir VLOOKUP formülünü ".GetString()" ile yeniden hesaplamaya
+    /// çalışırken de (PrefixNode.GetWorksheet üzerinden) AYNI hatayı fırlattı — yani sorun yalnızca dış
+    /// referanslarla sınırlı değil, ClosedXML'in formül hesaplama desteğinin genel bir sınırlaması.
+    /// Uygulama hiçbir zaman canlı formül hesaplamıyor, yalnızca hücre DEĞERİNİ okuyor — bu yüzden onarım
+    /// tetiklendiğinde TÜM &lt;f&gt; (formül) elemanları TAMAMEN silinir, hücrelerin önbelleklenmiş
+    /// &lt;v&gt; DEĞERLERİ dokunulmadan kalır (tıpkı Excel'de "Değer Olarak Yapıştır" yapılmış gibi).</summary>
+    private static bool TryStripExternalLinks(byte[] bytes, out byte[] repaired)
+    {
+        repaired = Array.Empty<byte>();
+        try
+        {
+            var entries = new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase);
+            using (var srcMs = new MemoryStream(bytes))
+            using (var srcZip = new ZipArchive(srcMs, ZipArchiveMode.Read))
+            {
+                foreach (var entry in srcZip.Entries)
+                {
+                    using var es = entry.Open();
+                    using var buf = new MemoryStream();
+                    es.CopyTo(buf);
+                    entries[entry.FullName] = buf.ToArray();
+                }
+            }
+
+            var removedRelIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var externalLinkKeys = entries.Keys
+                .Where(k => k.StartsWith("xl/externalLinks/", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            if (externalLinkKeys.Count == 0) return false; // temizlenecek bir şey yok, onarım gereksiz
+            foreach (var key in externalLinkKeys) entries.Remove(key);
+
+            // xl/calcChain.xml — hesaplama SIRASI önbelleğidir; hücrelerden <f> silinse bile bu dosya
+            // "bu hücrede formül var, yeniden hesapla" kaydını taşımaya devam eder ve ClosedXML'in
+            // CalcEngine'i (gerçek olayda AYNI NotImplementedException ile) yine tetiklenir. Formülü
+            // olmayan bir çalışma kitabı için tamamen gereksiz/isteğe bağlı bir parçadır — güvenle silinir.
+            entries.Remove("xl/calcChain.xml");
+
+            XNamespace mainNs = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+            XNamespace rNs = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+
+            // xl/workbook.xml — <externalReferences> elemanını ve içindeki r:id'leri topla, sonra sil.
+            if (entries.TryGetValue("xl/workbook.xml", out var workbookXmlBytes))
+            {
+                var doc = XDocument.Load(new MemoryStream(workbookXmlBytes));
+                var extRefsEl = doc.Root?.Elements().FirstOrDefault(e => e.Name.LocalName == "externalReferences");
+                if (extRefsEl != null)
+                {
+                    foreach (var er in extRefsEl.Elements())
+                    {
+                        var rid = er.Attribute(rNs + "id")?.Value;
+                        if (!string.IsNullOrEmpty(rid)) removedRelIds.Add(rid);
+                    }
+                    extRefsEl.Remove();
+                    using var outMs = new MemoryStream();
+                    doc.Save(outMs);
+                    entries["xl/workbook.xml"] = outMs.ToArray();
+                }
+            }
+
+            // xl/_rels/workbook.xml.rels — externalLink tipindeki (veya yukarıda toplanan id'lere ait)
+            // Relationship kayıtlarını sil.
+            if (entries.TryGetValue("xl/_rels/workbook.xml.rels", out var relsBytes))
+            {
+                var doc = XDocument.Load(new MemoryStream(relsBytes));
+                XNamespace pkgNs = "http://schemas.openxmlformats.org/package/2006/relationships";
+                var toRemove = doc.Root?.Elements(pkgNs + "Relationship")
+                    .Where(r => (r.Attribute("Type")?.Value.Contains("externalLink", StringComparison.OrdinalIgnoreCase) ?? false)
+                                || (r.Attribute("Type")?.Value.Contains("calcChain", StringComparison.OrdinalIgnoreCase) ?? false)
+                                || removedRelIds.Contains(r.Attribute("Id")?.Value ?? string.Empty))
+                    .ToList();
+                if (toRemove is { Count: > 0 })
+                {
+                    foreach (var r in toRemove) r.Remove();
+                    using var outMs = new MemoryStream();
+                    doc.Save(outMs);
+                    entries["xl/_rels/workbook.xml.rels"] = outMs.ToArray();
+                }
+            }
+
+            // [Content_Types].xml — externalLinks parçalarına ait Override kayıtlarını sil.
+            if (entries.TryGetValue("[Content_Types].xml", out var ctBytes))
+            {
+                var doc = XDocument.Load(new MemoryStream(ctBytes));
+                XNamespace ctNs = "http://schemas.openxmlformats.org/package/2006/content-types";
+                var toRemove = doc.Root?.Elements(ctNs + "Override")
+                    .Where(o => (o.Attribute("PartName")?.Value ?? string.Empty).StartsWith("/xl/externalLinks/", StringComparison.OrdinalIgnoreCase)
+                                || (o.Attribute("PartName")?.Value ?? string.Empty) == "/xl/calcChain.xml")
+                    .ToList();
+                if (toRemove is { Count: > 0 })
+                {
+                    foreach (var o in toRemove) o.Remove();
+                    using var outMs = new MemoryStream();
+                    doc.Save(outMs);
+                    entries["[Content_Types].xml"] = outMs.ToArray();
+                }
+            }
+
+            // xl/worksheets/sheetN.xml — TÜM <f> (formül) elemanlarını sil; <v> (önbelleklenmiş değer)
+            // elemanına dokunma. Yalnızca "[N]" harici referanslı formüllerle sınırlı tutulmadı (bkz.
+            // yukarıdaki açıklama) — ClosedXML'in CalcEngine'i tamamen yerel formüllerde de aynı hatayı
+            // fırlatabiliyor.
+            var worksheetKeys = entries.Keys
+                .Where(k => Regex.IsMatch(k, @"^xl/worksheets/sheet\d+\.xml$", RegexOptions.IgnoreCase))
+                .ToList();
+            foreach (var wsKey in worksheetKeys)
+            {
+                var doc = XDocument.Load(new MemoryStream(entries[wsKey]));
+                var formulaEls = doc.Descendants(mainNs + "f").ToList();
+                if (formulaEls.Count == 0) continue;
+                foreach (var f in formulaEls) f.Remove();
+                using var outMs = new MemoryStream();
+                doc.Save(outMs);
+                entries[wsKey] = outMs.ToArray();
+            }
+
+            using var destMs = new MemoryStream();
+            using (var destZip = new ZipArchive(destMs, ZipArchiveMode.Create, leaveOpen: true))
+            {
+                foreach (var (name, content) in entries)
+                {
+                    var entry = destZip.CreateEntry(name, CompressionLevel.Optimal);
+                    using var entryStream = entry.Open();
+                    entryStream.Write(content, 0, content.Length);
+                }
+            }
+            repaired = destMs.ToArray();
+            return true;
+        }
+        catch
+        {
+            return false; // onarım denemesi güvenli şekilde başarısız oldu — çağıran taraf orijinal hatayı fırlatır
+        }
     }
 
     // ------------------------------------------------------------------ //
