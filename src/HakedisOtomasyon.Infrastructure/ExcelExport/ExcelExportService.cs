@@ -48,9 +48,9 @@ public class ExcelExportService : IExcelExportService
     public async Task<string> ExportClaimAsync(int claimId, IProgress<string>? progress = null)
     {
         var claim = await _db.ProgressClaims
-            .Include(c => c.ServiceForms).ThenInclude(f => f.Store)
-            .Include(c => c.ServiceForms).ThenInclude(f => f.ServiceItems.OrderBy(i => i.SortOrder))
-            .Include(c => c.ServiceForms).ThenInclude(f => f.Invoices.Where(i => !i.IsArchived))
+            .Include(c => c.ServiceForms.Where(f => !f.IsArchived)).ThenInclude(f => f.Store)
+            .Include(c => c.ServiceForms.Where(f => !f.IsArchived)).ThenInclude(f => f.ServiceItems.OrderBy(i => i.SortOrder))
+            .Include(c => c.ServiceForms.Where(f => !f.IsArchived)).ThenInclude(f => f.Invoices.Where(i => !i.IsArchived))
             .FirstOrDefaultAsync(c => c.Id == claimId)
             ?? throw new InvalidOperationException($"Hakediş bulunamadı: {claimId}");
 
@@ -80,7 +80,7 @@ public class ExcelExportService : IExcelExportService
         wb.Style.Font.FontSize = 11;
 
         // Mağaza bazında grupla (aynı mağaza için birden fazla icmal olabilir)
-        var formsByStore = claim.ServiceForms
+        var formsByStore = claim.ServiceForms.Where(f => !f.IsArchived)
             .Where(f => f.Store != null)
             .GroupBy(f => f.StoreId)
             .ToList();
@@ -118,7 +118,7 @@ public class ExcelExportService : IExcelExportService
         BuildSummarySheet(icmalWs, claim, companyName, storeSheetData);
 
         // Formsuz icmaller (mağaza seçilmemiş)
-        var unstoredForms = claim.ServiceForms.Where(f => f.Store is null).ToList();
+        var unstoredForms = claim.ServiceForms.Where(f => !f.IsArchived && f.Store is null).ToList();
         if (unstoredForms.Any())
         {
             progress?.Report("Mağazasız formlar ekleniyor...");
@@ -170,7 +170,7 @@ public class ExcelExportService : IExcelExportService
     {
         progress?.Report("Glikol hakediş tablosu oluşturuluyor...");
         using var wb = new XLWorkbook();
-        GlycolClaimExcelBuilder.Build(wb, claim, claim.ServiceForms);
+        GlycolClaimExcelBuilder.Build(wb, claim, claim.ServiceForms.Where(f => !f.IsArchived));
 
         progress?.Report("Excel dosyası kaydediliyor...");
         var fileName = $"Glikol_Hakedis_{claim.Year}_{claim.Month:D2}_{SanitizeSheetName(claim.Name)}_{DateTime.Now:HHmmss}.xlsx";

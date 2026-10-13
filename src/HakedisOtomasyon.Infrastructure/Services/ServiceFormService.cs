@@ -30,7 +30,7 @@ public class ServiceFormService : IServiceFormService
             .Include(f => f.Store)
             .Include(f => f.ServiceItems)
             .Include(f => f.Invoices.Where(i => !i.IsArchived))
-            .Where(f => f.ProgressClaimId == claimId)
+            .Where(f => f.ProgressClaimId == claimId && !f.IsArchived)
             .OrderBy(f => f.UploadedAt)
             .ToListAsync();
 

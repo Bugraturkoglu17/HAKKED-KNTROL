@@ -23,9 +23,9 @@ public class ProgressClaimService : IProgressClaimService
     {
         var claims = await _db.ProgressClaims
             .Where(c => c.Discipline == _currentDiscipline.CurrentDiscipline)
-            .Include(c => c.ServiceForms)
+            .Include(c => c.ServiceForms.Where(f => !f.IsArchived))
                 .ThenInclude(f => f.ServiceItems)
-            .Include(c => c.ServiceForms)
+            .Include(c => c.ServiceForms.Where(f => !f.IsArchived))
                 .ThenInclude(f => f.Invoices)
             .OrderByDescending(c => c.CreatedAt)
             .ToListAsync();
@@ -39,19 +39,19 @@ public class ProgressClaimService : IProgressClaimService
             ClaimType = c.ClaimType, Discipline = c.Discipline,
             EurRate = c.EurRate, EurRateDate = c.EurRateDate, EurRateSource = c.EurRateSource,
             CoolingCategory = c.CoolingCategory,
-            FormCount = c.ServiceForms.Count,
-            CompletedFormCount = c.ServiceForms.Count(f => f.Status == ServiceFormStatus.Tamamlandi || f.Status == ServiceFormStatus.DisaAktarildi),
-            TotalAmount = c.ServiceForms.SelectMany(f => f.ServiceItems).Sum(i => i.TotalPrice)
-                        + c.ServiceForms.SelectMany(f => f.Invoices).Sum(i => i.CalculatedTotal)
+            FormCount = c.ServiceForms.Count(f => !f.IsArchived),
+            CompletedFormCount = c.ServiceForms.Count(f => !f.IsArchived && (f.Status == ServiceFormStatus.Tamamlandi || f.Status == ServiceFormStatus.DisaAktarildi)),
+            TotalAmount = c.ServiceForms.Where(f => !f.IsArchived).SelectMany(f => f.ServiceItems).Sum(i => i.TotalPrice)
+                        + c.ServiceForms.Where(f => !f.IsArchived).SelectMany(f => f.Invoices).Sum(i => i.CalculatedTotal)
         }).ToList();
     }
 
     public async Task<ProgressClaimDto?> GetByIdAsync(int id)
     {
         var c = await _db.ProgressClaims
-            .Include(c => c.ServiceForms).ThenInclude(f => f.ServiceItems)
-            .Include(c => c.ServiceForms).ThenInclude(f => f.Store)
-            .Include(c => c.ServiceForms).ThenInclude(f => f.Invoices)
+            .Include(c => c.ServiceForms.Where(f => !f.IsArchived)).ThenInclude(f => f.ServiceItems)
+            .Include(c => c.ServiceForms.Where(f => !f.IsArchived)).ThenInclude(f => f.Store)
+            .Include(c => c.ServiceForms.Where(f => !f.IsArchived)).ThenInclude(f => f.Invoices)
             .FirstOrDefaultAsync(c => c.Id == id);
         if (c is null) return null;
         return new ProgressClaimDto
@@ -63,10 +63,10 @@ public class ProgressClaimService : IProgressClaimService
             ClaimType = c.ClaimType, Discipline = c.Discipline,
             EurRate = c.EurRate, EurRateDate = c.EurRateDate, EurRateSource = c.EurRateSource,
             CoolingCategory = c.CoolingCategory,
-            FormCount = c.ServiceForms.Count,
-            CompletedFormCount = c.ServiceForms.Count(f => f.Status == ServiceFormStatus.Tamamlandi || f.Status == ServiceFormStatus.DisaAktarildi),
-            TotalAmount = c.ServiceForms.SelectMany(f => f.ServiceItems).Sum(i => i.TotalPrice)
-                        + c.ServiceForms.SelectMany(f => f.Invoices).Sum(i => i.CalculatedTotal)
+            FormCount = c.ServiceForms.Count(f => !f.IsArchived),
+            CompletedFormCount = c.ServiceForms.Count(f => !f.IsArchived && (f.Status == ServiceFormStatus.Tamamlandi || f.Status == ServiceFormStatus.DisaAktarildi)),
+            TotalAmount = c.ServiceForms.Where(f => !f.IsArchived).SelectMany(f => f.ServiceItems).Sum(i => i.TotalPrice)
+                        + c.ServiceForms.Where(f => !f.IsArchived).SelectMany(f => f.Invoices).Sum(i => i.CalculatedTotal)
         };
     }
 

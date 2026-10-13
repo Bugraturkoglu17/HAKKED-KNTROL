@@ -27,11 +27,11 @@ public class DashboardService : IDashboardService
         var discipline = _currentDiscipline.CurrentDiscipline;
 
         var claims = await _db.ProgressClaims
-            .Include(c => c.ServiceForms).ThenInclude(f => f.ServiceItems)
+            .Include(c => c.ServiceForms.Where(f => !f.IsArchived)).ThenInclude(f => f.ServiceItems)
             .Where(c => c.Year == year && c.Month == month && c.Discipline == discipline)
             .ToListAsync();
 
-        var allForms = claims.SelectMany(c => c.ServiceForms).ToList();
+        var allForms = claims.SelectMany(c => c.ServiceForms.Where(f => !f.IsArchived)).ToList();
         var allItems = allForms.SelectMany(f => f.ServiceItems).ToList();
         var invoiceItems = allItems.Where(i => i.IsInvoiceBased).ToList();
 

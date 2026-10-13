@@ -555,6 +555,27 @@ public class GlycolClaimTests
         Assert.False(await db.ServiceItems.AnyAsync(i => i.ServiceFormId == other.Id));
     }
 
+    /// <summary>Silinen (arşivlenen) form, hakediş yeniden yüklenince ("Formları işle") listeye geri gelmemeli.</summary>
+    [Fact]
+    public async Task SilinenArsivlenmisForm_YenidenYuklemedeGeriGelmezVeSayimlaraGirmez()
+    {
+        using var db = CreateDb();
+        var (svc, claim, _) = await SeedAsync(db);
+        var keep = new MainForm { ProgressClaimId = claim.Id, OriginalFileName = "kalan.pdf", FilePath = "forms/kalan.pdf" };
+        var removed = new MainForm { ProgressClaimId = claim.Id, OriginalFileName = "silinen.pdf", FilePath = "forms/silinen.pdf" };
+        db.ServiceForms.AddRange(keep, removed);
+        await db.SaveChangesAsync();
+        removed.IsArchived = true;   // DeleteAsync → ArchiveRemovedServiceFormAsync bunu yapar
+        await db.SaveChangesAsync();
+
+        var forms = await svc.GetByClaimIdAsync(claim.Id);
+        Assert.Equal(new[] { keep.Id }, forms.Select(f => f.Id).ToArray());
+
+        var claimService = new ProgressClaimService(db, new CurrentDisciplineService { CurrentDiscipline = MechanicalDiscipline.Cooling });
+        Assert.Equal(1, (await claimService.GetByIdAsync(claim.Id))!.FormCount);
+        Assert.Equal(1, (await claimService.GetAllAsync()).Single().FormCount);
+    }
+
     // ---------------------------------------------------------------- mağaza Format/Bölge (seed)
     [Fact]
     public async Task SeedMagazaBilgisi_MevcutMagazalarinBosFormatBolgesiDolar_AdVeKullaniciDegeriDegismez()
