@@ -99,7 +99,7 @@
                             </MudButton>
                         }
                     </MudStack>
-                    <div @key="_headerKey">
+                    <div @key="@($"form-{_headerKey}")">
                         <MudGrid Spacing="2">
                             <MudItem xs="12" md="9">
                                 <MudAutocomplete T="StoreDto" Value="@_store" ValueChanged="@(s => _store = s)"
@@ -131,7 +131,7 @@
                     <MudDivider Class="my-3" />
 
                     @* 2) Malzeme / işçilik — her "Ekle"den sonra temizlenir, form bilgisi kalır *@
-                    <div @key="_itemKey">
+                    <div @key="@($"kalem-{_itemKey}")">
                         <MudGrid Spacing="2">
                             <MudItem xs="12" md="9">
                                 @if (_editingItemId.HasValue)
