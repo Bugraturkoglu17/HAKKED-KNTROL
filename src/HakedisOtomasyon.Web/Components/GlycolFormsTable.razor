@@ -131,8 +131,6 @@
                             </MudButton>
                         </MudStack>
                     </MudStack>
-                    <MudCheckBox T="bool" @bind-Value="_autoNext" Dense Color="Color.Primary" Class="ma-0"
-                                 Label="Ekledikten sonra sonraki dosyaya geç (her dosya tek form ise)" />
                     @if (_error is not null)
                     {
                         <MudAlert Severity="Severity.Warning" Dense Class="mt-1" Style="padding:2px 10px">@_error</MudAlert>
@@ -243,7 +241,6 @@
     // giriş alanı (her Ekle'den sonra temizlenir)
     private int? _editingId;
     private int _entryKey;
-    private bool _autoNext;
     private StoreDto? _store;
     private DateTime? _date;
     private string? _formNo;
@@ -418,7 +415,6 @@
             if (duplicate) Snackbar.Add($"Dikkat: \"{no}\" form numarası başka bir satırda da var.", Severity.Warning);
 
             ClearEntry();   // giriş alanı temizlenir — yeni kayıt girilebilir
-            if (_autoNext && _fileIndex < Files.Count - 1) _fileIndex++;
         }
         catch (Exception ex)
         {
