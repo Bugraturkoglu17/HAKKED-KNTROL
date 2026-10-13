@@ -23,17 +23,18 @@ public class CoolingClaimCategoryTests
         new(db, new CurrentDisciplineService { CurrentDiscipline = discipline });
 
     [Fact]
-    public void YalnizcaGlikolKullanimSecilebilir_DigerleriYakinda()
+    public void GlikolKullanimVeBakimOnarimSecilebilir_DigerleriYakinda()
     {
         var available = Enum.GetValues<CoolingClaimCategory>().Where(c => c.IsAvailable()).ToList();
-        Assert.Equal(new[] { CoolingClaimCategory.GlycolUsage }, available);
+        Assert.Equal(new[] { CoolingClaimCategory.GlycolUsage, CoolingClaimCategory.MaintenanceRepair }, available);
         Assert.Equal(8, Enum.GetValues<CoolingClaimCategory>().Length);
     }
 
-    /// <summary>Hakediş oluşturma ile Hakediş Kontrolü aynı 8 türü aynı numara ve adlarla kullanmalı —
-    /// ileride iki taraf birbirine bağlanacak.</summary>
+    /// <summary>Hakediş oluşturma ile Hakediş Kontrolü aynı 8 numarayı kullanır (ileride iki taraf birbirine bağlanacak).
+    /// Tek fark 7 numaradır: oluşturma tarafında "İlave İşler" başlığı kaldırılıp yerine "Bakım &amp; Onarım" konmuştur;
+    /// Hakediş Kontrolü tarafındaki "İlave İşler" kontrolü yerinde durur.</summary>
     [Fact]
-    public void Turler_HakedisKontroluKategorileriyleAyniNumaraVeAdda()
+    public void Turler_HakedisKontroluKategorileriyleAyniNumarada_YalnizIlaveIslerYerineBakimOnarim()
     {
         var creation = Enum.GetValues<CoolingClaimCategory>();
         var control = Enum.GetValues<HakedisCategory>();
@@ -41,9 +42,16 @@ public class CoolingClaimCategoryTests
         foreach (var c in creation)
         {
             var counterpart = (HakedisCategory)(int)c;
+            if (c == CoolingClaimCategory.MaintenanceRepair)
+            {
+                Assert.Equal(HakedisCategory.AdditionalWork, counterpart);
+                Assert.Equal("Bakım & Onarım", c.DisplayName());
+                continue;
+            }
             Assert.Equal(counterpart.ToString(), c.ToString());
             Assert.Equal(counterpart.DisplayName(), c.DisplayName());
         }
+        Assert.DoesNotContain(creation, c => c.DisplayName() == "İlave İşler");
     }
 
     [Fact]

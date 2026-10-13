@@ -29,6 +29,7 @@ public class ServiceFormDto
     public DateTime? FormDate { get; set; }
     public string? StoreFormat { get; set; }
     public string? StoreRegion { get; set; }
+    public string? StoreCity { get; set; }
     public List<ServiceItemDto> ServiceItems { get; set; } = new();
     public List<InvoiceDto> Invoices { get; set; } = new();
     public decimal TotalAmount => ServiceItems.Sum(x => x.TotalPrice) + Invoices.Sum(x => x.CalculatedTotal);

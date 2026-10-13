@@ -10,6 +10,10 @@ public interface IServiceFormService
     Task<ServiceFormDto> AddFormAsync(int claimId, string filePath, string originalFileName);
     Task<ServiceFormDto> AddBlankFormAsync(int claimId);
     Task UpdateStoreAsync(int formId, string storeCode);
+
+    /// <summary>Servis formunun tarihini ve (bakım) form numarasını kaydeder — Soğutma Bakım &amp; Onarım çıktısındaki
+    /// TARİH ve BAKIM FORM NO sütunları.</summary>
+    Task UpdateFormInfoAsync(int formId, DateTime? formDate, string? formNumber);
     Task UpdateStatusAsync(int formId, ServiceFormStatus status);
     Task SaveItemsAsync(int formId, List<ServiceItemDto> items);
     Task DeleteAsync(int id);

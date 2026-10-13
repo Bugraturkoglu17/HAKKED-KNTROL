@@ -15,7 +15,9 @@ public enum CoolingClaimCategory
     GasUsage = 4,
     Monitoring = 5,
     PeriodicMaintenance = 6,
-    AdditionalWork = 7,
+    /// <summary>Servis ve bakım malzemeleri hakedişi. (Hakediş Kontrolü tarafında aynı numara "İlave İşler"dir;
+    /// hakediş OLUŞTURMA tarafında o başlık yerine bu tür kullanılır.)</summary>
+    MaintenanceRepair = 7,
 }
 
 public static class CoolingClaimCategoryExtensions
@@ -29,7 +31,7 @@ public static class CoolingClaimCategoryExtensions
         CoolingClaimCategory.GasUsage => "Gaz Kullanım",
         CoolingClaimCategory.Monitoring => "İzleme Bedelleri",
         CoolingClaimCategory.PeriodicMaintenance => "Periyodik Bakım",
-        CoolingClaimCategory.AdditionalWork => "İlave İşler",
+        CoolingClaimCategory.MaintenanceRepair => "Bakım & Onarım",
         _ => category.ToString(),
     };
 
@@ -40,6 +42,7 @@ public static class CoolingClaimCategoryExtensions
     public static bool IsAvailable(this CoolingClaimCategory category) => category switch
     {
         CoolingClaimCategory.GlycolUsage => true,
+        CoolingClaimCategory.MaintenanceRepair => true,
         _ => false,
     };
 }

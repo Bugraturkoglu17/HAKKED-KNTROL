@@ -302,6 +302,7 @@ public class DataRecoveryService : IDataRecoveryService
                     DiscountedUsdPrice = s.DiscountedUsdPrice,
                     ExchangeRateRequired = s.ExchangeRateRequired,
                     ForeignPrice       = s.ForeignPrice,
+                    ItemType           = s.ItemType,
                     Discipline         = (MechanicalDiscipline)s.Discipline,
                     CreatedAt          = DateTime.Now,
                 });
@@ -455,7 +456,7 @@ public class DataRecoveryService : IDataRecoveryService
             "MainCategory", "SubCategory", "SubCategory2", "DisplayName", "InvoiceDescription",
             "PriceType", "SearchText", "IsSelectable", "IsActive", "IsManuallyAdded",
             "HasMissingUnit", "IsCurrencyBased", "CurrencyCode",
-            "ListPriceUsd", "DiscountRate", "DiscountedUsdPrice", "ExchangeRateRequired", "ForeignPrice", "Discipline" })
+            "ListPriceUsd", "DiscountRate", "DiscountedUsdPrice", "ExchangeRateRequired", "ForeignPrice", "ItemType", "Discipline" })
         {
             if (cols.Contains(opt))
                 sb.Append($", {opt}");
@@ -499,6 +500,7 @@ public class DataRecoveryService : IDataRecoveryService
             DiscountedUsdPrice = GetNullableDecimal(reader, nameToIdx, "DiscountedUsdPrice"),
             ExchangeRateRequired = GetBool(reader, nameToIdx, "ExchangeRateRequired", false),
             ForeignPrice       = GetNullableDecimal(reader, nameToIdx, "ForeignPrice"),
+            ItemType           = GetStr(reader, nameToIdx, "ItemType"),
             Discipline         = GetInt(reader, nameToIdx, "Discipline"),
         };
     }
@@ -710,6 +712,7 @@ public class DataRecoveryService : IDataRecoveryService
         DiscountedUsdPrice = p.DiscountedUsdPrice,
         ExchangeRateRequired = p.ExchangeRateRequired,
         ForeignPrice       = p.ForeignPrice,
+        ItemType           = p.ItemType,
         Discipline         = (int)p.Discipline,
     };
 
@@ -762,6 +765,7 @@ public class DataRecoveryService : IDataRecoveryService
         public decimal? DiscountedUsdPrice { get; init; }
         public bool     ExchangeRateRequired { get; init; }
         public decimal? ForeignPrice       { get; init; }
+        public string?  ItemType           { get; init; }
         /// <summary>MechanicalDiscipline (0=Yangın, 1=Klima, 2=Asansör, 3=Soğutma). Eski yedeklerde yoksa 0.</summary>
         public int      Discipline         { get; init; }
     }

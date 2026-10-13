@@ -25,9 +25,8 @@ public static class GlycolClaimExcelBuilder
 {
     private static readonly CultureInfo Tr = CultureInfo.GetCultureInfo("tr-TR");
     private const string CurrencyFormat = "\"₺\" #,##0.00";
-    private const string SummaryMoneyFormat = "#,##0.00\" TL\"";
     public const string DetailSheetName = "MALZ HAKEDIS";
-    public const string SummarySheetName = "GENEL ICMAL";
+    public const string SummarySheetName = CoolingSummarySheet.SheetName;
 
     // Sütun numaraları
     private const int ColStoreCode = 1, ColStoreName = 2, ColFormat = 3, ColDate = 4, ColFormNo = 5, ColItemCode = 6,
@@ -132,7 +131,8 @@ public static class GlycolClaimExcelBuilder
         ws.PageSetup.PageOrientation = XLPageOrientation.Landscape;
         ws.PageSetup.FitToPages(1, 0);
 
-        WriteSummarySheet(wb, claim, rows, blocks);
+        CoolingSummarySheet.Write(wb, CoolingSummarySheet.PeriodText(claim.Month, claim.Year), RegionTitle(rows) + " İCMALİ",
+            DetailSheetName, ColStoreCode, ColGrand, blocks);
         WriteMissingSheet(wb, allForms);
         return ws;
     }
@@ -203,23 +203,10 @@ public static class GlycolClaimExcelBuilder
         ws.Cell(r, ColQty).Style.Font.Bold = true;
     }
 
-    private static void SetNumberOrText(IXLCell cell, string? text)
-    {
-        if (string.IsNullOrWhiteSpace(text)) return;
-        var t = text.Trim();
-        // Baştaki sıfırı olmayan tam sayılar sayı olarak yazılır (Excel'de sola yaslı metin uyarısı çıkmasın)
-        if (long.TryParse(t, NumberStyles.None, CultureInfo.InvariantCulture, out var n) && (t.Length == 1 || t[0] != '0'))
-            cell.Value = n;
-        else
-            cell.Value = t;
-    }
+    private static void SetNumberOrText(IXLCell cell, string? text) => CoolingSummarySheet.SetNumberOrText(cell, text);
 
     private static string RegionTitle(List<Row> rows)
-    {
-        var regions = rows.Select(x => x.Store.Region).Where(x => !string.IsNullOrWhiteSpace(x))
-            .Select(x => x!.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x, StringComparer.Create(Tr, true)).ToList();
-        return (regions.Count > 0 ? string.Join(" / ", regions) + " " : string.Empty) + "MİGROS SATIŞ MAĞAZALARI SOĞUTMA GLİKOL KULLANIM";
-    }
+        => CoolingSummarySheet.RegionPrefix(rows.Select(x => x.Store)) + "MİGROS SATIŞ MAĞAZALARI SOĞUTMA GLİKOL KULLANIM";
 
     private static void WriteFooter(IXLWorksheet ws, int r, int lastDataRow, List<Row> rows)
     {
@@ -242,116 +229,6 @@ public static class GlycolClaimExcelBuilder
         ws.Cell(r, ColGrand).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
         ws.Cell(r, ColGrand).Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
         ws.Row(r).Height = 34;
-    }
-
-    /// <summary>
-    /// "GENEL ICMAL" sayfası (ilk sayfa): mağaza başına bir satır. Tutarlar ayrıntı sayfasındaki GENEL TOPLAM hücrelerine
-    /// bağlıdır — orada KESİLEN MİKTAR girilince icmal de kendiliğinden güncellenir.
-    /// </summary>
-    private static void WriteSummarySheet(XLWorkbook wb, ProgressClaim claim, List<Row> rows, List<(Store Store, int FirstRow)> blocks)
-    {
-        const int cNo = 1, cCode = 2, cName = 3, cCity = 4, cFormat = 5, cTotal = 6;
-        var ws = wb.Worksheets.Add(SummarySheetName);
-        ws.Position = 1;
-        ws.Style.Font.FontName = "Arial";
-        ws.Style.Font.FontSize = 11;
-        var linkColor = XLColor.FromHtml("#0000FF");
-        var detail = DetailSheetName.Replace("'", "''");
-
-        // 1. satır: dönem ("Haziran 26") — 2. satır: başlık
-        var period = ws.Range(1, cNo, 1, cTotal);
-        period.Merge();
-        period.Value = $"{Tr.TextInfo.ToTitleCase(GlycolClaim.PeriodName(claim.Month).ToLower(Tr))} {claim.Year % 100:00}".Trim();
-        period.Style.Font.Bold = true;
-        period.Style.Font.FontColor = XLColor.Red;
-        period.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-
-        var title = ws.Range(2, cNo, 2, cTotal);
-        title.Merge();
-        title.Value = RegionTitle(rows) + " İCMALİ";
-        title.Style.Font.Bold = true;
-        title.Style.Font.FontSize = 12;
-        title.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-        ws.Range(1, cNo, 2, cTotal).Style.Border.OutsideBorder = XLBorderStyleValues.Medium;
-
-        string[] headers = { "S/N", "MAĞAZA KODU", "MAĞAZA ADI", "İL", "FORMAT", "TOPLAM FİYAT" };
-        for (int c = 0; c < headers.Length; c++)
-        {
-            var cell = ws.Cell(3, c + 1);
-            cell.Value = headers[c];
-            cell.Style.Font.Bold = true;
-            cell.Style.Fill.BackgroundColor = XLColor.FromHtml("#99CCFF");
-            cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-            cell.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
-            cell.Style.Alignment.WrapText = true;
-            cell.Style.Border.OutsideBorder = XLBorderStyleValues.Medium;
-        }
-        ws.Row(3).Height = 34;
-
-        int r = 4, no = 1;
-        foreach (var (store, firstRow) in blocks)
-        {
-            ws.Cell(r, cNo).Value = no++;
-            ws.Cell(r, cNo).Style.Font.Italic = true;
-            SetNumberOrText(ws.Cell(r, cCode), store.Code);
-            ws.Cell(r, cCode).Style.Font.FontSize = 14;
-
-            // Mağaza adı ve format: ayrıntı sayfasındaki mağaza bloğuna köprü
-            var target = $"#'{detail}'!{Col(ColStoreCode)}{firstRow}";
-            foreach (var (col, text) in new[] { (cName, store.Name), (cFormat, store.Format ?? string.Empty) })
-            {
-                if (text.Length == 0) continue;
-                var cell = ws.Cell(r, col);
-                cell.FormulaA1 = $"HYPERLINK(\"{target}\",\"{text.Replace("\"", "\"\"")}\")";
-                cell.Style.Font.FontColor = linkColor;
-                cell.Style.Font.Underline = XLFontUnderlineValues.Single;
-            }
-            ws.Cell(r, cCity).Value = store.City ?? string.Empty;
-
-            ws.Cell(r, cTotal).FormulaA1 = $"'{detail}'!{Col(ColGrand)}{firstRow}";
-            ws.Cell(r, cTotal).Style.NumberFormat.Format = SummaryMoneyFormat;
-            ws.Cell(r, cTotal).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
-
-            foreach (var c in new[] { cNo, cCode })
-                ws.Cell(r, c).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-            var line = ws.Range(r, cNo, r, cTotal);
-            line.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
-            line.Style.Border.InsideBorder = XLBorderStyleValues.Thin;
-            line.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
-            r++;
-        }
-        int lastStoreRow = r - 1;
-        if (lastStoreRow >= 4)
-        {
-            ws.Range(3, cNo, lastStoreRow, cTotal).SetAutoFilter();
-            ws.Range(3, cNo, lastStoreRow, cTotal).Style.Border.OutsideBorder = XLBorderStyleValues.Medium;
-        }
-
-        r++; // boş satır
-        var totalLabel = ws.Range(r, cNo, r, cFormat);
-        totalLabel.Merge();
-        totalLabel.Value = "GENEL TOPLAM :";
-        totalLabel.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
-        ws.Cell(r, cTotal).FormulaA1 = lastStoreRow >= 4 ? $"SUM({Col(cTotal)}4:{Col(cTotal)}{lastStoreRow})" : "0";
-        ws.Cell(r, cTotal).Style.NumberFormat.Format = SummaryMoneyFormat;
-        ws.Cell(r, cTotal).Style.Font.Bold = true;
-        ws.Cell(r, cTotal).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
-        var totalRow = ws.Range(r, cNo, r, cTotal);
-        totalRow.Style.Fill.BackgroundColor = XLColor.FromHtml("#CCFFFF");
-        totalRow.Style.Font.FontSize = 12;
-        totalRow.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
-        totalRow.Style.Border.OutsideBorder = XLBorderStyleValues.Medium;
-        ws.Row(r).Height = 26;
-
-        ws.Column(cNo).Width = 7;
-        ws.Column(cCode).Width = 14;
-        ws.Column(cName).Width = 44;
-        ws.Column(cCity).Width = 20;
-        ws.Column(cFormat).Width = 26;
-        ws.Column(cTotal).Width = 18;
-        ws.SheetView.FreezeRows(3);
-        ws.PageSetup.PageOrientation = XLPageOrientation.Portrait;
-        ws.PageSetup.FitToPages(1, 0);
     }
 
     private static void WriteRateNote(IXLWorksheet ws, int r, List<Row> rows)

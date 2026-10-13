@@ -15,6 +15,10 @@ public class PriceItem
     public string? DisplayName { get; set; }
     public string? InvoiceDescription { get; set; }
     public string Unit { get; set; } = string.Empty;
+
+    /// <summary>Malzeme tipi (Soğutma fiyat listesindeki "TİP" sütunu: "DIŞ DENGELİ VE KAYNAKLI", "3/8\" KAYNAKLI" ...).
+    /// Her kalemde yoktur. Soğutma Bakım &amp; Onarım hakediş çıktısında "MALZEME TİPİ" sütununa yazılır.</summary>
+    public string? ItemType { get; set; }
     public decimal MaterialPrice { get; set; }
     public decimal LaborPrice { get; set; }
     public PriceType PriceType { get; set; } = PriceType.FixedPrice;

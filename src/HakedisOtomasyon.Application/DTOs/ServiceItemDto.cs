@@ -21,6 +21,9 @@ public class ServiceItemDto
     public string? ExportDescription { get; set; }
     public Guid LocalId { get; set; } = Guid.NewGuid();
     public string? ItemCode { get; set; }
+
+    /// <summary>Malzeme tipi (fiyat listesinden); yoksa boş.</summary>
+    public string? ItemType { get; set; }
     public Guid? ParentLocalId { get; set; }
 
     // -- Doviz bazli kalemler (BDTX / BDKF) -----------------------------------------------

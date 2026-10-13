@@ -11,4 +11,7 @@ public class StoreDto
     public MechanicalDiscipline Discipline { get; set; } = MechanicalDiscipline.Fire;
     public string? Format { get; set; }
     public string? Region { get; set; }
+
+    /// <summary>Mağazanın ili — Soğutma Bakım &amp; Onarım'da şehir içi / şehir dışı servis bedelini belirler.</summary>
+    public string? City { get; set; }
 }

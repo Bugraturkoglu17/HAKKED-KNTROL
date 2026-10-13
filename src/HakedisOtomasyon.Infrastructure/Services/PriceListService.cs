@@ -272,6 +272,7 @@ public class PriceListService : IPriceListService
                 existing.DiscountedUsdPrice = dto.DiscountedUsdPrice;
                 existing.ExchangeRateRequired = dto.ExchangeRateRequired;
                 existing.ForeignPrice = dto.ForeignPrice;
+                existing.ItemType = dto.ItemType ?? existing.ItemType;   // Excel içe aktarmada tip yoksa mevcut korunur
                 existing.MainCategory = dto.MainCategory;
                 existing.SubCategory = dto.SubCategory;
                 existing.SubCategory2 = dto.SubCategory2;
@@ -307,6 +308,7 @@ public class PriceListService : IPriceListService
                     DiscountedUsdPrice = dto.DiscountedUsdPrice,
                     ExchangeRateRequired = dto.ExchangeRateRequired,
                     ForeignPrice = dto.ForeignPrice,
+                    ItemType = dto.ItemType,
                     Discipline = discipline,
                 };
                 entity.SearchText = BuildSearchTextFromItem(entity);
@@ -401,6 +403,7 @@ public class PriceListService : IPriceListService
         DiscountedUsdPrice = p.DiscountedUsdPrice,
         ExchangeRateRequired = p.ExchangeRateRequired,
         ForeignPrice = p.ForeignPrice,
+        ItemType = p.ItemType,
         Discipline = p.Discipline,
         Notes = p.Notes,
     };

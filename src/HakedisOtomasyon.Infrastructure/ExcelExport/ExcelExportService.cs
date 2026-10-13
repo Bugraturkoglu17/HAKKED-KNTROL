@@ -63,6 +63,10 @@ public class ExcelExportService : IExcelExportService
         if (HakedisOtomasyon.Application.GlycolClaim.IsGlycol(claim.Discipline, claim.CoolingCategory))
             return await ExportGlycolClaimAsync(claim, progress);
 
+        // Soğutma "Bakım & Onarım" hakedişi: kalem bazlı tablo + icmal (her forma şehir içi/dışı servis bedeli)
+        if (HakedisOtomasyon.Application.MaintenanceClaim.IsMaintenance(claim.Discipline, claim.CoolingCategory))
+            return await ExportMaintenanceClaimAsync(claim, progress);
+
         // Görsel kalite ayarını oku
         var qualitySetting = await _settings.GetAsync(SettingKeys.ExcelImageQuality, "standard");
         var docQuality = ImageOptimizer.Preset.FromSettingValue(qualitySetting);
@@ -166,14 +170,25 @@ public class ExcelExportService : IExcelExportService
     }
 
     /// <summary>Soğutma Glikol Kullanım hakedişinin Excel'i (bkz. <see cref="GlycolClaimExcelBuilder"/>).</summary>
-    private async Task<string> ExportGlycolClaimAsync(ProgressClaim claim, IProgress<string>? progress)
+    private Task<string> ExportGlycolClaimAsync(ProgressClaim claim, IProgress<string>? progress)
+        => ExportCoolingWorkbookAsync(claim, progress, "Glikol hakediş tablosu oluşturuluyor...", "Glikol_Hakedis",
+            wb => GlycolClaimExcelBuilder.Build(wb, claim, claim.ServiceForms.Where(f => !f.IsArchived)));
+
+    /// <summary>Soğutma Bakım &amp; Onarım hakedişinin Excel'i (bkz. <see cref="MaintenanceClaimExcelBuilder"/>).</summary>
+    private Task<string> ExportMaintenanceClaimAsync(ProgressClaim claim, IProgress<string>? progress)
+        => ExportCoolingWorkbookAsync(claim, progress, "Bakım & Onarım hakediş tablosu oluşturuluyor...", "BakimOnarim_Hakedis",
+            wb => MaintenanceClaimExcelBuilder.Build(wb, claim, claim.ServiceForms.Where(f => !f.IsArchived)));
+
+    /// <summary>Soğutma türlerinin ortak dışa aktarma akışı: çalışma kitabını kur, kaydet, eski çıktıyı arşivle, kaydı tut.</summary>
+    private async Task<string> ExportCoolingWorkbookAsync(ProgressClaim claim, IProgress<string>? progress, string buildingMessage,
+        string filePrefix, Action<XLWorkbook> build)
     {
-        progress?.Report("Glikol hakediş tablosu oluşturuluyor...");
+        progress?.Report(buildingMessage);
         using var wb = new XLWorkbook();
-        GlycolClaimExcelBuilder.Build(wb, claim, claim.ServiceForms.Where(f => !f.IsArchived));
+        build(wb);
 
         progress?.Report("Excel dosyası kaydediliyor...");
-        var fileName = $"Glikol_Hakedis_{claim.Year}_{claim.Month:D2}_{SanitizeSheetName(claim.Name)}_{DateTime.Now:HHmmss}.xlsx";
+        var fileName = $"{filePrefix}_{claim.Year}_{claim.Month:D2}_{SanitizeSheetName(claim.Name)}_{DateTime.Now:HHmmss}.xlsx";
         using var ms = new MemoryStream();
         wb.SaveAs(ms);
         ms.Position = 0;

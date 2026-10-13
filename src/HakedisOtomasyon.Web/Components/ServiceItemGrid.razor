@@ -286,6 +286,9 @@
                 ExchangeRateDate = Claim.EurRateDate,
                 ExchangeRateActualDate = Claim.EurRateDate,
                 ExchangeRateSource = Claim.EurRateSource ?? "Manuel",
+                ItemCode = item.PozNo,
+                ItemType = item.ItemType,
+                ExportDescription = MaintenanceClaim.ExportName(item.Description, item.ItemType),
             };
             eurDto.Recalculate();
             Items.Add(eurDto);
@@ -318,6 +321,13 @@
             Quantity = 1,
             SortOrder = Items.Count + 1
         };
+        if (IsCooling)
+        {
+            // Soğutma: malzeme kodu + tipi (Bakım & Onarım çıktısındaki MALZEME KODU / MALZEME TİPİ sütunları)
+            stdDto.ItemCode = item.PozNo;
+            stdDto.ItemType = item.ItemType;
+            stdDto.ExportDescription = MaintenanceClaim.ExportName(item.Description, item.ItemType);
+        }
 
         // Hangi otomatik kuralın tetikleneceğini aktif disiplinin kurallarına sor
         rules.ApplyTriggerForNewItem(stdDto, item);
@@ -400,6 +410,12 @@
             }
             else
             {
+                // Soğutma: açıklama elle değiştirildiyse çıktıdaki malzeme adı da yeni açıklama olur (eski temiz ad kalmasın)
+                if (IsCooling && !string.Equals(existing.Description, saved.Description, StringComparison.Ordinal))
+                {
+                    existing.ExportDescription = null;
+                    existing.ItemType = null;
+                }
                 existing.Description = saved.Description;
                 existing.Unit = saved.Unit;
                 existing.MaterialPrice = saved.MaterialPrice;
@@ -444,6 +460,14 @@
             IsInvoiceBased = item.IsInvoiceBased, IsManualEntry = item.IsManualEntry,
             AutoRuleTrigger = item.AutoRuleTrigger,
             ExportDescription = item.ExportDescription,
+            ItemCode = item.ItemCode,
+            ItemType = item.ItemType,
+            CurrencyCode = item.CurrencyCode,
+            ForeignPrice = item.ForeignPrice,
+            ExchangeRate = item.ExchangeRate,
+            ExchangeRateDate = item.ExchangeRateDate,
+            ExchangeRateActualDate = item.ExchangeRateActualDate,
+            ExchangeRateSource = item.ExchangeRateSource,
             SortOrder = Items.Count + 1
         };
         var idx = Items.IndexOf(item);

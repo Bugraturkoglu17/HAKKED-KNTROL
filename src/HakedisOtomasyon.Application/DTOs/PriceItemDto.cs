@@ -39,6 +39,9 @@ public class PriceItemDto
     /// <summary>CurrencyCode para birimindeki birim fiyat (ör. 9,95 EUR); doluysa TL alanları 0'dır.</summary>
     public decimal? ForeignPrice { get; set; }
 
+    /// <summary>Malzeme tipi (Soğutma fiyat listesindeki "TİP"); her kalemde yoktur.</summary>
+    public string? ItemType { get; set; }
+
     public string PriceTypeLabel => PriceType switch
     {
         PriceType.LaborOnly => "Sadece İşçilik",

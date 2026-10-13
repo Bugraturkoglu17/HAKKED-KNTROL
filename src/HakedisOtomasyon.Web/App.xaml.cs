@@ -1066,7 +1066,8 @@ public partial class WpfApp : System.Windows.Application
     }
 
     /// <summary>
-    /// Soğutma Glikol hakedişi: Stores.Format/Region/City, ServiceForms.FormNumber/FormDate, ServiceItems.ItemCode sütunları.
+    /// Soğutma Glikol hakedişi: Stores.Format/Region/City, ServiceForms.FormNumber/FormDate, ServiceItems.ItemCode sütunları;
+    /// Soğutma Bakım &amp; Onarım: ServiceItems.ItemType, PriceItems.ItemType (malzeme tipi).
     /// </summary>
     private static void MigrateGlycolClaimSchema(AppDbContext db)
     {
@@ -1080,7 +1081,8 @@ public partial class WpfApp : System.Windows.Application
                 {
                     ["Stores"] = new[] { "Format", "Region", "City" },
                     ["ServiceForms"] = new[] { "FormNumber", "FormDate" },
-                    ["ServiceItems"] = new[] { "ItemCode" },
+                    ["ServiceItems"] = new[] { "ItemCode", "ItemType" },
+                    ["PriceItems"] = new[] { "ItemType" },
                 };
                 foreach (var (table, columns) in wanted)
                 {

@@ -52,7 +52,11 @@ public class ServiceFormService : IServiceFormService
         // Soğutma Glikol hakedişinde servis ücreti YOKTUR (glikol kalemi sonradan otomatik eklenir)
         var ownerClaim = await _db.ProgressClaims.FindAsync(claimId);
         bool glycolClaim = ownerClaim is not null && GlycolClaim.IsGlycol(ownerClaim.Discipline, ownerClaim.CoolingCategory);
-        var defaultFee = glycolClaim ? 0m : await _settings.GetDecimalAsync("DefaultServiceFee", 4550m);
+        // Soğutma Bakım & Onarım: sabit "Servis Ücreti" yerine mağazanın iline göre şehir içi/dışı servis bedeli
+        // mağaza seçilince eklenir (bkz. MaintenanceClaim.ApplyServiceFee).
+        bool maintenanceClaim = ownerClaim is not null && MaintenanceClaim.IsMaintenance(ownerClaim.Discipline, ownerClaim.CoolingCategory);
+        bool noDefaultFee = glycolClaim || maintenanceClaim;
+        var defaultFee = noDefaultFee ? 0m : await _settings.GetDecimalAsync("DefaultServiceFee", 4550m);
 
         // Hash + duplicate detection
         var absPath = _fileStorage.GetAbsolutePath(filePath);
@@ -88,8 +92,8 @@ public class ServiceFormService : IServiceFormService
         _db.ServiceForms.Add(entity);
         await _db.SaveChangesAsync();
 
-        // Otomatik Servis Ücreti satırı ekle (Glikol hakedişi hariç)
-        if (!glycolClaim)
+        // Otomatik Servis Ücreti satırı ekle (Glikol ve Bakım & Onarım hakedişleri hariç)
+        if (!noDefaultFee)
         {
             var defaultItem = new ServiceItem
             {
@@ -120,6 +124,8 @@ public class ServiceFormService : IServiceFormService
     public async Task<ServiceFormDto> AddBlankFormAsync(int claimId)
     {
         var defaultFee = await _settings.GetDecimalAsync("DefaultServiceFee", 4550m);
+        var blankOwner = await _db.ProgressClaims.FindAsync(claimId);
+        bool blankMaintenance = blankOwner is not null && MaintenanceClaim.IsMaintenance(blankOwner.Discipline, blankOwner.CoolingCategory);
 
         var entity = new ServiceForm
         {
@@ -143,8 +149,11 @@ public class ServiceFormService : IServiceFormService
             TotalPrice    = defaultFee,
             SortOrder     = 1
         };
-        _db.ServiceItems.Add(defaultItem);
-        await _db.SaveChangesAsync();
+        if (!blankMaintenance)   // Bakım & Onarım: servis bedeli mağaza seçilince ile göre eklenir
+        {
+            _db.ServiceItems.Add(defaultItem);
+            await _db.SaveChangesAsync();
+        }
 
         var loaded = await _db.ServiceForms
             .Include(f => f.Store)
@@ -170,6 +179,15 @@ public class ServiceFormService : IServiceFormService
         if (form.Status == ServiceFormStatus.Bekliyor)
             form.Status = ServiceFormStatus.Isleniyor;
 
+        await _db.SaveChangesAsync();
+    }
+
+    public async Task UpdateFormInfoAsync(int formId, DateTime? formDate, string? formNumber)
+    {
+        var form = await _db.ServiceForms.FindAsync(formId)
+            ?? throw new InvalidOperationException($"Form bulunamadı: {formId}");
+        form.FormDate = formDate?.Date;
+        form.FormNumber = string.IsNullOrWhiteSpace(formNumber) ? null : formNumber.Trim();
         await _db.SaveChangesAsync();
     }
 
@@ -219,6 +237,7 @@ public class ServiceFormService : IServiceFormService
                 ExchangeRateSource = dto.ExchangeRateSource,
                 ForeignPrice = dto.ForeignPrice,
                 ItemCode = dto.ItemCode,
+                ItemType = dto.ItemType,
                 SortOrder = order++
             });
         }
@@ -487,6 +506,7 @@ public class ServiceFormService : IServiceFormService
             StoreName = f.Store?.Name ?? string.Empty,
             StoreFormat = f.Store?.Format,
             StoreRegion = f.Store?.Region,
+            StoreCity = f.Store?.City,
             FormNumber = f.FormNumber,
             FormDate = f.FormDate,
             OriginalFileName = f.OriginalFileName,
@@ -519,7 +539,8 @@ public class ServiceFormService : IServiceFormService
                 ExchangeRateActualDate = i.ExchangeRateActualDate,
                 ExchangeRateSource = i.ExchangeRateSource,
                 ForeignPrice = i.ForeignPrice,
-                ItemCode = i.ItemCode
+                ItemCode = i.ItemCode,
+                ItemType = i.ItemType
             }).ToList(),
             Invoices = f.Invoices.Select(inv => new InvoiceDto
             {

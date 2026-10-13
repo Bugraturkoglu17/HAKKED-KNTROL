@@ -17,7 +17,8 @@ namespace HakedisOtomasyon.Infrastructure.Services;
 ///  • Mağaza formatı/bölgesi (MMM, M-JET ... / İÇ ANADOLU ...): Glikol hakediş çıktısında gösterilir. Daha önce yüklenmiş
 ///    mağazaların boş Format/Bölge/İl alanları bir kez doldurulur (CoolingStoreInfoV3); dolu alanlar ve adlar değiştirilmez.
 ///    İl, Glikol hakedişinin GENEL İCMAL sayfasında gösterilir.
-///  • Fiyat listesi: yayımlanan liste güncellendikçe sürüm bayrağı artar (şu an CoolingPricesV2).
+///  • Fiyat listesi: yayımlanan liste güncellendikçe sürüm bayrağı artar (şu an CoolingPricesV3 — birim, malzeme tipi ve
+///    hakedişlerde kullanılan işçilik kodları S1..S6 eklendi).
 ///      – Soğutma'da hiç kalem yoksa tüm liste eklenir.
 ///      – Önceden seed'den gelmiş (SourceSheetName etiketli, elle eklenmemiş) kalemler varsa listedeki
 ///        güncel değerlerle YENİLENİR: fiyat/para birimi/ad/ana grup güncellenir, yeni kalemler eklenir,
@@ -31,7 +32,7 @@ namespace HakedisOtomasyon.Infrastructure.Services;
 public static class CoolingSeedService
 {
     public const string SeedFlagKey = "CoolingSeedV1";          // mağazalar + ilk fiyat yüklemesi
-    public const string PriceRefreshFlagKey = "CoolingPricesV2"; // 2026 Yayım listesi (Marka sütunsuz, tek Birim Fiyat)
+    public const string PriceRefreshFlagKey = "CoolingPricesV3"; // 2026 Yayım listesi + birim, malzeme tipi, işçilik kodları S1..S6 (V2: yoktu)
     public const string StoreInfoFlagKey = "CoolingStoreInfoV3"; // mağaza Format + Bölge + İl bilgisi (V2: il yoktu)
     public const string PriceFileName = "cooling_price_items.json";
     public const string StoreFileName = "cooling_stores.json";
@@ -46,6 +47,10 @@ public static class CoolingSeedService
         public string? MainCategory { get; set; }
         public string Description { get; set; } = string.Empty;
         public string? Notes { get; set; }
+        /// <summary>Malzeme tipi ("TİP" sütunu); yoksa null.</summary>
+        public string? Type { get; set; }
+        /// <summary>Birim (ADET, kg, metre, set ...); bilinmiyorsa null.</summary>
+        public string? Unit { get; set; }
         public string Currency { get; set; } = "TRY";
         public decimal Price { get; set; }
     }
@@ -176,7 +181,7 @@ public static class CoolingSeedService
         if (!storesDone)
             db.AppSettings.Add(new AppSetting { Key = SeedFlagKey, Value = now, Description = "Soğutma mağaza listesi + ilk fiyat listesi kurulumdan içeri alındı." });
         if (!pricesDone)
-            db.AppSettings.Add(new AppSetting { Key = PriceRefreshFlagKey, Value = now, Description = "Soğutma birim fiyat listesi 2026 Yayım sürümüyle güncellendi." });
+            db.AppSettings.Add(new AppSetting { Key = PriceRefreshFlagKey, Value = now, Description = "Soğutma birim fiyat listesi 2026 Yayım sürümüyle güncellendi (birim, malzeme tipi, S1..S6 kodları)." });
         if (!storeInfoDone && File.Exists(storePath))
             db.AppSettings.Add(new AppSetting { Key = StoreInfoFlagKey, Value = now, Description = "Soğutma mağazalarına Format/Bölge/İl bilgisi işlendi." });
         await db.SaveChangesAsync();
@@ -212,6 +217,13 @@ public static class CoolingSeedService
         entity.Description = description;
         entity.DisplayName = description;
         entity.Notes = sp.Notes;
+        entity.ItemType = string.IsNullOrWhiteSpace(sp.Type) ? null : sp.Type.Trim();
+        // Birim: yalnızca BOŞSA listeden doldurulur — kullanıcının girdiği birim korunur.
+        if (string.IsNullOrWhiteSpace(entity.Unit) && !string.IsNullOrWhiteSpace(sp.Unit))
+        {
+            entity.Unit = sp.Unit.Trim();
+            entity.HasMissingUnit = false;
+        }
         entity.PriceType = sp.Price == 0m ? PriceType.VariablePrice : PriceType.FixedPrice;
         entity.LaborPrice = 0m; // Soğutma'da işçilik ayrımı yok — tek "Birim Fiyat"
 

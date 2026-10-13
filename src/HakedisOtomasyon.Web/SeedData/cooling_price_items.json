@@ -3,6 +3,8 @@
   "pozNo": "1",
   "mainCategory": "EVAPORATÖR FAN",
   "description": "DOLAP FAN MOTORU 50 W",
+  "type": "50 W",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 9.945
@@ -11,6 +13,8 @@
   "pozNo": "2",
   "mainCategory": "EVAPORATÖR FAN",
   "description": "DOLAP ELEKRONİK FAN MOTORU IP 65 ECM 12 - 15 ELCO ,ECM7112",
+  "type": "IP 65 ECM 12 - 15 ELCO ,ECM7112",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 27.183
@@ -19,6 +23,8 @@
   "pozNo": "3",
   "mainCategory": "EVAPORATÖR FAN",
   "description": "KARE FAN 12*12",
+  "type": "12*12",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 7.14
@@ -27,6 +33,8 @@
   "pozNo": "4",
   "mainCategory": "EVAPORATÖR FAN",
   "description": "FAN ÇEMBERİ 20cm",
+  "type": "20cm",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 2.805
@@ -35,6 +43,8 @@
   "pozNo": "5",
   "mainCategory": "EVAPORATÖR FAN",
   "description": "FAN KANADI 20cm",
+  "type": "20cm",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 1.938
@@ -43,6 +53,8 @@
   "pozNo": "6",
   "mainCategory": "AKSİYEL FANLAR",
   "description": "FAN 4VPR 25 250mm",
+  "type": "4VPR 25 250mm",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 21.42
@@ -51,6 +63,8 @@
   "pozNo": "7",
   "mainCategory": "AKSİYEL FANLAR",
   "description": "FAN 4VPR 35 300mm",
+  "type": "4VPR 35 300mm",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 31.314
@@ -59,6 +73,8 @@
   "pozNo": "8",
   "mainCategory": "AKSİYEL FANLAR",
   "description": "FAN 6VPR 35 350mm 900d/d",
+  "type": "6VPR 35 350mm 900d/d",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 41.752
@@ -67,6 +83,8 @@
   "pozNo": "9",
   "mainCategory": "AKSİYEL FANLAR",
   "description": "FAN 4VPR 45 400mm",
+  "type": "4VPR 45 400mm",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 46.971
@@ -75,6 +93,8 @@
   "pozNo": "10",
   "mainCategory": "AKSİYEL FANLAR",
   "description": "FAN AKSE-450 4A4",
+  "type": "AKSE-450 4A4",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 52.19
@@ -83,6 +103,8 @@
   "pozNo": "11",
   "mainCategory": "AKSİYEL FANLAR",
   "description": "FAN AKSE-500 6KA4 900 d/d",
+  "type": "AKSE-500 6KA4 900 d/d",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 145.6
@@ -91,6 +113,8 @@
   "pozNo": "12",
   "mainCategory": "AKSİYEL FANLAR",
   "description": "FAN AKSE-630 6KA4 900 d/d",
+  "type": "AKSE-630 6KA4 900 d/d",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 260.0
@@ -99,6 +123,8 @@
   "pozNo": "13",
   "mainCategory": "AKSİYEL FANLAR",
   "description": "FAN AKSD-800 6-6 A6 PANEL",
+  "type": "AKSD-800 6-6 A6 PANEL",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 555.0
@@ -107,6 +133,8 @@
   "pozNo": "14",
   "mainCategory": "FİLTRE KURUTUCU",
   "description": "DRYER 1/4\" KAYNAKLI",
+  "type": "1/4\" KAYNAKLI",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 6.8
@@ -115,6 +143,8 @@
   "pozNo": "15",
   "mainCategory": "FİLTRE KURUTUCU",
   "description": "DRYER 3/8\" KAYNAKLI",
+  "type": "3/8\" KAYNAKLI",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 10.32
@@ -123,6 +153,8 @@
   "pozNo": "16",
   "mainCategory": "FİLTRE KURUTUCU",
   "description": "DRYER 1/2\" KAYNAKLI",
+  "type": "1/2\" KAYNAKLI",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 20.64
@@ -131,6 +163,8 @@
   "pozNo": "17",
   "mainCategory": "FİLTRE KURUTUCU",
   "description": "DRYER 5/8\" KAYNAKLI",
+  "type": "5/8\" KAYNAKLI",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 29.44
@@ -139,6 +173,8 @@
   "pozNo": "18",
   "mainCategory": "FİLTRE KURUTUCU",
   "description": "DÖNÜŞ KARTUŞU MEKANİK C-4495/C",
+  "type": "C-4495/C",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 19.04
@@ -147,6 +183,8 @@
   "pozNo": "19",
   "mainCategory": "FİLTRE KURUTUCU",
   "description": "LİKİT KARTUŞU (YÜK.KAPASİTE) H48C-4490/A",
+  "type": "H48C-4490/A",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 12.32
@@ -155,6 +193,8 @@
   "pozNo": "20",
   "mainCategory": "FİLTRE KURUTUCU",
   "description": "LİKİT KARTUŞU ASİT TC-SD48",
+  "type": "TC-SD48",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 38.0
@@ -163,6 +203,8 @@
   "pozNo": "21",
   "mainCategory": "FİLTRE KURUTUCU",
   "description": "YAĞ FİLTRESİ S-9105",
+  "type": "S-9105",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 18.4
@@ -171,6 +213,8 @@
   "pozNo": "22",
   "mainCategory": "FİLTRE KURUTUCU",
   "description": "LİKİT KARTUŞ KOVANI RSP-487 7/8\"",
+  "type": "RSP-487 7/8\"",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 137.6
@@ -179,6 +223,8 @@
   "pozNo": "23",
   "mainCategory": "FİLTRE KURUTUCU",
   "description": "LİKİT KARTUŞ KOVANI RSP-489 1\"1/8",
+  "type": "RSP-489 1\"1/8",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 140.8
@@ -187,6 +233,8 @@
   "pozNo": "24",
   "mainCategory": "FİLTRE KURUTUCU",
   "description": "DÖNÜŞ KARTUŞ KOVANI RSP-4811 1\"3/8",
+  "type": "RSP-4811 1\"3/8",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 142.4
@@ -195,6 +243,8 @@
   "pozNo": "25",
   "mainCategory": "FİLTRE KURUTUCU",
   "description": "DÖNÜŞ KARTUŞ KOVANI RSP-4813 1\"5/8",
+  "type": "RSP-4813 1\"5/8",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 142.4
@@ -203,6 +253,8 @@
   "pozNo": "26",
   "mainCategory": "FİLTRE KURUTUCU",
   "description": "DÖNÜŞ KARTUŞ KOVANI RSP-4817 2\"1/8",
+  "type": "RSP-4817 2\"1/8",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 147.2
@@ -211,6 +263,8 @@
   "pozNo": "27",
   "mainCategory": "SELENOİD",
   "description": "SOLENOİD GÖVDE 3/8\" KAYNAKLI",
+  "type": "3/8\" KAYNAKLI",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 25.2
@@ -219,6 +273,8 @@
   "pozNo": "28",
   "mainCategory": "SELENOİD",
   "description": "SOLENOİD GÖVDE 1/2\"KAYNAKLI",
+  "type": "1/2\"KAYNAKLI",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 35.5
@@ -227,6 +283,8 @@
   "pozNo": "29",
   "mainCategory": "SELENOİD",
   "description": "SOLENOİD GÖVDE 5/8\"KAYNAKLI",
+  "type": "5/8\"KAYNAKLI",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 54.4
@@ -235,6 +293,8 @@
   "pozNo": "30",
   "mainCategory": "SELENOİD",
   "description": "SOLENOİD BOBİNİ 9100/RA6",
+  "type": "9100/RA6",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 12.24
@@ -243,6 +303,8 @@
   "pozNo": "35",
   "mainCategory": "GENLEŞME VANASI",
   "description": "EXPANSİON VALVE DIŞ DENGELİ VE KAYNAKLI",
+  "type": "DIŞ DENGELİ VE KAYNAKLI",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 59.5595
@@ -251,6 +313,8 @@
   "pozNo": "36",
   "mainCategory": "GENLEŞME VANASI",
   "description": "ORFİS TİP1",
+  "type": "TİP1",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 9.656
@@ -259,6 +323,8 @@
   "pozNo": "37",
   "mainCategory": "GENLEŞME VANASI",
   "description": "ORFİS TİP2",
+  "type": "TİP2",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 4.896
@@ -267,6 +333,8 @@
   "pozNo": "38",
   "mainCategory": "GAZ İNDİKATÖR",
   "description": "GAZ GÖSTERGESİ 1/4\"KAYNAKLI",
+  "type": "1/4\"KAYNAKLI",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 7.225
@@ -275,6 +343,8 @@
   "pozNo": "39",
   "mainCategory": "GAZ İNDİKATÖR",
   "description": "GAZ GÖSTERGESİ 3/8\"KAYNAKLI",
+  "type": "3/8\"KAYNAKLI",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 7.548
@@ -283,6 +353,8 @@
   "pozNo": "40",
   "mainCategory": "GAZ İNDİKATÖR",
   "description": "GAZ GÖSTERGESİ 1/2\"KAYNAKLI",
+  "type": "1/2\"KAYNAKLI",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 9.5115
@@ -291,6 +363,8 @@
   "pozNo": "41",
   "mainCategory": "GÜVENLİK",
   "description": "KOMBİNE OTOMATİK SGN 306X",
+  "type": "306X",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 54.825
@@ -299,6 +373,8 @@
   "pozNo": "42",
   "mainCategory": "GÜVENLİK",
   "description": "VAKUM OTOMATİĞİ SGN 106X",
+  "type": "106X",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 28.05
@@ -307,6 +383,8 @@
   "pozNo": "43",
   "mainCategory": "GÜVENLİK",
   "description": "PRESSİON OTOMATİĞİ SGN 130X",
+  "type": "130X",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 33.626
@@ -315,6 +393,8 @@
   "pozNo": "44",
   "mainCategory": "GÜVENLİK",
   "description": "ALÇAK BASINÇ SWITCH 0,3 BAR-1,3 BAR",
+  "type": "0,3 BAR-1,3 BAR",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 16.66
@@ -323,6 +403,8 @@
   "pozNo": "45",
   "mainCategory": "GÜVENLİK",
   "description": "YÜKSEK BASINÇ SWITCH 19 BAR-27 BAR",
+  "type": "19 BAR-27 BAR",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 17.8755
@@ -331,6 +413,8 @@
   "pozNo": "46",
   "mainCategory": "OTOMASYON _KONTROL CİHAZLARI",
   "description": "CAREL DİGİTAL TERMOSTAT PJEASY PJ EASY PYCW1Z0567 RTC",
+  "type": "PJ EASY PYCW1Z0567 RTC",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 60.475
@@ -339,6 +423,8 @@
   "pozNo": "47",
   "mainCategory": "OTOMASYON _KONTROL CİHAZLARI",
   "description": "CAREL SOĞUK ODA PANOSU MD33 MASTERCELLA MD33 RTC",
+  "type": "MASTERCELLA MD33 RTC",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 191.7
@@ -347,6 +433,8 @@
   "pozNo": "48",
   "mainCategory": "OTOMASYON _KONTROL CİHAZLARI",
   "description": "CAREL DİGİTAL TERMOSTAT IR33 IRCWCOLBO1 RTC",
+  "type": "IRCWCOLBO1 RTC",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 113.8
@@ -355,6 +443,8 @@
   "pozNo": "49",
   "mainCategory": "OTOMASYON _KONTROL CİHAZLARI",
   "description": "CAREL ARAYÜZ ADAPTÖRÜ CONVERTÖR CVSTDUMROO RS 485 - USB",
+  "type": "CVSTDUMROO RS 485 - USB",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 285.0
@@ -363,6 +453,8 @@
   "pozNo": "50",
   "mainCategory": "OTOMASYON _KONTROL CİHAZLARI",
   "description": "CAREL M.SİSTEM ARAYÜZ ADAPTÖRÜ PCOS004850",
+  "type": "PCOS004850",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 170.0
@@ -371,6 +463,8 @@
   "pozNo": "51",
   "mainCategory": "OTOMASYON _KONTROL CİHAZLARI",
   "description": "CAREL MODÜL ARAYÜZ ADAPTÖRÜ IROPZ400850",
+  "type": "IROPZ400850",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 49.5
@@ -379,6 +473,8 @@
   "pozNo": "52",
   "mainCategory": "OTOMASYON _KONTROL CİHAZLARI",
   "description": "CAREL SICAKLIK SENSÖRÜ NTC015HP00 1.5 mt",
+  "type": "NTC015HP00 1.5 mt",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 5.95
@@ -387,6 +483,8 @@
   "pozNo": "53",
   "mainCategory": "OTOMASYON _KONTROL CİHAZLARI",
   "description": "CAREL SICAKLIK SENSÖRÜ NTC030HP00 3 mt",
+  "type": "NTC030HP00 3 mt",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 8.95
@@ -395,6 +493,8 @@
   "pozNo": "54",
   "mainCategory": "OTOMASYON _KONTROL CİHAZLARI",
   "description": "CAREL DIŞ ORTAM PROBU METAL UÇLU NTC060WP00 6mt",
+  "type": "NTC060WP00 6mt",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 15.7
@@ -403,6 +503,8 @@
   "pozNo": "55",
   "mainCategory": "OTOMASYON _KONTROL CİHAZLARI",
   "description": "CAREL PCO ALÇAK BASINÇ SENSÖRÜ SPKT0013R0",
+  "type": "SPKT0013R0",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 76.9
@@ -411,6 +513,8 @@
   "pozNo": "56",
   "mainCategory": "OTOMASYON _KONTROL CİHAZLARI",
   "description": "CAREL PCO DÜŞÜK BASINÇ SENSÖRÜ SPKT0033R0",
+  "type": "SPKT0033R0",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 76.9
@@ -419,6 +523,8 @@
   "pozNo": "57",
   "mainCategory": "OTOMASYON _KONTROL CİHAZLARI",
   "description": "CAREL BASINÇ SENSÖRÜ KABLOSU SPKC002310 2mt.",
+  "type": "SPKC002310 2mt.",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 12.8
@@ -427,6 +533,8 @@
   "pozNo": "58",
   "mainCategory": "OTOMASYON _KONTROL CİHAZLARI",
   "description": "CAREL BASINÇ SENSÖRÜ KABLOSU SPKC005310 5mt.",
+  "type": "SPKC005310 5mt.",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 12.8
@@ -435,6 +543,8 @@
   "pozNo": "59",
   "mainCategory": "OTOMASYON _KONTROL CİHAZLARI",
   "description": "CAREL PCO CLOCK CARD PCO100CLCK0",
+  "type": "PCO100CLCK0",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 47.2
@@ -443,6 +553,8 @@
   "pozNo": "60",
   "mainCategory": "CAREL",
   "description": "CAREL MERKEZİ SİSTEM KONTROL CİHAZI",
+  "type": null,
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 576.0
@@ -451,6 +563,8 @@
   "pozNo": "61",
   "mainCategory": "OTOMASYON _KONTROL CİHAZLARI",
   "description": "CAREL FAN HIZ KONTROL MONOFAZE FCSM122300 12 AMPER MONO",
+  "type": "FCSM122300 12 AMPER MONO",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 97.5
@@ -459,6 +573,8 @@
   "pozNo": "62",
   "mainCategory": "OTOMASYON _KONTROL CİHAZLARI",
   "description": "FAN HIZ KONTROL TRİFAZE FCS309410",
+  "type": "FCS309410",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 448.0
@@ -467,6 +583,8 @@
   "pozNo": "63",
   "mainCategory": "OTOMASYON _KONTROL CİHAZLARI",
   "description": "FAN HIZ KONTROL TRİFAZE FCS3124010",
+  "type": "FCS3124010",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 520.0
@@ -475,6 +593,8 @@
   "pozNo": "64",
   "mainCategory": "OTOMASYON _KONTROL CİHAZLARI",
   "description": "CAREL ELEKTRONİK VALF E2v",
+  "type": "E2v",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 168.0
@@ -483,6 +603,8 @@
   "pozNo": "65",
   "mainCategory": "OTOMASYON _KONTROL CİHAZLARI",
   "description": "CAREL ELEKTRONİK VALF BOBİN",
+  "type": null,
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 52.5
@@ -491,6 +613,8 @@
   "pozNo": "66",
   "mainCategory": "OTOMASYON _KONTROL CİHAZLARI",
   "description": "SUPERVİZOR FAN TEMİNİ",
+  "type": null,
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 41.0
@@ -499,6 +623,8 @@
   "pozNo": "67",
   "mainCategory": "OTOMASYON _KONTROL CİHAZLARI",
   "description": "SUPERVİZOR HARDDİSK TEMİNİ",
+  "type": null,
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 168.0
@@ -507,6 +633,8 @@
   "pozNo": "68",
   "mainCategory": "COPELAND",
   "description": "COPELAND ZBD45+ZB38+UPCB001HS0+ E2V30USM10 KIT",
+  "type": null,
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 1876.0
@@ -515,6 +643,8 @@
   "pozNo": "69",
   "mainCategory": "CAREL",
   "description": "CAREL MIGROS MTS MINI KIT",
+  "type": null,
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 282.0
@@ -523,14 +653,18 @@
   "pozNo": "70",
   "mainCategory": "CAREL",
   "description": "CAREL BMEST03RS0 BOSS-MINI SUPERVISOR HEADLESS BOX-STANDARD (30 DEVICES),3 CREDITS ONBOARD",
+  "type": null,
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 1720.0
  },
  {
-  "pozNo": null,
+  "pozNo": "BOSS",
   "mainCategory": "CAREL",
   "description": "CAREL BMHCW03XS0 BOSS MONITORING SYSTEM HIGHEND BOX, STANDARD CAPACITY (100 DEVICES), 3 CREDITS ONBO",
+  "type": null,
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 4411.0
@@ -539,6 +673,8 @@
   "pozNo": "71",
   "mainCategory": "UPCB001HS0",
   "description": "UPCB001HS0",
+  "type": null,
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 307.5
@@ -547,6 +683,8 @@
   "pozNo": "72",
   "mainCategory": "UPCCONN0S0",
   "description": "UPCCONN0S0",
+  "type": null,
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 14.5
@@ -555,6 +693,8 @@
   "pozNo": "73",
   "mainCategory": "PJEASY",
   "description": "PJEASY KOMBİNASYON KUTUSU ABS PLASTİK",
+  "type": "ABS PLASTİK",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 5.4
@@ -563,38 +703,48 @@
   "pozNo": "74",
   "mainCategory": "KAPI",
   "description": "KAPI SWİTCH LİMİT SWİTCH",
+  "type": "LİMİT SWİTCH",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 9.0
  },
  {
-  "pozNo": null,
+  "pozNo": "ZBD45",
   "mainCategory": "KOMPRESÖR",
   "description": "COPELAND ZB45 KCE TFD 551 PART NR.8813099 KOMPRESÖR",
+  "type": "KOMPRESÖR",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 1042.5
  },
  {
-  "pozNo": null,
+  "pozNo": "ZF18",
   "mainCategory": "KOMPRESÖR",
   "description": "COPELAND ZF18 K4E TFD 556 PART NR.8813782 KOMPRESÖR",
+  "type": "KOMPRESÖR",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 1966.0
  },
  {
-  "pozNo": null,
+  "pozNo": "ZB38",
   "mainCategory": "KOMPRESÖR",
   "description": "COPELAND ZB38 KCE TFD 551 PART NR.8813113 KOMPRESÖR",
+  "type": "KOMPRESÖR",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 936.0
  },
  {
-  "pozNo": null,
+  "pozNo": "ZBD45-2",
   "mainCategory": "KOMPRESÖR",
   "description": "COPELAND ZBD45 KCE TFD 551 PART NR.8841336 / 8402531 KOMPRESÖR",
+  "type": "KOMPRESÖR",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 1802.0
@@ -603,6 +753,8 @@
   "pozNo": "75",
   "mainCategory": "VANALAR",
   "description": "KÜRESEL VANA 1/4\" KAYNAKLI",
+  "type": "1/4\" KAYNAKLI",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 17.3995
@@ -611,6 +763,8 @@
   "pozNo": "76",
   "mainCategory": "VANALAR",
   "description": "KÜRESEL VANA 3/8\"KAYNAKLI",
+  "type": "3/8\"KAYNAKLI",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 17.3995
@@ -619,6 +773,8 @@
   "pozNo": "77",
   "mainCategory": "VANALAR",
   "description": "KÜRESEL VANA 1/2\"KAYNAKLI",
+  "type": "1/2\"KAYNAKLI",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 17.3995
@@ -627,6 +783,8 @@
   "pozNo": "78",
   "mainCategory": "VANALAR",
   "description": "KÜRESEL VANA 5/8\"KAYNAKLI",
+  "type": "5/8\"KAYNAKLI",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 18.2325
@@ -635,6 +793,8 @@
   "pozNo": "79",
   "mainCategory": "VANALAR",
   "description": "KÜRESEL VANA 3/4\"KAYNAKLI",
+  "type": "3/4\"KAYNAKLI",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 23.96
@@ -643,6 +803,8 @@
   "pozNo": "80",
   "mainCategory": "VANALAR",
   "description": "KÜRESEL VANA 7/8\"KAYNAKLI",
+  "type": "7/8\"KAYNAKLI",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 32.708
@@ -651,6 +813,8 @@
   "pozNo": "81",
   "mainCategory": "VANALAR",
   "description": "KÜRESEL VANA 1\"1/8KAYNAKLI",
+  "type": "1\"1/8KAYNAKLI",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 43.945
@@ -659,6 +823,8 @@
   "pozNo": "82",
   "mainCategory": "VANALAR",
   "description": "KÜRESEL VANA 1''3/8KAYNAKLI",
+  "type": "1''3/8KAYNAKLI",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 84.4305
@@ -667,6 +833,8 @@
   "pozNo": "83",
   "mainCategory": "VANALAR",
   "description": "KÜRESEL VANA 42 MMKAYNAKLI",
+  "type": "42 MMKAYNAKLI",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 112.421
@@ -675,6 +843,8 @@
   "pozNo": "84",
   "mainCategory": "VANALAR",
   "description": "KÜRESEL VANA 2''1/8KAYNAKLI",
+  "type": "2''1/8KAYNAKLI",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 236.5635
@@ -683,6 +853,8 @@
   "pozNo": "85",
   "mainCategory": "VANALAR",
   "description": "CHECK VALVE 1/2\"KAYNAKLI",
+  "type": "1/2\"KAYNAKLI",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 19.2
@@ -691,6 +863,8 @@
   "pozNo": "86",
   "mainCategory": "VANALAR",
   "description": "CHECK VALVE 5/8\"KAYNAKLI",
+  "type": "5/8\"KAYNAKLI",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 26.8
@@ -699,6 +873,8 @@
   "pozNo": "87",
   "mainCategory": "VANALAR",
   "description": "CHECK VALVE 3/4\"(KAYNAKLI)",
+  "type": "3/4\"(KAYNAKLI)",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 28.8
@@ -707,6 +883,8 @@
   "pozNo": "88",
   "mainCategory": "VANALAR",
   "description": "YAĞ REGÜLATÖR VANASI S-9106",
+  "type": "S-9106",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 12.8125
@@ -715,6 +893,8 @@
   "pozNo": "89",
   "mainCategory": "YAĞ SİSTEMLERİ",
   "description": "ELEKTRONİK YAĞ REGÜLATÖRÜ 24V",
+  "type": "24V",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 153.75
@@ -723,6 +903,8 @@
   "pozNo": "90",
   "mainCategory": "YAĞ SİSTEMLERİ",
   "description": "YAĞ BASINÇ VALFİ S-9104H",
+  "type": "S-9104H",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 20.5
@@ -731,6 +913,8 @@
   "pozNo": "91",
   "mainCategory": "ÖLÇÜM",
   "description": "FLANŞLI A.B MANOMETRE RG-250GFB",
+  "type": "RG-250GFB",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 11.275
@@ -739,6 +923,8 @@
   "pozNo": "92",
   "mainCategory": "ÖLÇÜM",
   "description": "FLANŞLI Y.B MANOMETRE RG-500GFB",
+  "type": "RG-500GFB",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 11.275
@@ -747,6 +933,8 @@
   "pozNo": "93",
   "mainCategory": "TİTREŞİM ALICI",
   "description": "TİTREŞİM ALICI 5/8\"",
+  "type": "5/8\"",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 16.8045
@@ -755,6 +943,8 @@
   "pozNo": "94",
   "mainCategory": "TİTREŞİM ALICI",
   "description": "TİTREŞİM ALICI 3/4\"",
+  "type": "3/4\"",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 21.1905
@@ -763,6 +953,8 @@
   "pozNo": "95",
   "mainCategory": "TİTREŞİM ALICI",
   "description": "TİTREŞİM ALICI 7/8\"",
+  "type": "7/8\"",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 24.0
@@ -771,6 +963,8 @@
   "pozNo": "96",
   "mainCategory": "TİTREŞİM ALICI",
   "description": "TİTREŞİM ALICI 1\"1/8",
+  "type": "1\"1/8",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 31.0
@@ -779,6 +973,8 @@
   "pozNo": "97",
   "mainCategory": "TİTREŞİM ALICI",
   "description": "TİTREŞİM ALICI 1\"3/8",
+  "type": "1\"3/8",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 48.0
@@ -787,6 +983,8 @@
   "pozNo": "98",
   "mainCategory": "TİTREŞİM ALICI",
   "description": "TİTREŞİM ALICI 1\"5/8",
+  "type": "1\"5/8",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 68.0
@@ -795,6 +993,8 @@
   "pozNo": "99",
   "mainCategory": "KILCAL HORTUM EKİPMANLARI",
   "description": "KILCAL HORTUM GAZ DEVRESİ İÇİN 6 MM",
+  "type": "6 MM",
+  "unit": "metre",
   "notes": null,
   "currency": "EUR",
   "price": 4.93
@@ -803,6 +1003,8 @@
   "pozNo": "100",
   "mainCategory": "KILCAL HORTUM EKİPMANLARI",
   "description": "KILCAL HORTUM YAĞ DEVRESİ İÇİN 10 MM",
+  "type": "10 MM",
+  "unit": "metre",
   "notes": null,
   "currency": "EUR",
   "price": 6.97
@@ -811,6 +1013,8 @@
   "pozNo": "101",
   "mainCategory": "KILCAL HORTUM EKİPMANLARI",
   "description": "KILCAL HORTUM RAKOR TK. 6 MM-6 MM DÜZ TİP",
+  "type": "6 MM-6 MM DÜZ TİP",
+  "unit": "metre",
   "notes": null,
   "currency": "EUR",
   "price": 3.4
@@ -819,6 +1023,8 @@
   "pozNo": "102",
   "mainCategory": "KILCAL HORTUM EKİPMANLARI",
   "description": "KILCAL HORTUM RAKOR TK. 90 6MM 90°",
+  "type": "6MM 90°",
+  "unit": "metre",
   "notes": null,
   "currency": "EUR",
   "price": 7.14
@@ -827,6 +1033,8 @@
   "pozNo": "103",
   "mainCategory": "KILCAL HORTUM EKİPMANLARI",
   "description": "KILCAL HORTUM RAKOR TK. TE 6 MM RAKORLU T TİPİ",
+  "type": "6 MM RAKORLU T TİPİ",
+  "unit": "metre",
   "notes": null,
   "currency": "EUR",
   "price": 10.2
@@ -835,6 +1043,8 @@
   "pozNo": "104",
   "mainCategory": "KILCAL HORTUM EKİPMANLARI",
   "description": "KILCAL HORTUM RAKOR TK. 10 MM10 MM DÜZ TİP",
+  "type": "10 MM10 MM DÜZ TİP",
+  "unit": "metre",
   "notes": null,
   "currency": "EUR",
   "price": 7.905
@@ -843,6 +1053,8 @@
   "pozNo": "105",
   "mainCategory": "KILCAL HORTUM EKİPMANLARI",
   "description": "KILCAL HORTUM RAKOR TK. 90 10MM 90°",
+  "type": "10MM 90°",
+  "unit": "metre",
   "notes": null,
   "currency": "EUR",
   "price": 15.3
@@ -851,6 +1063,8 @@
   "pozNo": "106",
   "mainCategory": "KILCAL HORTUM EKİPMANLARI",
   "description": "KILCAL HORTUM RAKOR TK. TE 10 MM RAKORLU T TİPİ",
+  "type": "10 MM RAKORLU T TİPİ",
+  "unit": "metre",
   "notes": null,
   "currency": "EUR",
   "price": 6.29
@@ -859,6 +1073,8 @@
   "pozNo": "107",
   "mainCategory": "BAKIR BORU",
   "description": "BAKIR BORU KANGAL 10*0,70",
+  "type": "KANGAL 10*0,70",
+  "unit": "metre",
   "notes": null,
   "currency": "EUR",
   "price": 4.875
@@ -867,6 +1083,8 @@
   "pozNo": "108",
   "mainCategory": "BAKIR BORU",
   "description": "BAKIR BORU KANGAL 12*0,70",
+  "type": "KANGAL 12*0,70",
+  "unit": "metre",
   "notes": null,
   "currency": "EUR",
   "price": 5.2
@@ -875,6 +1093,8 @@
   "pozNo": "109",
   "mainCategory": "BAKIR BORU",
   "description": "BAKIR BORU KANGAL 16*0,70",
+  "type": "KANGAL 16*0,70",
+  "unit": "metre",
   "notes": null,
   "currency": "EUR",
   "price": 6.5
@@ -883,6 +1103,8 @@
   "pozNo": "110",
   "mainCategory": "BAKIR BORU",
   "description": "BAKIR BORU KANGAL 18*0,70",
+  "type": "KANGAL 18*0,70",
+  "unit": "metre",
   "notes": null,
   "currency": "EUR",
   "price": 7.8
@@ -891,6 +1113,8 @@
   "pozNo": "111",
   "mainCategory": "BAKIR BORU",
   "description": "BAKIR BORU BOY BORU 22*1",
+  "type": "BOY BORU 22*1",
+  "unit": "metre",
   "notes": null,
   "currency": "EUR",
   "price": 11.7
@@ -899,6 +1123,8 @@
   "pozNo": "112",
   "mainCategory": "BAKIR BORU",
   "description": "BAKIR BORU BOY BORU28*1",
+  "type": "BOY BORU28*1",
+  "unit": "metre",
   "notes": null,
   "currency": "EUR",
   "price": 16.458
@@ -907,6 +1133,8 @@
   "pozNo": "113",
   "mainCategory": "BAKIR BORU",
   "description": "BAKIR BORU BOY BORU 35*1",
+  "type": "BOY BORU 35*1",
+  "unit": "metre",
   "notes": null,
   "currency": "EUR",
   "price": 20.384
@@ -915,6 +1143,8 @@
   "pozNo": "114",
   "mainCategory": "BAKIR BORU",
   "description": "BAKIR BORU BOY BORU 42*1",
+  "type": "BOY BORU 42*1",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 24.648
@@ -923,6 +1153,8 @@
   "pozNo": "115",
   "mainCategory": "BAKIR BORU",
   "description": "BAKIR BORU BOY BORU 54*1,5",
+  "type": "BOY BORU 54*1,5",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 50.7
@@ -931,6 +1163,8 @@
   "pozNo": "116",
   "mainCategory": "İZOLASYON",
   "description": "İZOLASYON ISOPIPE 16*19",
+  "type": "16*19",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 0.6888
@@ -939,6 +1173,8 @@
   "pozNo": "117",
   "mainCategory": "İZOLASYON",
   "description": "İZOLASYON ISOPIPE 18*19",
+  "type": "18*19",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 0.9996
@@ -947,6 +1183,8 @@
   "pozNo": "118",
   "mainCategory": "İZOLASYON",
   "description": "İZOLASYON ISOPIPE 22*19",
+  "type": "22*19",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 1.05
@@ -955,6 +1193,8 @@
   "pozNo": "119",
   "mainCategory": "İZOLASYON",
   "description": "İZOLASYON ISOPIPE 28*19",
+  "type": "28*19",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 1.092
@@ -963,6 +1203,8 @@
   "pozNo": "120",
   "mainCategory": "İZOLASYON",
   "description": "İZOLASYON ISOPIPE 35*19",
+  "type": "35*19",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 1.3272
@@ -971,6 +1213,8 @@
   "pozNo": "121",
   "mainCategory": "İZOLASYON",
   "description": "İZOLASYON ISOPIPE 42*19",
+  "type": "42*19",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 1.3944
@@ -979,6 +1223,8 @@
   "pozNo": "122",
   "mainCategory": "İZOLASYON",
   "description": "İZOLASYON ISOPIPE 54*19",
+  "type": "54*19",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 1.5288
@@ -987,6 +1233,8 @@
   "pozNo": "123",
   "mainCategory": "İZOLASYON",
   "description": "KAUÇUK İZOLASYON BANDI T=3 MM,5 CM,15 MT",
+  "type": "T=3 MM,5 CM,15 MT",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 0.39
@@ -995,6 +1243,8 @@
   "pozNo": "124",
   "mainCategory": "İZOLASYON",
   "description": "DEKORATİF BANT 50 MM,15 Mt",
+  "type": "50 MM,15 Mt",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 0.26
@@ -1003,6 +1253,8 @@
   "pozNo": "125",
   "mainCategory": "BAKIR BORU BAĞLANTI MALZEMELERİ",
   "description": "RAKOR 1/4\"",
+  "type": "1/4\"",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 0.65
@@ -1011,6 +1263,8 @@
   "pozNo": "126",
   "mainCategory": "BAKIR BORU BAĞLANTI MALZEMELERİ",
   "description": "RAKOR 3/8\"",
+  "type": "3/8\"",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 0.975
@@ -1019,6 +1273,8 @@
   "pozNo": "127",
   "mainCategory": "BAKIR BORU BAĞLANTI MALZEMELERİ",
   "description": "RAKOR 1/2\"",
+  "type": "1/2\"",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 1.3
@@ -1027,6 +1283,8 @@
   "pozNo": "128",
   "mainCategory": "BAKIR BORU BAĞLANTI MALZEMELERİ",
   "description": "RAKOR 5/8\"",
+  "type": "5/8\"",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 1.7875
@@ -1035,6 +1293,8 @@
   "pozNo": "129",
   "mainCategory": "BAKIR BORU BAĞLANTI MALZEMELERİ",
   "description": "BAKIR DİRSEK 16 mm",
+  "type": "16 mm",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 0.585
@@ -1043,6 +1303,8 @@
   "pozNo": "130",
   "mainCategory": "BAKIR BORU BAĞLANTI MALZEMELERİ",
   "description": "BAKIR DİRSEK 18 mm",
+  "type": "18 mm",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 0.858
@@ -1051,6 +1313,8 @@
   "pozNo": "131",
   "mainCategory": "BAKIR BORU BAĞLANTI MALZEMELERİ",
   "description": "BAKIR DİRSEK UZUN 22 mm",
+  "type": "22 mm",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 1.3
@@ -1059,6 +1323,8 @@
   "pozNo": "132",
   "mainCategory": "BAKIR BORU BAĞLANTI MALZEMELERİ",
   "description": "BAKIR DİRSEK UZUN 28 mm",
+  "type": "28 mm",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 2.301
@@ -1067,6 +1333,8 @@
   "pozNo": "133",
   "mainCategory": "BAKIR BORU BAĞLANTI MALZEMELERİ",
   "description": "BAKIR DİRSEK UZUN 35 mm",
+  "type": "35 mm",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 3.9
@@ -1075,6 +1343,8 @@
   "pozNo": "134",
   "mainCategory": "BAKIR BORU BAĞLANTI MALZEMELERİ",
   "description": "BAKIR DİRSEK UZUN 42 mm",
+  "type": "42 mm",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 6.5
@@ -1083,6 +1353,8 @@
   "pozNo": "135",
   "mainCategory": "BAKIR BORU BAĞLANTI MALZEMELERİ",
   "description": "BAKIR DİRSEK UZUN 54 mm",
+  "type": "54 mm",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 11.7
@@ -1091,6 +1363,8 @@
   "pozNo": "136",
   "mainCategory": "BAKIR BORU BAĞLANTI MALZEMELERİ",
   "description": "BAKIR TE 10 mm",
+  "type": "10 mm",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 0.624
@@ -1099,6 +1373,8 @@
   "pozNo": "137",
   "mainCategory": "BAKIR BORU BAĞLANTI MALZEMELERİ",
   "description": "BAKIR TE 12 mm",
+  "type": "12 mm",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 1.04
@@ -1107,6 +1383,8 @@
   "pozNo": "138",
   "mainCategory": "BAKIR BORU BAĞLANTI MALZEMELERİ",
   "description": "BAKIR TE 16 mm",
+  "type": "16 mm",
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 0.806
@@ -1115,6 +1393,8 @@
   "pozNo": "139",
   "mainCategory": "BAKIR BORU BAĞLANTI MALZEMELERİ",
   "description": "BAKIR TE 18 mm",
+  "type": "18 mm",
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 1.82
@@ -1123,6 +1403,8 @@
   "pozNo": "140",
   "mainCategory": "BAKIR BORU BAĞLANTI MALZEMELERİ",
   "description": "BAKIR TE 22 mm",
+  "type": "22 mm",
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 1.95
@@ -1131,6 +1413,8 @@
   "pozNo": "141",
   "mainCategory": "BAKIR BORU BAĞLANTI MALZEMELERİ",
   "description": "BAKIR TE 28 mm",
+  "type": "28 mm",
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 2.99
@@ -1139,6 +1423,8 @@
   "pozNo": "142",
   "mainCategory": "BAKIR BORU BAĞLANTI MALZEMELERİ",
   "description": "BAKIR TE 35 mm",
+  "type": "35 mm",
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 5.655
@@ -1147,6 +1433,8 @@
   "pozNo": "143",
   "mainCategory": "BAKIR BORU BAĞLANTI MALZEMELERİ",
   "description": "BAKIR TE 42 mm",
+  "type": "42 mm",
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 8.19
@@ -1155,6 +1443,8 @@
   "pozNo": "144",
   "mainCategory": "BAKIR BORU BAĞLANTI MALZEMELERİ",
   "description": "BAKIR TE 54 mm",
+  "type": "54 mm",
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 15.6
@@ -1163,6 +1453,8 @@
   "pozNo": "145",
   "mainCategory": "BAKIR BORU BAĞLANTI MALZEMELERİ",
   "description": "BAKIR MANŞON 28 mm",
+  "type": "28 mm",
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 0.78
@@ -1171,6 +1463,8 @@
   "pozNo": "146",
   "mainCategory": "BAKIR BORU BAĞLANTI MALZEMELERİ",
   "description": "BAKIR MANŞON 35 mm",
+  "type": "35 mm",
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 1.43
@@ -1179,6 +1473,8 @@
   "pozNo": "147",
   "mainCategory": "BAKIR BORU BAĞLANTI MALZEMELERİ",
   "description": "BAKIR MANŞON 42 mm",
+  "type": "42 mm",
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 2.275
@@ -1187,6 +1483,8 @@
   "pozNo": "148",
   "mainCategory": "BAKIR BORU BAĞLANTI MALZEMELERİ",
   "description": "BAKIR MANŞON 54 mm",
+  "type": "54 mm",
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 3.64
@@ -1195,6 +1493,8 @@
   "pozNo": "149",
   "mainCategory": "BAKIR",
   "description": "BAKIR REDÜKSİYON 28x22",
+  "type": "28x22",
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 1.5127
@@ -1203,6 +1503,8 @@
   "pozNo": "150",
   "mainCategory": "BAKIR",
   "description": "BAKIR REDÜKSİYON 28x18",
+  "type": "28x18",
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 2.2455
@@ -1211,6 +1513,8 @@
   "pozNo": "151",
   "mainCategory": "BAKIR",
   "description": "BAKIR REDÜKSİYON 35X22",
+  "type": "35X22",
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 2.9073
@@ -1219,6 +1523,8 @@
   "pozNo": "152",
   "mainCategory": "BAKIR",
   "description": "BAKIR REDÜKSİYON 35X18",
+  "type": "35X18",
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 2.7891
@@ -1227,6 +1533,8 @@
   "pozNo": "153",
   "mainCategory": "BAKIR",
   "description": "BAKIR REDÜKSİYON 35X28",
+  "type": "35X28",
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 2.3164
@@ -1235,6 +1543,8 @@
   "pozNo": "154",
   "mainCategory": "BAKIR",
   "description": "BAKIR REDÜKSİYON 42x35",
+  "type": "42x35",
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 3.4627
@@ -1243,6 +1553,8 @@
   "pozNo": "155",
   "mainCategory": "BAKIR",
   "description": "BAKIR REDÜKSİYON 42x28",
+  "type": "42x28",
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 3.7464
@@ -1251,6 +1563,8 @@
   "pozNo": "156",
   "mainCategory": "BAKIR",
   "description": "BAKIR REDÜKSİYON 54x42",
+  "type": "54x42",
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 5.9209
@@ -1259,6 +1573,8 @@
   "pozNo": "157",
   "mainCategory": "BAKIR",
   "description": "BAKIR REDÜKSİYON 54x35",
+  "type": "54x35",
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 6.2755
@@ -1267,6 +1583,8 @@
   "pozNo": "158",
   "mainCategory": "BAKIR",
   "description": "BAKIR REDÜKSİYON 54X28",
+  "type": "54X28",
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 6.2282
@@ -1275,6 +1593,8 @@
   "pozNo": "159",
   "mainCategory": "BAKIR",
   "description": "BAKIR REDÜKSİYON 54x22",
+  "type": "54x22",
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 8.6509
@@ -1283,6 +1603,8 @@
   "pozNo": "160",
   "mainCategory": "BAKIR",
   "description": "BAKIR ÜNYON 0.25",
+  "type": "0.25",
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 0.325
@@ -1291,6 +1613,8 @@
   "pozNo": "161",
   "mainCategory": "BAKIR",
   "description": "BAKIR ÜNYON 0.375",
+  "type": "0.375",
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 0.39
@@ -1299,6 +1623,8 @@
   "pozNo": "162",
   "mainCategory": "BAKIR",
   "description": "BAKIR ÜNYON 0.5",
+  "type": "0.5",
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 0.78
@@ -1307,6 +1633,8 @@
   "pozNo": "163",
   "mainCategory": "BAKIR",
   "description": "BAKIR ÜNYON 0.625",
+  "type": "0.625",
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 0.975
@@ -1315,6 +1643,8 @@
   "pozNo": "164",
   "mainCategory": "BAKIR",
   "description": "BAKIR ÜNYON 0.75",
+  "type": "0.75",
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 1.56
@@ -1323,6 +1653,8 @@
   "pozNo": "165",
   "mainCategory": "BAKIR",
   "description": "BAKIR SPREY BOYA 400 M SPRAY",
+  "type": "400 M SPRAY",
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 3.3
@@ -1331,6 +1663,8 @@
   "pozNo": "166",
   "mainCategory": "SOĞUTKANLAR",
   "description": "SOĞUTUCU GAZ 13,5 KG TÜP (kg fiyatı) R22",
+  "type": "R22",
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 13.0
@@ -1339,6 +1673,8 @@
   "pozNo": "167",
   "mainCategory": "SOĞUTKANLAR",
   "description": "SOĞUTUCU GAZ 10,9 KG TÜP (kg fiyatı) R404",
+  "type": "R404",
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 13.0
@@ -1347,6 +1683,8 @@
   "pozNo": "168",
   "mainCategory": "SOĞUTKANLAR",
   "description": "SOĞUTUCU GAZ 11,30 KG TÜP (kg fiyatı) R407C",
+  "type": "R407C",
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 13.0
@@ -1355,6 +1693,8 @@
   "pozNo": "169",
   "mainCategory": "SOĞUTKANLAR",
   "description": "SOĞUTUCU GAZ 11,30 KG TÜP (kg fiyatı) R410A",
+  "type": "R410A",
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 13.0
@@ -1363,6 +1703,8 @@
   "pozNo": "170",
   "mainCategory": "SOĞUTKANLAR",
   "description": "SOĞUTUCU GAZ 13,6 KG TÜP (kg fiyatı) R134a",
+  "type": "R134a",
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 13.0
@@ -1371,6 +1713,8 @@
   "pozNo": "171",
   "mainCategory": "SOĞUTKANLAR",
   "description": "İNHİBİTÖRLÜ MONOPROPİLEN GLİKOL GLİKOL",
+  "type": "GLİKOL",
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 8.5
@@ -1379,6 +1723,8 @@
   "pozNo": "172",
   "mainCategory": "YAĞLAR",
   "description": "KOMPRESÖR YAĞI MİNERALL 68",
+  "type": "MİNERALL 68",
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 20.0
@@ -1387,6 +1733,8 @@
   "pozNo": "173",
   "mainCategory": "YAĞLAR",
   "description": "KOMPRESÖR YAĞI ESTER 68",
+  "type": "ESTER 68",
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 20.0
@@ -1395,6 +1743,8 @@
   "pozNo": "174",
   "mainCategory": "YAĞLAR",
   "description": "KOMPRESÖR YAĞI ESTER 32",
+  "type": "ESTER 32",
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 20.0
@@ -1403,6 +1753,8 @@
   "pozNo": "175",
   "mainCategory": "HİDROLİK",
   "description": "HİDROLİK KELEPÇE AĞIR HİZMET TİPİ",
+  "type": "AĞIR HİZMET TİPİ",
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 4.5
@@ -1411,6 +1763,8 @@
   "pozNo": "176",
   "mainCategory": "DİĞER",
   "description": "KONDENSER TEMİZLEME SIVISI 1 GL=3,8 LİTRE(1 LT Sİ)",
+  "type": "1 GL=3,8 LİTRE(1 LT Sİ)",
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 8.0
@@ -1419,6 +1773,8 @@
   "pozNo": "177",
   "mainCategory": "DİĞER",
   "description": "SİSTEM TEMİZLEYİCİ R11",
+  "type": "R11",
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 13.0
@@ -1427,6 +1783,8 @@
   "pozNo": "178",
   "mainCategory": "DİĞER",
   "description": "AZOT GAZI 1 m3",
+  "type": "1 m3",
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 0.825
@@ -1435,6 +1793,8 @@
   "pozNo": "179",
   "mainCategory": "DİĞER",
   "description": "KONDENSER KAYIŞI MUHTELİF",
+  "type": "MUHTELİF",
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 5.5
@@ -1443,6 +1803,8 @@
   "pozNo": "180",
   "mainCategory": "DİĞER",
   "description": "DENGE AYAĞI (TAKOZ)",
+  "type": null,
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 1.1
@@ -1451,6 +1813,8 @@
   "pozNo": "181",
   "mainCategory": "DİĞER",
   "description": "BOYA 1 kg",
+  "type": "1 kg",
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 1.65
@@ -1459,6 +1823,8 @@
   "pozNo": "182",
   "mainCategory": "DİĞER",
   "description": "TİNER 1 kg",
+  "type": "1 kg",
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 0.33
@@ -1467,6 +1833,8 @@
   "pozNo": "183",
   "mainCategory": "FİLTRE KURUTUCU",
   "description": "Yağ Asit Kiti Yağ Asit Kiti",
+  "type": null,
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 19.8
@@ -1475,6 +1843,8 @@
   "pozNo": "184",
   "mainCategory": "KOMPRESÖR",
   "description": "Kompresör Kafa Soğutucu Valfi Copeland",
+  "type": null,
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 0.0
@@ -1483,6 +1853,8 @@
   "pozNo": "185",
   "mainCategory": "AKUSTIK",
   "description": "Akustik İzolasyon",
+  "type": null,
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 0.0
@@ -1491,6 +1863,8 @@
   "pozNo": "186",
   "mainCategory": "DİĞER",
   "description": "WD-40 Sprey (Pas Sökücü, Yağlayıcı)",
+  "type": null,
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 0.0
@@ -1499,6 +1873,8 @@
   "pozNo": "187",
   "mainCategory": "SLIKON",
   "description": "Slikon",
+  "type": null,
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 0.0
@@ -1507,6 +1883,8 @@
   "pozNo": "188",
   "mainCategory": "SISTA",
   "description": "Sista Köpük",
+  "type": null,
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 0.0
@@ -1515,6 +1893,8 @@
   "pozNo": "189",
   "mainCategory": "DOĞLAGAZ",
   "description": "Doğlagaz Kelepçesi 2\" Somunlu",
+  "type": null,
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 0.0
@@ -1523,6 +1903,8 @@
   "pozNo": "190",
   "mainCategory": "DOĞLAGAZ",
   "description": "Doğlagaz Kelepçesi 2-1/2\" Somunlu",
+  "type": null,
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 0.0
@@ -1531,6 +1913,8 @@
   "pozNo": "191",
   "mainCategory": "TIJ",
   "description": "Tij M8",
+  "type": null,
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 0.0
@@ -1539,6 +1923,8 @@
   "pozNo": "192",
   "mainCategory": "TIJ",
   "description": "Tij M10",
+  "type": null,
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 0.0
@@ -1547,6 +1933,8 @@
   "pozNo": "193",
   "mainCategory": "DUVAR",
   "description": "Duvar Konsolu 300mm",
+  "type": null,
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 0.0
@@ -1555,6 +1943,8 @@
   "pozNo": "194",
   "mainCategory": "DUVAR",
   "description": "Duvar Konsolu 500mm",
+  "type": null,
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 0.0
@@ -1563,6 +1953,8 @@
   "pozNo": "195",
   "mainCategory": "DUVAR",
   "description": "Duvar Konsolu 600mm",
+  "type": null,
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 0.0
@@ -1571,6 +1963,8 @@
   "pozNo": "196",
   "mainCategory": "KELEPÇE",
   "description": "Kelepçe Sacı 2\" 56-60 20CM",
+  "type": null,
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 0.0
@@ -1579,6 +1973,8 @@
   "pozNo": "197",
   "mainCategory": "KELEPÇE",
   "description": "Kelepçe Sacı 2-1/2\" 75-80 20CM",
+  "type": null,
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 0.0
@@ -1587,6 +1983,8 @@
   "pozNo": "198",
   "mainCategory": "KELEPÇE",
   "description": "Kelepçe Sacı 3\" 86-91 20CM",
+  "type": null,
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 0.0
@@ -1595,6 +1993,8 @@
   "pozNo": "199",
   "mainCategory": "SOĞUK",
   "description": "Soğuk Oda Sacı 24x45",
+  "type": null,
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 0.0
@@ -1603,6 +2003,8 @@
   "pozNo": "200",
   "mainCategory": "PERFORE",
   "description": "Perfore U Kanal Profil 40x40",
+  "type": null,
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 0.0
@@ -1611,6 +2013,8 @@
   "pozNo": "201",
   "mainCategory": "PPRC",
   "description": "PPRC BORU 25mm CAM ELYAFLI",
+  "type": "25mm CAM ELYAFLI",
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 0.968
@@ -1619,6 +2023,8 @@
   "pozNo": "202",
   "mainCategory": "PPRC",
   "description": "PPRC BORU 32mm CAM ELYAFLI",
+  "type": "32mm CAM ELYAFLI",
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 1.639
@@ -1627,6 +2033,8 @@
   "pozNo": "203",
   "mainCategory": "PPRC",
   "description": "PPRC BORU 40mm CAM ELYAFLI",
+  "type": "40mm CAM ELYAFLI",
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 2.629
@@ -1635,6 +2043,8 @@
   "pozNo": "204",
   "mainCategory": "PPRC",
   "description": "PPRC BORU 50mm CAM ELYAFLI",
+  "type": "50mm CAM ELYAFLI",
+  "unit": "kg",
   "notes": null,
   "currency": "EUR",
   "price": 4.103
@@ -1643,6 +2053,8 @@
   "pozNo": "205",
   "mainCategory": "OTO",
   "description": "OTO PURJÖR 1/2\"",
+  "type": "1/2\"",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 18.148
@@ -1651,6 +2063,8 @@
   "pozNo": "206",
   "mainCategory": "PPRC",
   "description": "PPRC TEE 32 x 25 x 32mm",
+  "type": "32 x 25 x 32mm",
+  "unit": "kg",
   "notes": null,
   "currency": "TRY",
   "price": 9.72
@@ -1659,6 +2073,8 @@
   "pozNo": "207",
   "mainCategory": "PPRC",
   "description": "PPRC TEE 40 x 25 x 40mm",
+  "type": "40 x 25 x 40mm",
+  "unit": "kg",
   "notes": null,
   "currency": "TRY",
   "price": 16.22
@@ -1667,6 +2083,8 @@
   "pozNo": "208",
   "mainCategory": "PPRC",
   "description": "PPRC TEE 40 x 32 x 40mm",
+  "type": "40 x 32 x 40mm",
+  "unit": "kg",
   "notes": null,
   "currency": "TRY",
   "price": 16.22
@@ -1675,6 +2093,8 @@
   "pozNo": "209",
   "mainCategory": "PPRC",
   "description": "PPRC TEE 50 x 25 x 50mm",
+  "type": "50 x 25 x 50mm",
+  "unit": "kg",
   "notes": null,
   "currency": "TRY",
   "price": 32.0
@@ -1683,6 +2103,8 @@
   "pozNo": "210",
   "mainCategory": "PPRC",
   "description": "PPRC TEE 50 x 32 x 50mm",
+  "type": "50 x 32 x 50mm",
+  "unit": "kg",
   "notes": null,
   "currency": "TRY",
   "price": 32.0
@@ -1691,6 +2113,8 @@
   "pozNo": "211",
   "mainCategory": "PPRC",
   "description": "PPRC TEE 50 x 40 x 50mm",
+  "type": "50 x 40 x 50mm",
+  "unit": "kg",
   "notes": null,
   "currency": "TRY",
   "price": 32.0
@@ -1699,6 +2123,8 @@
   "pozNo": "212",
   "mainCategory": "PPRC",
   "description": "PPRC REDÜKSİYON 25 x 32mm",
+  "type": "25 x 32mm",
+  "unit": "kg",
   "notes": null,
   "currency": "TRY",
   "price": 4.4
@@ -1707,6 +2133,8 @@
   "pozNo": "213",
   "mainCategory": "PPRC",
   "description": "PPRC REDÜKSİYON 25 x 40mm",
+  "type": "25 x 40mm",
+  "unit": "kg",
   "notes": null,
   "currency": "TRY",
   "price": 7.5
@@ -1715,6 +2143,8 @@
   "pozNo": "214",
   "mainCategory": "PPRC",
   "description": "PPRC REDÜKSİYON 25 x 50mm",
+  "type": "25 x 50mm",
+  "unit": "kg",
   "notes": null,
   "currency": "TRY",
   "price": 10.91
@@ -1723,6 +2153,8 @@
   "pozNo": "215",
   "mainCategory": "PPRC",
   "description": "PPRC REDÜKSİYON 32 x 50mm",
+  "type": "32 x 50mm",
+  "unit": "kg",
   "notes": null,
   "currency": "TRY",
   "price": 12.9
@@ -1731,6 +2163,8 @@
   "pozNo": "216",
   "mainCategory": "PPRC",
   "description": "PPRC REDÜKSİYON 40 x 50mm",
+  "type": "40 x 50mm",
+  "unit": "kg",
   "notes": null,
   "currency": "TRY",
   "price": 15.6
@@ -1739,6 +2173,8 @@
   "pozNo": "217",
   "mainCategory": "PPRC",
   "description": "PPRC REDÜKSİYON 32 x 40mm",
+  "type": "32 x 40mm",
+  "unit": "kg",
   "notes": null,
   "currency": "TRY",
   "price": 8.5
@@ -1747,6 +2183,8 @@
   "pozNo": "218",
   "mainCategory": "PPRC",
   "description": "PPRC ADAPTÖR DIŞ DİŞLİ (RAKOR) 32 x 34mm",
+  "type": "32 x 34mm",
+  "unit": "ADET",
   "notes": null,
   "currency": "TRY",
   "price": 153.049
@@ -1755,6 +2193,8 @@
   "pozNo": "219",
   "mainCategory": "PPRC",
   "description": "PPRC ADAPTÖR İÇ DİŞLİ (RAKOR) 32 x 34mm",
+  "type": "32 x 34mm",
+  "unit": "ADET",
   "notes": null,
   "currency": "TRY",
   "price": 123.864
@@ -1763,6 +2203,8 @@
   "pozNo": "220",
   "mainCategory": "PPRC",
   "description": "PPRC MANŞON 25mm",
+  "type": "25mm",
+  "unit": "ADET",
   "notes": null,
   "currency": "TRY",
   "price": 4.342
@@ -1771,6 +2213,8 @@
   "pozNo": "221",
   "mainCategory": "PPRC",
   "description": "PPRC MANŞON 32mm",
+  "type": "32mm",
+  "unit": "ADET",
   "notes": null,
   "currency": "TRY",
   "price": 8.307
@@ -1779,6 +2223,8 @@
   "pozNo": "222",
   "mainCategory": "PPRC",
   "description": "PPRC MANŞON 40mm",
+  "type": "40mm",
+  "unit": "ADET",
   "notes": null,
   "currency": "TRY",
   "price": 13.676
@@ -1787,6 +2233,8 @@
   "pozNo": "223",
   "mainCategory": "PPRC",
   "description": "PPRC MANŞON 50mm",
+  "type": "50mm",
+  "unit": "ADET",
   "notes": null,
   "currency": "TRY",
   "price": 21.697
@@ -1795,6 +2243,8 @@
   "pozNo": "224",
   "mainCategory": "PPRC",
   "description": "PPRC DİRSEK 45 DERECE 20mm",
+  "type": "20mm",
+  "unit": "ADET",
   "notes": null,
   "currency": "TRY",
   "price": 5.148
@@ -1803,6 +2253,8 @@
   "pozNo": "225",
   "mainCategory": "PPRC",
   "description": "PPRC DİRSEK 45 DERECE 25mm",
+  "type": "25mm",
+  "unit": "ADET",
   "notes": null,
   "currency": "TRY",
   "price": 7.462
@@ -1811,6 +2263,8 @@
   "pozNo": "226",
   "mainCategory": "PPRC",
   "description": "PPRC DİRSEK 45 DERECE 32mm",
+  "type": "32mm",
+  "unit": "kg",
   "notes": null,
   "currency": "TRY",
   "price": 12.129
@@ -1819,6 +2273,8 @@
   "pozNo": "227",
   "mainCategory": "PPRC",
   "description": "PPRC DİRSEK 45 DERECE 50mm",
+  "type": "50mm",
+  "unit": "litre",
   "notes": null,
   "currency": "TRY",
   "price": 42.081
@@ -1827,6 +2283,8 @@
   "pozNo": "228",
   "mainCategory": "PPRC",
   "description": "PPRC DİRSEK 90 DERECE 20mm",
+  "type": "20mm",
+  "unit": "set",
   "notes": null,
   "currency": "TRY",
   "price": 3.757
@@ -1835,6 +2293,8 @@
   "pozNo": "229",
   "mainCategory": "PPRC",
   "description": "PPRC DİRSEK 90 DERECE 25mm",
+  "type": "25mm",
+  "unit": "set",
   "notes": null,
   "currency": "TRY",
   "price": 5.837
@@ -1843,6 +2303,8 @@
   "pozNo": "230",
   "mainCategory": "PPRC",
   "description": "PPRC DİRSEK 90 DERECE 32mm",
+  "type": "32mm",
+  "unit": "set",
   "notes": null,
   "currency": "TRY",
   "price": 10.92
@@ -1851,6 +2313,8 @@
   "pozNo": "231",
   "mainCategory": "PPRC",
   "description": "PPRC DİRSEK 90 DERECE 50mm",
+  "type": "50mm",
+  "unit": "set",
   "notes": null,
   "currency": "TRY",
   "price": 39.767
@@ -1859,6 +2323,8 @@
   "pozNo": "232",
   "mainCategory": "PPRC",
   "description": "PPRC KÜRESEL VANA 20 mm",
+  "type": "20 mm",
+  "unit": "ADET",
   "notes": null,
   "currency": "TRY",
   "price": 132.964
@@ -1867,6 +2333,8 @@
   "pozNo": "233",
   "mainCategory": "PPRC",
   "description": "PPRC KÜRESEL VANA 25mm",
+  "type": "25mm",
+  "unit": "set",
   "notes": null,
   "currency": "TRY",
   "price": 166.998
@@ -1875,6 +2343,8 @@
   "pozNo": "234",
   "mainCategory": "PPRC",
   "description": "PPRC KÜRESEL VANA 32mm",
+  "type": "32mm",
+  "unit": null,
   "notes": null,
   "currency": "TRY",
   "price": 234.845
@@ -1883,6 +2353,8 @@
   "pozNo": "235",
   "mainCategory": "PPRC",
   "description": "PPRC KÜRESEL VANA 40mm",
+  "type": "40mm",
+  "unit": null,
   "notes": null,
   "currency": "TRY",
   "price": 535.197
@@ -1891,6 +2363,8 @@
   "pozNo": "236",
   "mainCategory": "PPRC",
   "description": "PPRC KÜRESEL VANA 50mm",
+  "type": "50mm",
+  "unit": null,
   "notes": null,
   "currency": "TRY",
   "price": 656.071
@@ -1899,6 +2373,8 @@
   "pozNo": "237",
   "mainCategory": "DİĞER",
   "description": "SU BASINÇ MANOMETRESİ Ø63 Gliserinli paslanmaz gövdeli cl:1 vakum manometresi0-10 BAR",
+  "type": "Ø63 Gliserinli paslanmaz gövdeli cl:1 vakum manometresi0-10 BAR",
+  "unit": null,
   "notes": null,
   "currency": "EUR",
   "price": 19.578
@@ -1907,6 +2383,8 @@
   "pozNo": "238",
   "mainCategory": "TERMOMETRE",
   "description": "TERMOMETRE Ø63 Gliserinli paslanmaz gövdeli cl:1 termometre",
+  "type": "Ø63 Gliserinli paslanmaz gövdeli cl:1 termometre",
+  "unit": null,
   "notes": null,
   "currency": "EUR",
   "price": 19.578
@@ -1915,6 +2393,8 @@
   "pozNo": "239",
   "mainCategory": "BATARYA",
   "description": "BATARYA FLEXİ 50cm 1/2\" İZOLELİ",
+  "type": "50cm 1/2\" İZOLELİ",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 8.411
@@ -1923,6 +2403,8 @@
   "pozNo": "240",
   "mainCategory": "BATARYA",
   "description": "BATARYA FLEXİ 50cm 3/4\" İZOLELİ",
+  "type": "50cm 3/4\" İZOLELİ",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 9.438
@@ -1931,6 +2413,8 @@
   "pozNo": "241",
   "mainCategory": "DİĞER",
   "description": "SU SELENOİDİ 3/4-1\"",
+  "type": "3/4-1\"",
+  "unit": null,
   "notes": null,
   "currency": "EUR",
   "price": 31.625
@@ -1939,6 +2423,8 @@
   "pozNo": "242",
   "mainCategory": "DİĞER",
   "description": "SU SELENOİD VALF BOBİNİ 3/4-1\"",
+  "type": "3/4-1\"",
+  "unit": null,
   "notes": null,
   "currency": "EUR",
   "price": 5.225
@@ -1947,6 +2433,8 @@
   "pozNo": "243",
   "mainCategory": "OTOMASYON _KONTROL CİHAZLARI",
   "description": "CAREL NTC015HT41 SENSOR NTC HT (INOX CAP 6X80mm) IP67-30T150 1.50M CABLE 10 PCS INOX CAP 6X80mm",
+  "type": "INOX CAP 6X80mm",
+  "unit": null,
   "notes": null,
   "currency": "EUR",
   "price": 16.83
@@ -1955,6 +2443,8 @@
   "pozNo": "244",
   "mainCategory": "SİRKÜLASYON",
   "description": "SİRKÜLASYON POMPASI WİLO",
+  "type": "WİLO",
+  "unit": "ADET",
   "notes": null,
   "currency": "EUR",
   "price": 750.0
@@ -1963,6 +2453,8 @@
   "pozNo": "245",
   "mainCategory": "PİSLİK",
   "description": "PİSLİK TUTUCU 1-1/2\" PASLANMAZ",
+  "type": "1-1/2\" PASLANMAZ",
+  "unit": null,
   "notes": null,
   "currency": "EUR",
   "price": 50.0
@@ -1971,54 +2463,68 @@
   "pozNo": "246",
   "mainCategory": "GENLEŞME",
   "description": "GENLEŞME TANKI 12LT 10BAR",
+  "type": "12LT 10BAR",
+  "unit": null,
   "notes": null,
   "currency": "TRY",
   "price": 1950.0
  },
  {
-  "pozNo": "247",
+  "pozNo": "S1",
   "mainCategory": "İŞÇİLİKLER",
   "description": "1 EKIP ŞEHİR İÇİ SERVİS BEDELİ 1 EKIP ŞEHİR İÇİ SERVİS BEDELİ",
+  "type": null,
+  "unit": "set",
   "notes": null,
   "currency": "TRY",
   "price": 2750.0
  },
  {
-  "pozNo": "248",
+  "pozNo": "S2",
   "mainCategory": "İŞÇİLİKLER",
   "description": "1 EKIP ŞEHİR DIŞI SERVİS BEDELİ 1 EKIP ŞEHİR DIŞI SERVİS BEDELİ",
+  "type": null,
+  "unit": "set",
   "notes": null,
   "currency": "TRY",
   "price": 4200.0
  },
  {
-  "pozNo": "249",
+  "pozNo": "S3",
   "mainCategory": "İŞÇİLİKLER",
   "description": "ADAM SAAT GUNDUZ /GECE (>=2. GUN) ADAM SAAT GUNDUZ /GECE (>=2. GUN)",
+  "type": null,
+  "unit": "set",
   "notes": null,
   "currency": "TRY",
   "price": 750.0
  },
  {
-  "pozNo": "250",
+  "pozNo": "S4",
   "mainCategory": "İŞÇİLİKLER",
   "description": "ADAM SAAT GECE ADAM SAAT GECE",
+  "type": null,
+  "unit": "set",
   "notes": null,
   "currency": "TRY",
   "price": 1150.0
  },
  {
-  "pozNo": "251",
+  "pozNo": "S5",
   "mainCategory": "İŞÇİLİKLER",
   "description": "TADİLAT ERİŞİM ŞEHİRİÇİ TADİLAT ERİŞİM ŞEHİRİÇİ",
+  "type": null,
+  "unit": "set",
   "notes": null,
   "currency": "TRY",
   "price": 2750.0
  },
  {
-  "pozNo": "252",
+  "pozNo": "S6",
   "mainCategory": "İŞÇİLİKLER",
   "description": "TADİLAT ERİŞİM ŞEHİRDIŞI TADİLAT ERİŞİM ŞEHİRDIŞI",
+  "type": null,
+  "unit": "set",
   "notes": null,
   "currency": "TRY",
   "price": 4200.0

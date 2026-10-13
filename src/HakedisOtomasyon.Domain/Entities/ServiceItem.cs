@@ -23,6 +23,9 @@ public class ServiceItem
 
     /// <summary>Fiyat listesindeki malzeme/poz kodu (örn. glikol için 171) — Soğutma hakediş çıktısında MALZEME KODU.</summary>
     public string? ItemCode { get; set; }
+
+    /// <summary>Malzeme tipi (fiyat listesinden kopyalanır; yoksa boş) — Soğutma Bakım &amp; Onarım çıktısındaki "MALZEME TİPİ".</summary>
+    public string? ItemType { get; set; }
     public string? ParentItemKey { get; set; }
 
     // ── Döviz bazlı kalemler (BDTX / BDKF) ──────────────────────────────────
