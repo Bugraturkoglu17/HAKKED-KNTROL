@@ -271,6 +271,7 @@ public class PriceListService : IPriceListService
                 existing.DiscountRate = dto.DiscountRate;
                 existing.DiscountedUsdPrice = dto.DiscountedUsdPrice;
                 existing.ExchangeRateRequired = dto.ExchangeRateRequired;
+                existing.ForeignPrice = dto.ForeignPrice;
                 existing.MainCategory = dto.MainCategory;
                 existing.SubCategory = dto.SubCategory;
                 existing.SubCategory2 = dto.SubCategory2;
@@ -305,6 +306,7 @@ public class PriceListService : IPriceListService
                     DiscountRate = dto.DiscountRate,
                     DiscountedUsdPrice = dto.DiscountedUsdPrice,
                     ExchangeRateRequired = dto.ExchangeRateRequired,
+                    ForeignPrice = dto.ForeignPrice,
                     Discipline = discipline,
                 };
                 entity.SearchText = BuildSearchTextFromItem(entity);
@@ -398,6 +400,7 @@ public class PriceListService : IPriceListService
         DiscountRate = p.DiscountRate,
         DiscountedUsdPrice = p.DiscountedUsdPrice,
         ExchangeRateRequired = p.ExchangeRateRequired,
+        ForeignPrice = p.ForeignPrice,
         Discipline = p.Discipline,
         Notes = p.Notes,
     };
@@ -405,7 +408,7 @@ public class PriceListService : IPriceListService
     private static string UpsertKey(string? mainCat, string? desc, string? unit)
         => $"{mainCat?.Trim().ToLowerInvariant()}|{desc?.Trim().ToLowerInvariant()}|{unit?.Trim().ToLowerInvariant()}";
 
-    private static string BuildSearchTextFromItem(PriceItem p)
+    internal static string BuildSearchTextFromItem(PriceItem p)
     {
         var parts = new List<string?> { p.MainCategory, p.Description, p.InvoiceDescription, p.Unit, p.PozNo };
         return string.Join(" ", parts.Where(x => !string.IsNullOrEmpty(x)));

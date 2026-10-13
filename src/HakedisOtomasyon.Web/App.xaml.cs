@@ -213,6 +213,30 @@ public partial class WpfApp : System.Windows.Application
                 }
             }
             catch { /* Kurtarma hatası başlatmayı engellemez */ }
+
+            // ─── Soğutma başlangıç verisi (birim fiyat listesi + mağazalar) ───────────────
+            // Kurtarma kontrolünden SONRA çalışır: boş bir DB'yi "dolu" göstererek korunan yedekten
+            // otomatik geri yüklemeyi engellemesin. Kullanıcı manuel kurtarma seçimi bekliyorsa atlanır.
+            // Yalnızca Soğutma disiplinine yazar; Yangın/Klima/Asansör verisine dokunmaz.
+            try
+            {
+                var recoveryStateForSeed = Services.GetRequiredService<RecoveryStateService>();
+                if (!recoveryStateForSeed.RecoveryNeeded)
+                {
+                    var seedDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "SeedData");
+                    var seedResult = await HakedisOtomasyon.Infrastructure.Services.CoolingSeedService.SeedIfNeededAsync(db, seedDir);
+                    if (seedResult.Applied)
+                    {
+                        var recoveryForSeed = scope.ServiceProvider.GetRequiredService<IDataRecoveryService>();
+                        // scope bu bloktan sonra kapanır — arka plana atmadan bekle (hata verirse seed'i etkilemez).
+                        await recoveryForSeed.SaveProtectedSnapshotAsync();
+                    }
+                }
+            }
+            catch (Exception seedEx)
+            {
+                LogError("Soğutma başlangıç verisi içeri alınamadı", seedEx);
+            }
         }
         catch (Exception ex)
         {
@@ -922,6 +946,7 @@ public partial class WpfApp : System.Windows.Application
                     ["DiscountRate"]         = "TEXT",
                     ["DiscountedUsdPrice"]   = "TEXT",
                     ["ExchangeRateRequired"] = "INTEGER NOT NULL DEFAULT 0",
+                    ["ForeignPrice"]         = "TEXT",
                 };
 
                 foreach (var (col, def) in newCols)

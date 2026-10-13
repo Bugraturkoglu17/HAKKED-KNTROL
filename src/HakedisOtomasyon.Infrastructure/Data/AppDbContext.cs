@@ -59,6 +59,7 @@ public class AppDbContext : DbContext
             e.Property(p => p.ListPriceUsd).HasColumnType("decimal(18,4)");
             e.Property(p => p.DiscountRate).HasColumnType("decimal(5,2)");
             e.Property(p => p.DiscountedUsdPrice).HasColumnType("decimal(18,4)");
+            e.Property(p => p.ForeignPrice).HasColumnType("decimal(18,4)");
             e.Ignore(p => p.UnitPrice);
         });
 

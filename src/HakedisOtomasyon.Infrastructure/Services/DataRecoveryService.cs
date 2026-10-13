@@ -205,12 +205,13 @@ public class DataRecoveryService : IDataRecoveryService
 
     private async Task MergeStoresAsync(IEnumerable<StoreSnapshot> snapshots, DataRecoveryResult result)
     {
-        var existing = await _db.Stores.ToDictionaryAsync(s => s.Code.ToUpperInvariant());
+        // Disiplinler birbirine karışmaz: aynı mağaza kodu Yangın'da da Soğutma'da da bulunabilir.
+        var existing = await _db.Stores.ToDictionaryAsync(s => $"{(int)s.Discipline}|{s.Code.ToUpperInvariant()}");
 
         foreach (var s in snapshots)
         {
             if (string.IsNullOrWhiteSpace(s.Code)) continue;
-            var key = s.Code.ToUpperInvariant();
+            var key = $"{s.Discipline}|{s.Code.ToUpperInvariant()}";
 
             if (existing.TryGetValue(key, out var ex))
             {
@@ -228,6 +229,7 @@ public class DataRecoveryService : IDataRecoveryService
                     Code      = s.Code,
                     Name      = s.Name ?? s.Code,
                     IsActive  = s.IsActive,
+                    Discipline = (MechanicalDiscipline)s.Discipline,
                     CreatedAt = DateTime.Now,
                 });
                 result.StoresAdded++;
@@ -244,22 +246,23 @@ public class DataRecoveryService : IDataRecoveryService
     {
         var existingItems = await _db.PriceItems.ToListAsync();
         var existingDict  = existingItems.ToDictionary(
-            p => MakeKey(p.MainCategory, p.SubCategory, p.Description, p.Unit, (int)p.PriceType),
+            p => MakeKey((int)p.Discipline, p.MainCategory, p.SubCategory, p.Description, p.Unit, (int)p.PriceType),
             StringComparer.OrdinalIgnoreCase);
 
         var batch = new List<PriceItem>();
         foreach (var s in snapshots)
         {
             if (string.IsNullOrWhiteSpace(s.Description)) continue;
-            var key = MakeKey(s.MainCategory, s.SubCategory, s.Description, s.Unit, s.PriceType);
+            var key = MakeKey(s.Discipline, s.MainCategory, s.SubCategory, s.Description, s.Unit, s.PriceType);
 
             if (existingDict.TryGetValue(key, out var ex))
             {
-                bool changed = ex.MaterialPrice != s.MaterialPrice || ex.LaborPrice != s.LaborPrice;
+                bool changed = ex.MaterialPrice != s.MaterialPrice || ex.LaborPrice != s.LaborPrice || ex.ForeignPrice != s.ForeignPrice;
                 if (changed)
                 {
                     ex.MaterialPrice = s.MaterialPrice;
                     ex.LaborPrice    = s.LaborPrice;
+                    ex.ForeignPrice  = s.ForeignPrice;
                     ex.UpdatedAt     = DateTime.Now;
                     result.PriceItemsUpdated++;
                 }
@@ -292,6 +295,8 @@ public class DataRecoveryService : IDataRecoveryService
                     DiscountRate       = s.DiscountRate,
                     DiscountedUsdPrice = s.DiscountedUsdPrice,
                     ExchangeRateRequired = s.ExchangeRateRequired,
+                    ForeignPrice       = s.ForeignPrice,
+                    Discipline         = (MechanicalDiscipline)s.Discipline,
                     CreatedAt          = DateTime.Now,
                 });
                 result.PriceItemsAdded++;
@@ -368,8 +373,13 @@ public class DataRecoveryService : IDataRecoveryService
         // Tablo varlığını kontrol et
         if (!await TableExistsAsync(conn, "Stores")) return list;
 
+        var storeCols = await GetColumnsAsync(conn, "Stores");
+        bool hasDiscipline = storeCols.Contains("Discipline");
+
         await using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT Code, Name, IsActive FROM Stores";
+        cmd.CommandText = hasDiscipline
+            ? "SELECT Code, Name, IsActive, Discipline FROM Stores"
+            : "SELECT Code, Name, IsActive FROM Stores";
         await using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
@@ -378,6 +388,7 @@ public class DataRecoveryService : IDataRecoveryService
                 Code     = reader.GetString(0),
                 Name     = reader.GetString(1),
                 IsActive = reader.GetInt32(2) != 0,
+                Discipline = hasDiscipline && !reader.IsDBNull(3) ? reader.GetInt32(3) : 0,
             });
         }
         return list;
@@ -433,7 +444,7 @@ public class DataRecoveryService : IDataRecoveryService
             "MainCategory", "SubCategory", "SubCategory2", "DisplayName", "InvoiceDescription",
             "PriceType", "SearchText", "IsSelectable", "IsActive", "IsManuallyAdded",
             "HasMissingUnit", "IsCurrencyBased", "CurrencyCode",
-            "ListPriceUsd", "DiscountRate", "DiscountedUsdPrice", "ExchangeRateRequired" })
+            "ListPriceUsd", "DiscountRate", "DiscountedUsdPrice", "ExchangeRateRequired", "ForeignPrice", "Discipline" })
         {
             if (cols.Contains(opt))
                 sb.Append($", {opt}");
@@ -476,6 +487,8 @@ public class DataRecoveryService : IDataRecoveryService
             DiscountRate       = GetNullableDecimal(reader, nameToIdx, "DiscountRate"),
             DiscountedUsdPrice = GetNullableDecimal(reader, nameToIdx, "DiscountedUsdPrice"),
             ExchangeRateRequired = GetBool(reader, nameToIdx, "ExchangeRateRequired", false),
+            ForeignPrice       = GetNullableDecimal(reader, nameToIdx, "ForeignPrice"),
+            Discipline         = GetInt(reader, nameToIdx, "Discipline"),
         };
     }
 
@@ -643,8 +656,8 @@ public class DataRecoveryService : IDataRecoveryService
 
     // ─── Anahtar oluşturma ───────────────────────────────────────────────────
 
-    private static string MakeKey(string? main, string? sub, string desc, string? unit, int priceType) =>
-        $"{main}|{sub}|{desc}|{unit}|{priceType}";
+    private static string MakeKey(int discipline, string? main, string? sub, string desc, string? unit, int priceType) =>
+        $"{discipline}|{main}|{sub}|{desc}|{unit}|{priceType}";
 
     // ─── Entity → Snapshot eşlemeleri ───────────────────────────────────────
 
@@ -653,6 +666,7 @@ public class DataRecoveryService : IDataRecoveryService
         Code     = s.Code,
         Name     = s.Name,
         IsActive = s.IsActive,
+        Discipline = (int)s.Discipline,
     };
 
     private static PriceItemSnapshot MapPriceItem(PriceItem p) => new()
@@ -681,6 +695,8 @@ public class DataRecoveryService : IDataRecoveryService
         DiscountRate       = p.DiscountRate,
         DiscountedUsdPrice = p.DiscountedUsdPrice,
         ExchangeRateRequired = p.ExchangeRateRequired,
+        ForeignPrice       = p.ForeignPrice,
+        Discipline         = (int)p.Discipline,
     };
 
     private static AliasSnapshot MapAlias(PriceAlias a) => new()
@@ -698,6 +714,8 @@ public class DataRecoveryService : IDataRecoveryService
         public string  Code     { get; init; } = "";
         public string? Name     { get; init; }
         public bool    IsActive { get; init; } = true;
+        /// <summary>MechanicalDiscipline (0=Yangın, 1=Klima, 2=Asansör, 3=Soğutma). Eski yedeklerde yoksa 0.</summary>
+        public int     Discipline { get; init; }
     }
 
     private record PriceItemSnapshot
@@ -726,6 +744,9 @@ public class DataRecoveryService : IDataRecoveryService
         public decimal? DiscountRate       { get; init; }
         public decimal? DiscountedUsdPrice { get; init; }
         public bool     ExchangeRateRequired { get; init; }
+        public decimal? ForeignPrice       { get; init; }
+        /// <summary>MechanicalDiscipline (0=Yangın, 1=Klima, 2=Asansör, 3=Soğutma). Eski yedeklerde yoksa 0.</summary>
+        public int      Discipline         { get; init; }
     }
 
     private record AliasSnapshot

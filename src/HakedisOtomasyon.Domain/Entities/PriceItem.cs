@@ -38,5 +38,9 @@ public class PriceItem
     public decimal? DiscountedUsdPrice { get; set; } // ListPriceUsd × (1 - DiscountRate/100)
     public bool ExchangeRateRequired { get; set; }   // TL kur hesabı gerektiriyor
 
+    /// <summary>Birim fiyat, CurrencyCode para biriminde (ör. EUR) ise o para birimindeki tutar.
+    /// TL'ye çevirme hakediş hesabında kur ile yapılır; bu alan doluyken MaterialPrice/LaborPrice 0'dır.</summary>
+    public decimal? ForeignPrice { get; set; }
+
     public decimal UnitPrice => MaterialPrice + LaborPrice;
 }

@@ -116,13 +116,20 @@
                 }
             </MudTd>
             <MudTd DataLabel="Malzeme">
-                @(context.PriceType == PriceType.VariablePrice ? "—" : context.MaterialPrice.ToString("N2") + " TL")
+                @(context.PriceType == PriceType.VariablePrice || context.ForeignPrice.HasValue ? "—" : context.MaterialPrice.ToString("N2") + " TL")
             </MudTd>
             <MudTd DataLabel="Iscilik">
-                @(context.PriceType == PriceType.VariablePrice ? "—" : context.LaborPrice.ToString("N2") + " TL")
+                @(context.PriceType == PriceType.VariablePrice || context.ForeignPrice.HasValue ? "—" : context.LaborPrice.ToString("N2") + " TL")
             </MudTd>
             <MudTd DataLabel="Birim Fiyat" Style="font-weight:600">
-                @(context.PriceType == PriceType.VariablePrice ? "Degisken" : context.UnitPrice.ToString("N2") + " TL")
+                @if (context.ForeignPrice.HasValue)
+                {
+                    @(context.PriceType == PriceType.VariablePrice ? "Degisken" : context.ForeignPrice.Value.ToString("N2") + " " + (context.CurrencyCode ?? "EUR"))
+                }
+                else
+                {
+                    @(context.PriceType == PriceType.VariablePrice ? "Degisken" : context.UnitPrice.ToString("N2") + " TL")
+                }
             </MudTd>
             <MudTd>
                 <MudChip T="string" Size="Size.Small" Color="@PriceTypeColor(context.PriceType)">

@@ -31,6 +31,16 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>Always</CopyToPublishDirectory>
     </Content>
+    <!-- Soğutma disiplini başlangıç verisi: birim fiyat listesi + mağaza listesi (ilk açılışta içeri
+         alınır, bkz. CoolingSeedService). Kurulum/publish çıktısına her zaman kopyalanır. -->
+    <Content Update="SeedData\cooling_price_items.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+    </Content>
+    <Content Update="SeedData\cooling_stores.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+    </Content>
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="Assets\ReferenceTables\flexiva-table.png" />

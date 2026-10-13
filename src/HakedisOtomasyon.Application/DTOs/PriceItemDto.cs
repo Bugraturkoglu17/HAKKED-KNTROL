@@ -36,6 +36,9 @@ public class PriceItemDto
     public decimal? DiscountedUsdPrice { get; set; }
     public bool ExchangeRateRequired { get; set; }
 
+    /// <summary>CurrencyCode para birimindeki birim fiyat (ör. 9,95 EUR); doluysa TL alanları 0'dır.</summary>
+    public decimal? ForeignPrice { get; set; }
+
     public string PriceTypeLabel => PriceType switch
     {
         PriceType.LaborOnly => "Sadece İşçilik",

@@ -43,13 +43,13 @@
                 <MudNumericField T="decimal" @bind-Value="Item.MaterialPrice"
                                  Label="Malzeme (TL)" Variant="Variant.Outlined"
                                  Min="0" Format="N2"
-                                 Disabled="@(Item.PriceType == PriceType.VariablePrice || Item.PriceType == PriceType.LaborOnly)" />
+                                 Disabled="@(Item.PriceType == PriceType.VariablePrice || Item.PriceType == PriceType.LaborOnly || Item.ForeignPrice.HasValue)" />
             </MudItem>
             <MudItem xs="12" md="3">
                 <MudNumericField T="decimal" @bind-Value="Item.LaborPrice"
                                  Label="İşçilik (TL)" Variant="Variant.Outlined"
                                  Min="0" Format="N2"
-                                 Disabled="@(Item.PriceType == PriceType.VariablePrice || Item.PriceType == PriceType.MaterialOnly)" />
+                                 Disabled="@(Item.PriceType == PriceType.VariablePrice || Item.PriceType == PriceType.MaterialOnly || Item.ForeignPrice.HasValue)" />
             </MudItem>
             @if (Item.PriceType != PriceType.VariablePrice)
             {
@@ -69,7 +69,23 @@
                     </MudAlert>
                 </MudItem>
             }
-            @if (Item.IsCurrencyBased)
+            @if (Item.ForeignPrice.HasValue)
+            {
+                <MudItem xs="12">
+                    <MudDivider Class="mt-2 mb-2" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudAlert Severity="Severity.Info" Dense Icon="@Icons.Material.Filled.CurrencyExchange">
+                        Bu kalemin fiyatı <b>@(Item.CurrencyCode ?? "EUR")</b> cinsindendir; TL karşılığı hakediş hesabında kur ile belirlenir.
+                    </MudAlert>
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudNumericField T="decimal?" @bind-Value="Item.ForeignPrice"
+                                     Label="@($"Birim Fiyat ({Item.CurrencyCode ?? "EUR"})")" Variant="Variant.Outlined"
+                                     Min="0" Format="N4" HideSpinButtons="true" />
+                </MudItem>
+            }
+            @if (Item.IsCurrencyBased && !Item.ForeignPrice.HasValue)
             {
                 <MudItem xs="12">
                     <MudDivider Class="mt-2 mb-2" />
