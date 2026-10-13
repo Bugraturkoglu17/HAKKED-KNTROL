@@ -41,9 +41,13 @@
             </MudItem>
 
             <MudItem xs="12" sm="7">
-                <MudNumericField T="decimal?" @bind-Value="_amount" Variant="Variant.Outlined" Margin="Margin.Dense"
-                                 Label="@(_basis == CustomPriceBasis.InvoicePlusMarkup ? "Fatura tutarı (₺, birim, KDV hariç) *" : "Liste fiyatı (₺, birim) *")"
-                                 Min="0" Culture="@Tr" Format="0.##" HideSpinButtons Immediate />
+                @* Tutar metin olarak alınır ve alandan çıkınca "29.682,53" biçimine çevrilir (binlik ayırıcı + iki ondalık).
+                   Sayı alanı kullanılmaz: makinenin bölge ayarına göre virgülü yanlış okuyabiliyor ve binlik ayırıcı göstermiyor. *@
+                <MudTextField T="string" Value="@_amountText" ValueChanged="@(v => _amountText = v)" OnBlur="FormatAmount"
+                              Variant="Variant.Outlined" Margin="Margin.Dense" Immediate MaxLength="24"
+                              Label="@(_basis == CustomPriceBasis.InvoicePlusMarkup ? "Fatura tutarı (birim, KDV hariç) *" : "Liste fiyatı (birim) *")"
+                              Adornment="Adornment.End" AdornmentText="₺" Placeholder="0,00"
+                              Error="@AmountInvalid" ErrorText="Geçerli bir tutar girin (örn. 29.682,53)" />
             </MudItem>
             @if (_basis != CustomPriceBasis.ListPrice)
             {
@@ -111,7 +115,17 @@
     private decimal? _qty = 1m;
     private string _unit = "ADET";
     private CustomPriceBasis _basis = CustomPriceBasis.InvoicePlusMarkup;
-    private decimal? _amount;
+    /// <summary>Tutar alanındaki metin ("29.682,53"). Sayısal değeri <see cref="_amount"/> verir.</summary>
+    private string? _amountText;
+    private decimal? _amount => TrMoney.TryParse(_amountText, out var value) ? value : null;
+    private bool AmountInvalid => !string.IsNullOrWhiteSpace(_amountText) && _amount is null;
+
+    /// <summary>Alandan çıkınca tutarı "29.682,53" biçiminde yazar (çözülemiyorsa yazılan metne dokunmaz — hata gösterilir).</summary>
+    private void FormatAmount()
+    {
+        if (_amount is { } value) _amountText = TrMoney.Format(value);
+    }
+
     private decimal? _percent = 10m;
     /// <summary>Kullanıcının seçtiği fatura dosyasının bilgisayardaki tam yolu (Ekle'ye basılınca uygulama deposuna kopyalanır).</summary>
     private string? _filePath;
