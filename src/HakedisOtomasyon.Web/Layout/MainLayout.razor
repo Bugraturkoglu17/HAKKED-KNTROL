@@ -57,12 +57,20 @@
 
     <MudMainContent>
         <MudContainer MaxWidth="MaxWidth.ExtraExtraLarge" Class="pa-4 pb-8">
-            @Body
+            @* Sayfa, adres (yol) değişince BAŞTAN kurulur. Aksi halde aynı sayfa bileşenine giden iki adres arasında
+               (örn. Hakediş Geçmişi'nden açılan "/new-claim/23" → menüden "Yeni Hakediş") Blazor bileşeni yeniden kullanır,
+               OnInitialized tekrar çalışmaz ve ekranda eski hakediş kalır — menü tıklanmış ama sayfa değişmemiş görünür. *@
+            <div style="display:contents" @key="@PageKey">
+                @Body
+            </div>
         </MudContainer>
     </MudMainContent>
 </MudLayout>
 
 @code {
+    /// <summary>Geçerli sayfanın yolu (sorgu dizesi hariç) — sayfa gövdesinin anahtarı.</summary>
+    private string PageKey => new Uri(Nav.Uri).AbsolutePath;
+
     private MudThemeProvider _themeProvider = null!;
     private bool _drawerOpen = true;
     private bool _isDarkMode = false;
