@@ -5,8 +5,26 @@
 @inject IDialogService DialogService
 @inject IDisciplineCalculationRuleFactory CalculationRuleFactory
 @inject CurrentDisciplineService CurrentDiscipline
+@inject IProgressClaimService ClaimService
+@using HakedisOtomasyon.Application
 
 <MudStack Spacing="3">
+    @if (IsCooling)
+    {
+        <!-- ─── Soğutma: EUR kuru (EUR fiyatlı kalemler bu kurla TL'ye çevrilir) ─── -->
+        <MudStack Row AlignItems="AlignItems.Center" Spacing="2">
+            <MudChip T="string" Icon="@Icons.Material.Filled.CurrencyExchange" Size="Size.Medium"
+                     Color="@(HasEurRate ? Color.Info : Color.Warning)">
+                @(HasEurRate
+                    ? $"EUR Kuru: {Claim!.EurRate!.Value.ToString("N4", TrCulture)} ₺" + (Claim.EurRateDate.HasValue ? $" ({Claim.EurRateSource} {Claim.EurRateDate:dd.MM.yyyy})" : "")
+                    : "EUR kuru girilmedi")
+            </MudChip>
+            <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.Edit" OnClick="ChangeEurRateAsync">
+                @(HasEurRate ? "Kuru Değiştir" : "Kur Gir")
+            </MudButton>
+        </MudStack>
+    }
     <!-- ─── Üst araç çubuğu: arama + boş satır ekle ─────────────────── -->
     <MudGrid Spacing="2" AlignItems="AlignItems.End">
         <MudItem xs="12" md="9">
@@ -31,6 +49,10 @@
                             @if (item.PriceType == PriceType.VariablePrice)
                             {
                                 <span>Değişken Fiyat | Birim: @item.Unit</span>
+                            }
+                            else if (item.ForeignPrice is > 0m)
+                            {
+                                <span>Fiyat: @item.ForeignPrice.Value.ToString("N2", TrCulture)&nbsp;@(item.CurrencyCode ?? "EUR") | Birim: @item.Unit@(HasEurRate ? $" | TL karşılığı: {EurPricing.ToTl(item.ForeignPrice.Value, Claim!.EurRate!.Value).ToString("N2", TrCulture)} ₺" : "")</span>
                             }
                             else
                             {
@@ -179,6 +201,12 @@
     [Parameter] public EventCallback OnChanged { get; set; }
     [Parameter] public ProgressClaimDto? Claim { get; set; }
 
+    /// <summary>EUR kuru değişince (diğer formların kalemleri de yeniden fiyatlandı) — sayfa kalan formları tazeler.</summary>
+    [Parameter] public EventCallback OnEurRateChanged { get; set; }
+
+    private bool IsCooling => CurrentDiscipline.CurrentDiscipline == MechanicalDiscipline.Cooling;
+    private bool HasEurRate => EurPricing.IsValidRate(Claim?.EurRate);
+
     private static readonly CultureInfo TrCulture = new("tr-TR");
     private PriceItemDto? _selectedPriceItem;
     private bool _initialGroupRuleApplied = false;
@@ -221,6 +249,42 @@
 
         var rules = GetRules();
 
+        // ── Soğutma: EUR fiyatlı kalem — TL = EUR fiyatı × hakediş EUR kuru ───────
+        if (item.ForeignPrice is > 0m && EurPricing.IsEur(item.CurrencyCode))
+        {
+            if (Claim is null)
+            {
+                Snackbar.Add("Hakediş bilgisi bulunamadı; EUR kuru uygulanamıyor.", Severity.Error);
+                return;
+            }
+            // Kur henüz girilmemişse (örn. eski hakediş) önce kuru iste.
+            if (!HasEurRate && !await AskAndSaveEurRateAsync()) return;
+
+            var rate = Claim.EurRate!.Value;
+            var eurDto = new ServiceItemDto
+            {
+                LocalId = Guid.NewGuid(),
+                Description = item.GetInvoiceDescription(),
+                Unit = string.IsNullOrWhiteSpace(item.Unit) ? "Ad" : item.Unit,
+                MaterialPrice = EurPricing.ToTl(item.ForeignPrice.Value, rate),
+                LaborPrice = 0m,
+                Quantity = 1,
+                SortOrder = Items.Count + 1,
+                CurrencyCode = EurPricing.CurrencyCode,
+                ForeignPrice = item.ForeignPrice,
+                ExchangeRate = rate,
+                ExchangeRateDate = Claim.EurRateDate,
+                ExchangeRateActualDate = Claim.EurRateDate,
+                ExchangeRateSource = Claim.EurRateSource ?? "Manuel",
+            };
+            eurDto.Recalculate();
+            Items.Add(eurDto);
+            await rules.ApplyAutomaticItemsAsync(Items, Claim);
+            await OnChanged.InvokeAsync();
+            StateHasChanged();
+            return;
+        }
+
         // ── Döviz bazlı ürün (BDTX / BDKF): dialog ile hesapla ───────────────
         if (rules.IsCurrencyBasedItem(item))
         {
@@ -255,6 +319,44 @@
         await OnChanged.InvokeAsync();
         StateHasChanged();
     }
+
+    /// <summary>EUR kuru dialogunu açar; onaylanırsa hakedişe kaydeder ve hakedişteki TÜM EUR kalemlerini yeniden fiyatlar.</summary>
+    private async Task<bool> AskAndSaveEurRateAsync()
+    {
+        if (Claim is null || Claim.Id == 0) return false;
+        var parameters = new DialogParameters<EurRateDialog>
+        {
+            { x => x.Rate, Claim.EurRate },
+            { x => x.RateDate, Claim.EurRateDate },
+        };
+        var dialog = await DialogService.ShowAsync<EurRateDialog>("EUR Kuru", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true });
+        var result = await dialog.Result;
+        if (result is null || result.Canceled || result.Data is not ValueTuple<decimal, DateTime?, string> t) return false;
+
+        try
+        {
+            // Veritabanındaki kayıtlı kalemler + hakediş kuru
+            await ClaimService.UpdateEurRateAsync(Claim.Id, t.Item1, t.Item2, t.Item3);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"EUR kuru kaydedilemedi: {ex.Message}", Severity.Error);
+            return false;
+        }
+        Claim.EurRate = t.Item1;
+        Claim.EurRateDate = t.Item2;
+        Claim.EurRateSource = t.Item3;
+        // Ekrandaki (henüz kaydedilmemiş olabilecek) kalemler de aynı kurla
+        var n = EurPricing.Reprice(Items, t.Item1, t.Item2, t.Item3);
+        if (n > 0) Snackbar.Add($"{n} EUR kalemi yeni kurla ({t.Item1.ToString("N4", TrCulture)} ₺) yeniden fiyatlandı.", Severity.Info);
+        await OnEurRateChanged.InvokeAsync();
+        await OnChanged.InvokeAsync();
+        StateHasChanged();
+        return true;
+    }
+
+    private async Task ChangeEurRateAsync() => await AskAndSaveEurRateAsync();
 
     private async Task OnQuantityChanged(ServiceItemDto item, decimal quantity)
     {

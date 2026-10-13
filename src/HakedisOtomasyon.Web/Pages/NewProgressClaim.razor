@@ -20,6 +20,8 @@
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
 @inject NavigationManager Nav
+@inject HakedisOtomasyon.Infrastructure.Services.CurrentDisciplineService CurrentDiscipline
+@using HakedisOtomasyon.Application
 
 <PageTitle>Yeni Hakediş — Hakediş Otomasyonu</PageTitle>
 
@@ -102,6 +104,28 @@
                                          Label="Yıl *" Variant="Variant.Outlined"
                                          Min="2000" Max="2099" />
                     </MudItem>
+                    @if (IsCooling)
+                    {
+                        <MudItem xs="12" md="6">
+                            <MudTextField Value="@EurRateDisplay"
+                                          Label="EUR Kuru (TL) *"
+                                          Variant="Variant.Outlined"
+                                          ReadOnly
+                                          Error="@(!EurPricing.IsValidRate(_dto.EurRate))"
+                                          ErrorText="Soğutma malzeme fiyatları EUR'dur — kur girilmeli"
+                                          HelperText="EUR fiyatlı kalemler bu kurla TL'ye çevrilir; kur değişirse kalemler yeniden fiyatlanır."
+                                          Adornment="Adornment.Start"
+                                          AdornmentIcon="@Icons.Material.Filled.CurrencyExchange"
+                                          OnAdornmentClick="OpenEurRateDialogAsync" />
+                        </MudItem>
+                        <MudItem xs="12" md="6" Class="d-flex align-center">
+                            <MudButton Variant="Variant.Outlined" Color="Color.Primary"
+                                       StartIcon="@Icons.Material.Filled.CurrencyExchange"
+                                       OnClick="OpenEurRateDialogAsync">
+                                @(EurPricing.IsValidRate(_dto.EurRate) ? "Kuru Değiştir" : "EUR Kurunu Gir / TCMB'den Getir")
+                            </MudButton>
+                        </MudItem>
+                    }
                     <MudItem xs="12">
                         <MudTextField @bind-Value="_dto.Description"
                                       Label="Açıklama"
@@ -115,7 +139,7 @@
                 <MudButton Variant="Variant.Filled" Color="Color.Primary"
                            EndIcon="@Icons.Material.Filled.ArrowForward"
                            OnClick="SaveClaimAndNext"
-                           Disabled="@(string.IsNullOrWhiteSpace(_dto.Name) || string.IsNullOrWhiteSpace(_dto.CompanyName))">
+                           Disabled="@(string.IsNullOrWhiteSpace(_dto.Name) || string.IsNullOrWhiteSpace(_dto.CompanyName) || (IsCooling && !EurPricing.IsValidRate(_dto.EurRate)))">
                     Devam Et
                 </MudButton>
             </MudCardActions>
@@ -296,6 +320,7 @@
                                              Items="@_currentForm.ServiceItems"
                                              PriceListService="@PriceListService"
                                              Claim="@_claim"
+                                             OnEurRateChanged="@OnEurRateChangedAsync"
                                              OnChanged="@StateHasChanged" />
                         </MudCardContent>
                         <MudCardActions Class="pa-3 justify-space-between">
@@ -471,6 +496,64 @@
     private bool _exporting = false;
     private string _exportStatus = string.Empty;
 
+    /// <summary>Bu hakediş Soğutma disiplinine mi ait? (Yeni hakedişte aktif disiplin, kayıtlıda hakedişin kendi disiplini.)</summary>
+    private bool IsCooling => (_claim?.Discipline ?? CurrentDiscipline.CurrentDiscipline) == MechanicalDiscipline.Cooling;
+
+    private string EurRateDisplay => EurPricing.IsValidRate(_dto.EurRate)
+        ? $"{_dto.EurRate!.Value.ToString("N4", System.Globalization.CultureInfo.GetCultureInfo("tr-TR"))} ₺"
+          + (_dto.EurRateDate.HasValue ? $"  ({_dto.EurRateSource} {_dto.EurRateDate:dd.MM.yyyy})" : "")
+        : string.Empty;
+
+    private async Task OpenEurRateDialogAsync()
+    {
+        var parameters = new DialogParameters<EurRateDialog>
+        {
+            { x => x.Rate, _dto.EurRate },
+            { x => x.RateDate, _dto.EurRateDate },
+        };
+        var dialog = await DialogService.ShowAsync<EurRateDialog>("EUR Kuru", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true });
+        var result = await dialog.Result;
+        if (result is null || result.Canceled || result.Data is not ValueTuple<decimal, DateTime?, string> t) return;
+
+        _dto.EurRate = t.Item1;
+        _dto.EurRateDate = t.Item2;
+        _dto.EurRateSource = t.Item3;
+
+        // Hakediş zaten kayıtlıysa kur hemen kaydedilir ve mevcut EUR kalemleri yeniden fiyatlanır.
+        if (_claim is not null && _claim.Id > 0)
+        {
+            try
+            {
+                var n = await ClaimService.UpdateEurRateAsync(_claim.Id, t.Item1, t.Item2, t.Item3);
+                if (_currentForm is not null) EurPricing.Reprice(_currentForm.ServiceItems, t.Item1, t.Item2, t.Item3);
+                await RefreshOtherFormsAsync();
+                Snackbar.Add(n > 0 ? $"EUR kuru güncellendi, {n} kalem yeniden fiyatlandı." : "EUR kuru güncellendi.", Severity.Success);
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"EUR kuru kaydedilemedi: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    /// <summary>Kur değişince kalem dizisi DB'de güncellendi; açık form dışındaki formların bellekteki kopyaları tazelenir
+    /// (aksi halde sonradan kaydedilirken eski fiyatlar geri yazılırdı).</summary>
+    private async Task OnEurRateChangedAsync() => await RefreshOtherFormsAsync();
+
+    private async Task RefreshOtherFormsAsync()
+    {
+        if (_claim is null || _claim.Id == 0) return;
+        var fresh = await FormService.GetByClaimIdAsync(_claim.Id);
+        for (int i = 0; i < _forms.Count; i++)
+        {
+            if (_currentForm is not null && _forms[i].Id == _currentForm.Id) continue; // açık form: ekrandaki kalemler korunur
+            var f = fresh.FirstOrDefault(x => x.Id == _forms[i].Id);
+            if (f is not null) _forms[i] = f;
+        }
+        StateHasChanged();
+    }
+
     /// <summary>Mevcut hakediş türüne göre servis formu zorunlu mu?</summary>
     private bool IsFormRequired => _dto.ClaimType == ProgressClaimType.MaintenanceRepair;
 
@@ -512,6 +595,11 @@
         if (string.IsNullOrWhiteSpace(_dto.Name) || string.IsNullOrWhiteSpace(_dto.CompanyName))
         {
             Snackbar.Add("Hakediş adı ve firma adı zorunludur.", Severity.Warning);
+            return;
+        }
+        if (IsCooling && !EurPricing.IsValidRate(_dto.EurRate))
+        {
+            Snackbar.Add("Soğutma hakedişi için EUR kuru girilmelidir.", Severity.Warning);
             return;
         }
         try

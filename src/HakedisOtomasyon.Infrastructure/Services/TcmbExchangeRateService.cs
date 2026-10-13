@@ -17,7 +17,6 @@ public class TcmbExchangeRateService : IExchangeRateService
     private readonly AppDbContext _db;
     private readonly HttpClient _http;
 
-    private const string CurrencyCode = "USD";
     private const string TcmbBaseUrl  = "https://www.tcmb.gov.tr/kurlar/";
     private const int    MaxLookback  = 10;
 
@@ -27,9 +26,20 @@ public class TcmbExchangeRateService : IExchangeRateService
         _http = http;
     }
 
-    public async Task<ExchangeRateResult> GetUsdRateAsync(
+    public Task<ExchangeRateResult> GetUsdRateAsync(
         DateTime date,
         ExchangeRateType type = ExchangeRateType.ForexSelling)
+        => GetRateAsync("USD", date, type);
+
+    public Task<ExchangeRateResult> GetEurRateAsync(
+        DateTime date,
+        ExchangeRateType type = ExchangeRateType.ForexSelling)
+        => GetRateAsync("EUR", date, type);
+
+    private async Task<ExchangeRateResult> GetRateAsync(
+        string currencyCode,
+        DateTime date,
+        ExchangeRateType type)
     {
         for (int i = 0; i <= MaxLookback; i++)
         {
@@ -38,14 +48,14 @@ public class TcmbExchangeRateService : IExchangeRateService
             // ── 1. Önbellekte var mı? ───────────────────────────────────────
             var cached = await _db.ExchangeRateCaches
                 .AsNoTracking()
-                .FirstOrDefaultAsync(r => r.CurrencyCode == CurrencyCode
+                .FirstOrDefaultAsync(r => r.CurrencyCode == currencyCode
                                        && r.RateDate     == candidate);
             if (cached is not null)
             {
                 var cachedRate = type == ExchangeRateType.ForexBuying
                     ? cached.ForexBuying
                     : cached.ForexSelling;
-                return Success(date, candidate, cachedRate, cached.Source, i > 0);
+                return Success(currencyCode, date, candidate, cachedRate, cached.Source, i > 0);
             }
 
             // ── 2. TCMB'den çek ─────────────────────────────────────────────
@@ -57,14 +67,14 @@ public class TcmbExchangeRateService : IExchangeRateService
             {
                 using var cts    = new CancellationTokenSource(TimeSpan.FromSeconds(12));
                 var xmlText      = await _http.GetStringAsync(url, cts.Token);
-                var (buying, selling) = ParseUsdFromXml(xmlText);
+                var (buying, selling) = ParseRateFromXml(xmlText, currencyCode);
 
-                if (buying <= 0 || selling <= 0) continue; // bülten içinde USD yoksa sonraki güne geç
+                if (buying <= 0 || selling <= 0) continue; // bülten içinde bu para birimi yoksa sonraki güne geç
 
                 // ── Önbelleğe yaz ───────────────────────────────────────────
                 var cacheEntry = new ExchangeRateCache
                 {
-                    CurrencyCode = CurrencyCode,
+                    CurrencyCode = currencyCode,
                     RateDate     = candidate,
                     ForexBuying  = buying,
                     ForexSelling = selling,
@@ -77,7 +87,7 @@ public class TcmbExchangeRateService : IExchangeRateService
                 catch { /* unique constraint ihlali — başka thread zaten yazmış olabilir */ }
 
                 var liveRate = type == ExchangeRateType.ForexBuying ? buying : selling;
-                return Success(date, candidate, liveRate, "TCMB", i > 0);
+                return Success(currencyCode, date, candidate, liveRate, "TCMB", i > 0);
             }
             catch (TaskCanceledException)
             {
@@ -98,10 +108,10 @@ public class TcmbExchangeRateService : IExchangeRateService
             RequestedDate = date,
             ActualDate    = date,
             Rate          = 0,
-            CurrencyCode  = CurrencyCode,
+            CurrencyCode  = currencyCode,
             Source        = "TCMB",
             IsFallbackDate = false,
-            Message       = $"Son {MaxLookback} gün içinde TCMB'den USD kuru alınamadı. " +
+            Message       = $"Son {MaxLookback} gün içinde TCMB'den {currencyCode} kuru alınamadı. " +
                             "Lütfen internet bağlantınızı kontrol edin veya kuru manuel girin."
         };
     }
@@ -109,26 +119,26 @@ public class TcmbExchangeRateService : IExchangeRateService
     // ── Yardımcı metodlar ────────────────────────────────────────────────────
 
     private static ExchangeRateResult Success(
-        DateTime requested, DateTime actual, decimal rate, string source, bool isFallback)
+        string currencyCode, DateTime requested, DateTime actual, decimal rate, string source, bool isFallback)
         => new()
         {
             RequestedDate  = requested,
             ActualDate     = actual,
             Rate           = rate,
-            CurrencyCode   = CurrencyCode,
+            CurrencyCode   = currencyCode,
             Source         = source,
             IsFallbackDate = isFallback
         };
 
     /// <summary>
-    /// TCMB XML'inden USD ForexBuying ve ForexSelling değerlerini okur.
+    /// TCMB XML'inden verilen para biriminin ForexBuying ve ForexSelling değerlerini okur.
     /// </summary>
-    private static (decimal Buying, decimal Selling) ParseUsdFromXml(string xml)
+    private static (decimal Buying, decimal Selling) ParseRateFromXml(string xml, string currencyCode)
     {
         var doc   = XDocument.Parse(xml);
         var usdEl = doc.Descendants("Currency")
                        .FirstOrDefault(el =>
-                           (string?)el.Attribute("CurrencyCode") == "USD");
+                           (string?)el.Attribute("CurrencyCode") == currencyCode);
 
         if (usdEl is null) return (0, 0);
 

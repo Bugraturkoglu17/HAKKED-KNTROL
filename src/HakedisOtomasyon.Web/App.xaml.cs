@@ -871,6 +871,7 @@ public partial class WpfApp : System.Windows.Application
                     ["ExchangeRateDate"]       = "TEXT",
                     ["ExchangeRateActualDate"] = "TEXT",
                     ["ExchangeRateSource"]     = "TEXT",
+                    ["ForeignPrice"]           = "TEXT",   // EUR fiyatlı (Soğutma) kalemler
                 };
 
                 foreach (var (col, type) in newColumns)
@@ -1047,6 +1048,15 @@ public partial class WpfApp : System.Windows.Application
                     // 0 = MaintenanceRepair (varsayılan — mevcut tüm kayıtlar Bakım/Onarım sayılır)
                     alter.CommandText = "ALTER TABLE ProgressClaims ADD COLUMN \"ClaimType\" INTEGER NOT NULL DEFAULT 0";
                     alter.ExecuteNonQuery();
+                }
+
+                // Soğutma hakedişi: EUR fiyatlı kalemlerin TL'ye çevrildiği kur (hakediş oluşturulurken istenir)
+                foreach (var (col, def) in new[] { ("EurRate", "TEXT"), ("EurRateDate", "TEXT"), ("EurRateSource", "TEXT") })
+                {
+                    if (existingCols.Contains(col)) continue;
+                    using var alterEur = conn.CreateCommand();
+                    alterEur.CommandText = $"ALTER TABLE ProgressClaims ADD COLUMN \"{col}\" {def}";
+                    alterEur.ExecuteNonQuery();
                 }
             }
             finally { conn.Close(); }

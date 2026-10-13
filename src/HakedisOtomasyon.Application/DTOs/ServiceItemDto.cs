@@ -33,6 +33,9 @@ public class ServiceItemDto
     public DateTime? ExchangeRateActualDate { get; set; }
     public string? ExchangeRateSource { get; set; }
 
+    /// <summary>EUR fiyatlı kalemde EUR cinsinden birim fiyat (TL = ForeignPrice × ExchangeRate).</summary>
+    public decimal? ForeignPrice { get; set; }
+
     /// <summary>
     /// POS numarasi -- Excel exportta A kolonunda gosterilir.
     /// Program arayuzunde gorunmez; export sirasinda PosMappingService tarafindan doldurulur.

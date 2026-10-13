@@ -207,6 +207,7 @@ public class ServiceFormService : IServiceFormService
                 ExchangeRateDate = dto.ExchangeRateDate,
                 ExchangeRateActualDate = dto.ExchangeRateActualDate,
                 ExchangeRateSource = dto.ExchangeRateSource,
+                ForeignPrice = dto.ForeignPrice,
                 SortOrder = order++
             });
         }
@@ -281,7 +282,8 @@ public class ServiceFormService : IServiceFormService
                 ExchangeRate = i.ExchangeRate,
                 ExchangeRateDate = i.ExchangeRateDate,
                 ExchangeRateActualDate = i.ExchangeRateActualDate,
-                ExchangeRateSource = i.ExchangeRateSource
+                ExchangeRateSource = i.ExchangeRateSource,
+                ForeignPrice = i.ForeignPrice
             }).ToList(),
             Invoices = f.Invoices.Select(inv => new InvoiceDto
             {

@@ -13,4 +13,10 @@ public interface IProgressClaimService
     Task UpdateStatusAsync(int id, ProgressClaimStatus status);
     Task SaveProgressAsync(int id, int step, int? lastFormId = null);
     Task<List<ClaimSummaryDto>> GetStoreSummariesAsync(int claimId);
+
+    /// <summary>
+    /// Soğutma hakedişinin EUR kurunu kaydeder ve bu hakedişteki TÜM EUR fiyatlı kalemleri
+    /// (TL = EUR fiyatı × kur) yeniden fiyatlar. Etkilenen kalem sayısını döner.
+    /// </summary>
+    Task<int> UpdateEurRateAsync(int claimId, decimal rate, DateTime? rateDate, string source);
 }

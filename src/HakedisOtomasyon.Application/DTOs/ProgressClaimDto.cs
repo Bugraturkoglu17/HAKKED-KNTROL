@@ -17,6 +17,11 @@ public class ProgressClaimDto
     public ProgressClaimType ClaimType { get; set; } = ProgressClaimType.MaintenanceRepair;
     public MechanicalDiscipline Discipline { get; set; } = MechanicalDiscipline.Fire;
 
+    /// <summary>Soğutma hakedişinde EUR fiyatlı kalemlerin TL'ye çevrildiği kur (TL/EUR); hakediş oluşturulurken istenir.</summary>
+    public decimal? EurRate { get; set; }
+    public DateTime? EurRateDate { get; set; }
+    public string? EurRateSource { get; set; }   // "TCMB" | "Manuel"
+
     public string ClaimTypeLabel => ClaimType switch
     {
         ProgressClaimType.NewConstruction => "Yeni Yapım",

@@ -13,4 +13,9 @@ public interface IExchangeRateService
     Task<ExchangeRateResult> GetUsdRateAsync(
         DateTime date,
         ExchangeRateType type = ExchangeRateType.ForexSelling);
+
+    /// <summary>EUR kuru — GetUsdRateAsync ile aynı kurallar (önbellek, hafta sonu/tatil geri çekilmesi).</summary>
+    Task<ExchangeRateResult> GetEurRateAsync(
+        DateTime date,
+        ExchangeRateType type = ExchangeRateType.ForexSelling);
 }

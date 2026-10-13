@@ -1,3 +1,4 @@
+using HakedisOtomasyon.Application;
 using HakedisOtomasyon.Application.DTOs;
 using HakedisOtomasyon.Application.Interfaces;
 using HakedisOtomasyon.Domain.Entities;
@@ -36,6 +37,7 @@ public class ProgressClaimService : IProgressClaimService
             CreatedAt = c.CreatedAt, Status = c.Status,
             CurrentStep = c.CurrentStep, LastOpenedServiceFormId = c.LastOpenedServiceFormId,
             ClaimType = c.ClaimType, Discipline = c.Discipline,
+            EurRate = c.EurRate, EurRateDate = c.EurRateDate, EurRateSource = c.EurRateSource,
             FormCount = c.ServiceForms.Count,
             CompletedFormCount = c.ServiceForms.Count(f => f.Status == ServiceFormStatus.Tamamlandi || f.Status == ServiceFormStatus.DisaAktarildi),
             TotalAmount = c.ServiceForms.SelectMany(f => f.ServiceItems).Sum(i => i.TotalPrice)
@@ -58,6 +60,7 @@ public class ProgressClaimService : IProgressClaimService
             CreatedAt = c.CreatedAt, Status = c.Status,
             CurrentStep = c.CurrentStep, LastOpenedServiceFormId = c.LastOpenedServiceFormId,
             ClaimType = c.ClaimType, Discipline = c.Discipline,
+            EurRate = c.EurRate, EurRateDate = c.EurRateDate, EurRateSource = c.EurRateSource,
             FormCount = c.ServiceForms.Count,
             CompletedFormCount = c.ServiceForms.Count(f => f.Status == ServiceFormStatus.Tamamlandi || f.Status == ServiceFormStatus.DisaAktarildi),
             TotalAmount = c.ServiceForms.SelectMany(f => f.ServiceItems).Sum(i => i.TotalPrice)
@@ -76,7 +79,10 @@ public class ProgressClaimService : IProgressClaimService
             Description = dto.Description,
             Status = ProgressClaimStatus.Taslak,
             ClaimType = dto.ClaimType,
-            Discipline = _currentDiscipline.CurrentDiscipline
+            Discipline = _currentDiscipline.CurrentDiscipline,
+            EurRate = dto.EurRate,
+            EurRateDate = dto.EurRateDate,
+            EurRateSource = dto.EurRateSource
         };
         _db.ProgressClaims.Add(entity);
         await _db.SaveChangesAsync();
@@ -97,7 +103,42 @@ public class ProgressClaimService : IProgressClaimService
         entity.Description = dto.Description;
         entity.ClaimType = dto.ClaimType;
         await _db.SaveChangesAsync();
+
+        // Hakediş bilgileri adımından kur girildi/değiştirildiyse mevcut EUR kalemleri de güncellensin.
+        if (EurPricing.IsValidRate(dto.EurRate) && (entity.EurRate != dto.EurRate || entity.EurRateDate != dto.EurRateDate))
+            await UpdateEurRateAsync(entity.Id, dto.EurRate!.Value, dto.EurRateDate, dto.EurRateSource ?? "Manuel");
         return dto;
+    }
+
+    public async Task<int> UpdateEurRateAsync(int claimId, decimal rate, DateTime? rateDate, string source)
+    {
+        if (!EurPricing.IsValidRate(rate))
+            throw new ArgumentException("Geçerli bir EUR kuru girin (0'dan büyük olmalı).");
+
+        var claim = await _db.ProgressClaims.FindAsync(claimId)
+            ?? throw new InvalidOperationException($"Hakediş bulunamadı: {claimId}");
+        claim.EurRate = rate;
+        claim.EurRateDate = rateDate;
+        claim.EurRateSource = source;
+
+        var items = await _db.ServiceItems
+            .Where(i => i.ServiceForm.ProgressClaimId == claimId
+                     && i.CurrencyCode == EurPricing.CurrencyCode
+                     && i.ForeignPrice != null)
+            .ToListAsync();
+        foreach (var item in items)
+        {
+            item.MaterialPrice = EurPricing.ToTl(item.ForeignPrice!.Value, rate);
+            item.LaborPrice = 0m;
+            item.UnitPrice = item.MaterialPrice;
+            item.TotalPrice = Math.Round(item.UnitPrice * item.Quantity, 2, MidpointRounding.AwayFromZero);
+            item.ExchangeRate = rate;
+            item.ExchangeRateDate = rateDate;
+            item.ExchangeRateActualDate = rateDate;
+            item.ExchangeRateSource = source;
+        }
+        await _db.SaveChangesAsync();
+        return items.Count;
     }
 
     public async Task DeleteAsync(int id)

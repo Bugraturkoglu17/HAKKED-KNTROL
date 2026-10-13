@@ -1,0 +1,129 @@
+@namespace HakedisOtomasyon.Web.Components
+@using HakedisOtomasyon.Application
+@using HakedisOtomasyon.Application.Interfaces
+@using HakedisOtomasyon.Domain.Enums
+@inject IExchangeRateService ExchangeRateService
+
+<MudDialog Style="min-width:480px; max-width:600px">
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.CurrencyExchange" Class="mr-1" Style="vertical-align:middle" />
+            EUR Kuru
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudGrid Spacing="2">
+            <MudItem xs="12">
+                <MudAlert Severity="Severity.Info" Dense>
+                    Soğutma malzeme fiyatları <b>EUR</b> cinsindendir. Hakedişteki TL tutarlar,
+                    EUR fiyatı × bu kur ile hesaplanır. Kur değişirse hakedişteki tüm EUR kalemleri yeniden fiyatlanır.
+                </MudAlert>
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudDatePicker Date="@_date" DateChanged="@(d => _date = d)"
+                               Label="Kur Tarihi" Variant="Variant.Outlined" Editable="true"
+                               DateFormat="dd.MM.yyyy" />
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" FullWidth Class="mt-2"
+                           StartIcon="@Icons.Material.Filled.CloudDownload"
+                           OnClick="FetchAsync" Disabled="@(_fetching || _date is null)">
+                    @(_fetching ? "Alınıyor..." : "TCMB'den Getir")
+                </MudButton>
+            </MudItem>
+            <MudItem xs="12">
+                <MudNumericField T="decimal?" @bind-Value="_rate" Immediate="true"
+                                 Label="EUR Kuru (TL / 1 EUR) *" Variant="Variant.Outlined"
+                                 Min="0" Format="N4" HideSpinButtons="true" Autofocus
+                                 HelperText="TCMB'den getirebilir ya da elle girebilirsiniz." />
+            </MudItem>
+            @if (!string.IsNullOrEmpty(_message))
+            {
+                <MudItem xs="12">
+                    <MudAlert Severity="@_severity" Dense>@_message</MudAlert>
+                </MudItem>
+            }
+            @if (_error != null)
+            {
+                <MudItem xs="12">
+                    <MudAlert Severity="Severity.Error" Dense>@_error</MudAlert>
+                </MudItem>
+            }
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => MudDialog.Cancel())">İptal</MudButton>
+        @* Kaydet kasıtlı olarak asla Disabled değil: MudNumericField bağlı değeri anlık güncellenmeyebilir;
+           doğrulama Submit içinde net bir hata mesajıyla yapılır. *@
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Submit">Kaydet</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public decimal? Rate { get; set; }
+    [Parameter] public DateTime? RateDate { get; set; }
+
+    private decimal? _rate;
+    private DateTime? _date = DateTime.Today;
+    private DateTime? _actualDate;
+    private decimal? _fetchedRate;
+    private bool _fetching;
+    private string? _message;
+    private Severity _severity = Severity.Info;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _rate = Rate;
+        _date = RateDate ?? DateTime.Today;
+        _actualDate = RateDate;
+        // Kur henüz girilmemişse bugünkü TCMB kurunu öneri olarak getirmeyi dene (sessiz; olmazsa elle girilir).
+        if (!EurPricing.IsValidRate(_rate))
+            await FetchAsync();
+    }
+
+    private async Task FetchAsync()
+    {
+        if (_date is null) return;
+        _fetching = true; _message = null; _error = null;
+        try
+        {
+            var r = await ExchangeRateService.GetEurRateAsync(_date.Value, ExchangeRateType.ForexSelling);
+            if (r.IsSuccess)
+            {
+                _rate = r.Rate;
+                _fetchedRate = r.Rate;
+                _actualDate = r.ActualDate;
+                _message = r.IsFallbackDate
+                    ? $"Seçilen tarihte bülten yok; en yakın önceki bülten kullanıldı ({r.ActualDate:dd.MM.yyyy}): {r.Rate:N4} TL"
+                    : $"TCMB kuru alındı ({r.ActualDate:dd.MM.yyyy}): {r.Rate:N4} TL";
+                _severity = r.IsFallbackDate ? Severity.Warning : Severity.Success;
+            }
+            else
+            {
+                _message = r.Message ?? "TCMB'den EUR kuru alınamadı. Kuru elle girebilirsiniz.";
+                _severity = Severity.Warning;
+            }
+        }
+        catch
+        {
+            _message = "TCMB kuruna ulaşılamadı (internet/ağ engeli olabilir). Kuru elle girebilirsiniz.";
+            _severity = Severity.Warning;
+        }
+        finally { _fetching = false; }
+    }
+
+    private void Submit()
+    {
+        if (!EurPricing.IsValidRate(_rate))
+        {
+            _error = "Lütfen geçerli bir EUR kuru girin (0'dan büyük).";
+            return;
+        }
+        // Değer TCMB'den gelenle aynıysa kaynak TCMB, kullanıcı değiştirdiyse Manuel.
+        var fromTcmb = _fetchedRate.HasValue && _fetchedRate.Value == _rate!.Value;
+        var date = fromTcmb ? (_actualDate ?? _date) : _date;
+        MudDialog.Close(DialogResult.Ok((_rate!.Value, date, fromTcmb ? "TCMB" : "Manuel")));
+    }
+}

@@ -1442,6 +1442,18 @@ public class ExcelExportService : IExcelExportService
         if (item.IsInvoiceBased)
             return item.Description + " (Fatura +%10)";
 
+        // Soğutma: EUR fiyatlı kalem — hesap Excel'de görünsün (EUR fiyatı x kur = TL)
+        if (string.Equals(item.CurrencyCode, "EUR", StringComparison.OrdinalIgnoreCase)
+            && item.ForeignPrice.HasValue
+            && item.ExchangeRate.HasValue)
+        {
+            var eurDate = item.ExchangeRateActualDate ?? item.ExchangeRateDate;
+            var eurDatePart = eurDate.HasValue ? $" (Kur Tarihi: {eurDate.Value:dd.MM.yyyy})" : string.Empty;
+            return $"{item.Description} = {item.ForeignPrice.Value.ToString("N2", TrCulture)} EUR x EUR kuru " +
+                   $"{item.ExchangeRate.Value.ToString("N2", TrCulture)} TL = " +
+                   $"{item.MaterialPrice.ToString("N2", TrCulture)} TL{eurDatePart}";
+        }
+
         if (item.IsCurrencyBased
             && item.DiscountedUsdPrice.HasValue
             && item.ExchangeRate.HasValue)

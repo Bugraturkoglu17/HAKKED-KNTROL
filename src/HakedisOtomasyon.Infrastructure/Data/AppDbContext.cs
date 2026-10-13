@@ -65,6 +65,8 @@ public class AppDbContext : DbContext
 
         modelBuilder.Entity<ProgressClaim>(e =>
         {
+            e.Property(p => p.EurRate).HasColumnType("decimal(18,4)");
+            e.Property(p => p.EurRateSource).HasMaxLength(20);
             e.Property(p => p.Name).HasMaxLength(300).IsRequired();
             e.Property(p => p.CompanyName).HasMaxLength(300).IsRequired();
         });
@@ -89,6 +91,7 @@ public class AppDbContext : DbContext
             e.Property(i => i.UnitPrice).HasColumnType("decimal(18,2)");
             e.Property(i => i.TotalPrice).HasColumnType("decimal(18,2)");
             e.Property(i => i.Quantity).HasColumnType("decimal(18,4)");
+            e.Property(i => i.ForeignPrice).HasColumnType("decimal(18,4)");
 
             e.HasOne(i => i.ServiceForm)
                 .WithMany(f => f.ServiceItems)

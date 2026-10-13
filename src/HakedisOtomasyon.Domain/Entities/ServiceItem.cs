@@ -33,6 +33,9 @@ public class ServiceItem
     public DateTime? ExchangeRateActualDate { get; set; } // Gerçek bülten tarihi
     public string? ExchangeRateSource { get; set; }     // "TCMB" | "Manuel"
 
+    /// <summary>Kalem EUR fiyatlıysa (CurrencyCode="EUR") EUR cinsinden birim fiyat; TL karşılığı = ForeignPrice × ExchangeRate.</summary>
+    public decimal? ForeignPrice { get; set; }
+
     public ServiceForm ServiceForm { get; set; } = null!;
     public Invoice? Invoice { get; set; }
 }
