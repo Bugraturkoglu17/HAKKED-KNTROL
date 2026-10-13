@@ -26,4 +26,10 @@ public interface IServiceFormService
     /// ve glikol miktarı (kullanıcının düzenleyebildiği tek kalem alanı). Eksiksizse form "Tamamlandı" olur.
     /// </summary>
     Task<ServiceFormDto> SaveGlycolRowAsync(int formId, int? storeId, DateTime? formDate, string? formNumber, decimal quantity);
+
+    /// <summary>
+    /// Soğutma Glikol hakedişi: bir form satırını hakediş tablosundan çıkarır — mağaza, tarih, form no ve miktar temizlenir,
+    /// form "Bekliyor" durumuna döner (yüklenen dosya ve glikol kalemi silinmez; form yeniden doldurulabilir).
+    /// </summary>
+    Task<ServiceFormDto> ClearGlycolRowAsync(int formId);
 }

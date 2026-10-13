@@ -370,6 +370,28 @@ public class ServiceFormService : IServiceFormService
         return (await GetByIdAsync(formId))!;
     }
 
+    public async Task<ServiceFormDto> ClearGlycolRowAsync(int formId)
+    {
+        var form = await _db.ServiceForms.Include(f => f.ServiceItems).FirstOrDefaultAsync(f => f.Id == formId)
+            ?? throw new InvalidOperationException($"Form bulunamadı: {formId}");
+        var (claim, price) = await LoadGlycolContextAsync(form.ProgressClaimId);
+        var code = price.PozNo ?? GlycolClaim.FallbackItemCode;
+
+        form.StoreId = null;
+        form.FormDate = null;
+        form.FormNumber = null;
+        form.Status = ServiceFormStatus.Bekliyor;
+
+        var glycol = form.ServiceItems.FirstOrDefault(i => i.ItemCode == code);
+        if (glycol is not null)
+        {
+            glycol.Quantity = 0m;
+            ApplyGlycolPricing(glycol, price, claim);
+        }
+        await _db.SaveChangesAsync();
+        return (await GetByIdAsync(formId))!;
+    }
+
     public async Task DeleteAsync(int id)
     {
         var form = await _db.ServiceForms.FindAsync(id);

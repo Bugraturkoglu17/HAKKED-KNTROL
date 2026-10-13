@@ -370,6 +370,50 @@ public class GlycolClaimTests
     }
 
     [Fact]
+    public async Task ClearGlycolRow_SatiriTablodanCikarirDosyaVeKalemKalir()
+    {
+        using var db = CreateDb();
+        var (svc, claim, store) = await SeedAsync(db);
+        var form = new MainForm { ProgressClaimId = claim.Id, OriginalFileName = "a.pdf", FilePath = "forms/a.pdf" };
+        db.ServiceForms.Add(form);
+        await db.SaveChangesAsync();
+        await svc.EnsureGlycolItemsAsync(claim.Id);
+        var added = await svc.SaveGlycolRowAsync(form.Id, store.Id, new DateTime(2026, 7, 15), "5015", 30m);
+        Assert.Equal(ServiceFormStatus.Tamamlandi, added.Status);
+
+        var cleared = await svc.ClearGlycolRowAsync(form.Id);
+
+        Assert.Equal(ServiceFormStatus.Bekliyor, cleared.Status);            // yeniden doldurulabilir
+        Assert.Null(cleared.StoreId);
+        Assert.Null(cleared.FormDate);
+        Assert.Null(cleared.FormNumber);
+        Assert.Equal("forms/a.pdf", cleared.FilePath);                        // yüklenen form silinmez
+        var item = Assert.Single(cleared.ServiceItems);                       // glikol kalemi kalır, miktarı sıfırlanır
+        Assert.Equal(0m, item.Quantity);
+        Assert.Equal(0m, item.TotalPrice);
+        Assert.Equal(458.89m, item.UnitPrice);
+    }
+
+    [Fact]
+    public async Task ClearGlycolRow_SonraTekrarEklenebilir()
+    {
+        using var db = CreateDb();
+        var (svc, claim, store) = await SeedAsync(db);
+        var form = new MainForm { ProgressClaimId = claim.Id, OriginalFileName = "a.pdf" };
+        db.ServiceForms.Add(form);
+        await db.SaveChangesAsync();
+        await svc.EnsureGlycolItemsAsync(claim.Id);
+        await svc.SaveGlycolRowAsync(form.Id, store.Id, new DateTime(2026, 7, 15), "5015", 30m);
+        await svc.ClearGlycolRowAsync(form.Id);
+
+        var again = await svc.SaveGlycolRowAsync(form.Id, store.Id, new DateTime(2026, 7, 16), "5099", 12.5m);
+
+        Assert.Equal(ServiceFormStatus.Tamamlandi, again.Status);
+        Assert.Equal(12.5m, Assert.Single(again.ServiceItems).Quantity);       // ondalık miktar
+        Assert.Equal(EurPricing.TotalTl(12.5m, GlycolEur, Rate), again.ServiceItems.Single().TotalPrice);
+    }
+
+    [Fact]
     public async Task SaveGlycolRow_BaskaDisiplindekiMagazaSecilemez()
     {
         using var db = CreateDb();
