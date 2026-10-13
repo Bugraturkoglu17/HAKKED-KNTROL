@@ -42,7 +42,14 @@
     {
         <MudStack Row Spacing="1">
             <MudChip T="string" Color="Color.Info" Size="Size.Small">@_claim.Name</MudChip>
-            <MudChip T="string" Color="@GetClaimTypeColor(_claim.ClaimType)" Size="Size.Small">@_claim.ClaimTypeLabel</MudChip>
+            @if (_claim.Discipline == MechanicalDiscipline.Cooling && _claim.CoolingCategory.HasValue)
+            {
+                <MudChip T="string" Color="Color.Primary" Size="Size.Small">@_claim.CoolingCategoryLabel</MudChip>
+            }
+            else
+            {
+                <MudChip T="string" Color="@GetClaimTypeColor(_claim.ClaimType)" Size="Size.Small">@_claim.ClaimTypeLabel</MudChip>
+            }
         </MudStack>
     }
 </MudStack>
@@ -75,6 +82,32 @@
                                       AdornmentIcon="@Icons.Material.Outlined.Business"
                                       Adornment="Adornment.Start" />
                     </MudItem>
+                    @if (IsCooling)
+                    {
+                        <MudItem xs="12" md="6">
+                            <MudSelect T="CoolingClaimCategory?" @bind-Value="_dto.CoolingCategory"
+                                       Label="Hakediş Türü *"
+                                       Variant="Variant.Outlined"
+                                       Required
+                                       Error="@(!_dto.CoolingCategory.HasValue)"
+                                       ErrorText="Hakediş türünü seçin"
+                                       AdornmentIcon="@Icons.Material.Outlined.Category"
+                                       Adornment="Adornment.Start"
+                                       HelperText="Seçilen türe göre hakedişin hesaplama mantığı belirlenir.">
+                                @foreach (var c in CoolingCategories)
+                                {
+                                    <MudSelectItem T="CoolingClaimCategory?" Value="@((CoolingClaimCategory?)c)" Disabled="@(!c.IsAvailable())">
+                                        <MudStack Row AlignItems="AlignItems.Center" Spacing="2">
+                                            <MudIcon Icon="@CoolingCategoryIcon(c)" Size="Size.Small" />
+                                            <span>@c.DisplayName()@(c.IsAvailable() ? string.Empty : " — yakında")</span>
+                                        </MudStack>
+                                    </MudSelectItem>
+                                }
+                            </MudSelect>
+                        </MudItem>
+                    }
+                    else
+                    {
                     <MudItem xs="12" md="6">
                         <MudSelect T="ProgressClaimType" @bind-Value="_dto.ClaimType"
                                    Label="Hakediş Türü *"
@@ -87,6 +120,7 @@
                             <MudSelectItem Value="ProgressClaimType.Renovation">Tadilat</MudSelectItem>
                         </MudSelect>
                     </MudItem>
+                    }
                     <MudItem xs="12" md="3">
                         <MudSelect T="int" @bind-Value="_dto.Month"
                                    Label="Ay *" Variant="Variant.Outlined">
@@ -139,7 +173,7 @@
                 <MudButton Variant="Variant.Filled" Color="Color.Primary"
                            EndIcon="@Icons.Material.Filled.ArrowForward"
                            OnClick="SaveClaimAndNext"
-                           Disabled="@(string.IsNullOrWhiteSpace(_dto.Name) || string.IsNullOrWhiteSpace(_dto.CompanyName) || (IsCooling && !EurPricing.IsValidRate(_dto.EurRate)))">
+                           Disabled="@(string.IsNullOrWhiteSpace(_dto.Name) || string.IsNullOrWhiteSpace(_dto.CompanyName) || (IsCooling && (!EurPricing.IsValidRate(_dto.EurRate) || !_dto.CoolingCategory.HasValue)))">
                     Devam Et
                 </MudButton>
             </MudCardActions>
@@ -499,6 +533,21 @@
     /// <summary>Bu hakediş Soğutma disiplinine mi ait? (Yeni hakedişte aktif disiplin, kayıtlıda hakedişin kendi disiplini.)</summary>
     private bool IsCooling => (_claim?.Discipline ?? CurrentDiscipline.CurrentDiscipline) == MechanicalDiscipline.Cooling;
 
+    private static readonly CoolingClaimCategory[] CoolingCategories = Enum.GetValues<CoolingClaimCategory>();
+
+    private static string CoolingCategoryIcon(CoolingClaimCategory category) => category switch
+    {
+        CoolingClaimCategory.CompressorReplacement => Icons.Material.Filled.SwapHoriz,
+        CoolingClaimCategory.GlycolUsage => Icons.Material.Filled.Opacity,
+        CoolingClaimCategory.EvapReplacement => Icons.Material.Filled.AcUnit,
+        CoolingClaimCategory.PartialRenovation => Icons.Material.Filled.Construction,
+        CoolingClaimCategory.GasUsage => Icons.Material.Filled.LocalFireDepartment,
+        CoolingClaimCategory.Monitoring => Icons.Material.Filled.MonitorHeart,
+        CoolingClaimCategory.PeriodicMaintenance => Icons.Material.Filled.EventRepeat,
+        CoolingClaimCategory.AdditionalWork => Icons.Material.Filled.AddTask,
+        _ => Icons.Material.Filled.Category,
+    };
+
     private string EurRateDisplay => EurPricing.IsValidRate(_dto.EurRate)
         ? $"{EurPricing.FormatRate(_dto.EurRate!.Value)} ₺"
           + (_dto.EurRateDate.HasValue ? $"  ({_dto.EurRateSource} {_dto.EurRateDate:dd.MM.yyyy})" : "")
@@ -595,6 +644,11 @@
         if (string.IsNullOrWhiteSpace(_dto.Name) || string.IsNullOrWhiteSpace(_dto.CompanyName))
         {
             Snackbar.Add("Hakediş adı ve firma adı zorunludur.", Severity.Warning);
+            return;
+        }
+        if (IsCooling && !_dto.CoolingCategory.HasValue)
+        {
+            Snackbar.Add("Soğutma hakedişi için hakediş türünü seçin.", Severity.Warning);
             return;
         }
         if (IsCooling && !EurPricing.IsValidRate(_dto.EurRate))

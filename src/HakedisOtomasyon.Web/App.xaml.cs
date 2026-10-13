@@ -1051,7 +1051,7 @@ public partial class WpfApp : System.Windows.Application
                 }
 
                 // Soğutma hakedişi: EUR fiyatlı kalemlerin TL'ye çevrildiği kur (hakediş oluşturulurken istenir)
-                foreach (var (col, def) in new[] { ("EurRate", "TEXT"), ("EurRateDate", "TEXT"), ("EurRateSource", "TEXT") })
+                foreach (var (col, def) in new[] { ("EurRate", "TEXT"), ("EurRateDate", "TEXT"), ("EurRateSource", "TEXT"), ("CoolingCategory", "INTEGER") })
                 {
                     if (existingCols.Contains(col)) continue;
                     using var alterEur = conn.CreateCommand();

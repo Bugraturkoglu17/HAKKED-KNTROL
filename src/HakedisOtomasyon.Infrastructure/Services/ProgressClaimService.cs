@@ -38,6 +38,7 @@ public class ProgressClaimService : IProgressClaimService
             CurrentStep = c.CurrentStep, LastOpenedServiceFormId = c.LastOpenedServiceFormId,
             ClaimType = c.ClaimType, Discipline = c.Discipline,
             EurRate = c.EurRate, EurRateDate = c.EurRateDate, EurRateSource = c.EurRateSource,
+            CoolingCategory = c.CoolingCategory,
             FormCount = c.ServiceForms.Count,
             CompletedFormCount = c.ServiceForms.Count(f => f.Status == ServiceFormStatus.Tamamlandi || f.Status == ServiceFormStatus.DisaAktarildi),
             TotalAmount = c.ServiceForms.SelectMany(f => f.ServiceItems).Sum(i => i.TotalPrice)
@@ -61,6 +62,7 @@ public class ProgressClaimService : IProgressClaimService
             CurrentStep = c.CurrentStep, LastOpenedServiceFormId = c.LastOpenedServiceFormId,
             ClaimType = c.ClaimType, Discipline = c.Discipline,
             EurRate = c.EurRate, EurRateDate = c.EurRateDate, EurRateSource = c.EurRateSource,
+            CoolingCategory = c.CoolingCategory,
             FormCount = c.ServiceForms.Count,
             CompletedFormCount = c.ServiceForms.Count(f => f.Status == ServiceFormStatus.Tamamlandi || f.Status == ServiceFormStatus.DisaAktarildi),
             TotalAmount = c.ServiceForms.SelectMany(f => f.ServiceItems).Sum(i => i.TotalPrice)
@@ -82,7 +84,9 @@ public class ProgressClaimService : IProgressClaimService
             Discipline = _currentDiscipline.CurrentDiscipline,
             EurRate = dto.EurRate,
             EurRateDate = dto.EurRateDate,
-            EurRateSource = dto.EurRateSource
+            EurRateSource = dto.EurRateSource,
+            // Soğutma türü yalnızca Soğutma disiplininde anlamlıdır
+            CoolingCategory = _currentDiscipline.CurrentDiscipline == MechanicalDiscipline.Cooling ? dto.CoolingCategory : null
         };
         _db.ProgressClaims.Add(entity);
         await _db.SaveChangesAsync();
@@ -102,6 +106,7 @@ public class ProgressClaimService : IProgressClaimService
         entity.Year = dto.Year;
         entity.Description = dto.Description;
         entity.ClaimType = dto.ClaimType;
+        if (entity.Discipline == MechanicalDiscipline.Cooling) entity.CoolingCategory = dto.CoolingCategory;
         await _db.SaveChangesAsync();
 
         // Hakediş bilgileri adımından kur girildi/değiştirildiyse mevcut EUR kalemleri de güncellensin.

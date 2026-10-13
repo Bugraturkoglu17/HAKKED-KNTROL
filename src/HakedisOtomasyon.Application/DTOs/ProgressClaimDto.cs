@@ -17,10 +17,16 @@ public class ProgressClaimDto
     public ProgressClaimType ClaimType { get; set; } = ProgressClaimType.MaintenanceRepair;
     public MechanicalDiscipline Discipline { get; set; } = MechanicalDiscipline.Fire;
 
+    /// <summary>Soğutma hakedişinde oluşturma sırasında seçilen hakediş türü (Glikol Kullanım vb.). Diğer disiplinlerde null.</summary>
+    public CoolingClaimCategory? CoolingCategory { get; set; }
+
     /// <summary>Soğutma hakedişinde EUR fiyatlı kalemlerin TL'ye çevrildiği kur (TL/EUR); hakediş oluşturulurken istenir.</summary>
     public decimal? EurRate { get; set; }
     public DateTime? EurRateDate { get; set; }
     public string? EurRateSource { get; set; }   // "TCMB" | "Manuel"
+
+    /// <summary>Soğutma hakediş türü etiketi (seçilmemişse boş).</summary>
+    public string CoolingCategoryLabel => CoolingCategory?.DisplayName() ?? string.Empty;
 
     public string ClaimTypeLabel => ClaimType switch
     {
