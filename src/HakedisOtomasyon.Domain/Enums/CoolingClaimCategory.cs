@@ -42,6 +42,7 @@ public static class CoolingClaimCategoryExtensions
     public static bool IsAvailable(this CoolingClaimCategory category) => category switch
     {
         CoolingClaimCategory.GlycolUsage => true,
+        CoolingClaimCategory.GasUsage => true,
         CoolingClaimCategory.CompressorReplacement => true,
         CoolingClaimCategory.PartialRenovation => true,
         CoolingClaimCategory.MaintenanceRepair => true,

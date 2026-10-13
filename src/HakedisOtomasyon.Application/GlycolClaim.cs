@@ -26,6 +26,28 @@ public static class GlycolClaim
         => !string.IsNullOrWhiteSpace(description)
            && description.Trim().ToUpper(Tr).StartsWith(PriceItemNamePrefix, StringComparison.Ordinal);
 
+    // ── Gaz Kullanım hakedişi: Glikol ile AYNI yapı (servis ücreti yok, form başına tek satır, aynı Excel düzeni).
+    //    Tek fark: glikol tek kalemdir ve otomatik gelir; gazda kalem (R22, R404, R407C, R410A, R134a ...) satır başına SEÇİLİR.
+
+    /// <summary>Soğutma fiyat listesindeki soğutucu gaz kalemlerinin adının başlangıcı ("SOĞUTUCU GAZ 10,9 KG TÜP (kg fiyatı) R404").</summary>
+    public const string GasPriceItemNamePrefix = "SOĞUTUCU GAZ";
+
+    public static bool IsGas(MechanicalDiscipline discipline, CoolingClaimCategory? category)
+        => discipline == MechanicalDiscipline.Cooling && category == CoolingClaimCategory.GasUsage;
+
+    public static bool IsGasPriceName(string? description)
+        => !string.IsNullOrWhiteSpace(description)
+           && description.Trim().ToUpper(Tr).StartsWith(GasPriceItemNamePrefix, StringComparison.Ordinal);
+
+    /// <summary>"Kullanım" hakedişi mi (Glikol ya da Gaz)? İkisi de aynı tek ekranı (GlycolFormsTable) ve aynı Excel düzenini kullanır.</summary>
+    public static bool IsUsageClaim(MechanicalDiscipline discipline, CoolingClaimCategory? category)
+        => IsGlycol(discipline, category) || IsGas(discipline, category);
+
+    /// <summary>Çıktı başlığının bölgeden sonraki kısmı ("İÇ ANADOLU " + bu + " HAKEDİŞİ" / " İCMALİ").</summary>
+    public static string TitleCore(CoolingClaimCategory? category) => category == CoolingClaimCategory.GasUsage
+        ? "MİGROS SATIŞ MAĞAZALARI SOĞUTMA GAZ KULLANIM"
+        : "MİGROS SATIŞ MAĞAZALARI SOĞUTMA GLİKOL KULLANIM";
+
     /// <summary>Fiyat listesi adı "ad + tip" birleşimidir ("... GLİKOL GLİKOL"); sondaki tekrarlanan kelime atılır.</summary>
     public static string CleanItemName(string? description)
     {

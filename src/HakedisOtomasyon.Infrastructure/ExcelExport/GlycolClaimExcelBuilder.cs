@@ -108,7 +108,7 @@ public static class GlycolClaimExcelBuilder
         }
 
         int lastDataRow = r - 1;
-        WriteFooter(ws, r, lastDataRow, rows);
+        WriteFooter(ws, r, lastDataRow, rows, claim);
 
         // Kur notu — hesabın nasıl yapıldığı Excel'de görünsün
         WriteRateNote(ws, r + 2, rows);
@@ -131,7 +131,7 @@ public static class GlycolClaimExcelBuilder
         ws.PageSetup.PageOrientation = XLPageOrientation.Landscape;
         ws.PageSetup.FitToPages(1, 0);
 
-        CoolingSummarySheet.Write(wb, CoolingSummarySheet.PeriodText(claim.Month, claim.Year), RegionTitle(rows) + " İCMALİ",
+        CoolingSummarySheet.Write(wb, CoolingSummarySheet.PeriodText(claim.Month, claim.Year), RegionTitle(rows, claim) + " İCMALİ",
             DetailSheetName, ColStoreCode, ColGrand, blocks);
         WriteMissingSheet(wb, allForms);
         return ws;
@@ -205,14 +205,15 @@ public static class GlycolClaimExcelBuilder
 
     private static void SetNumberOrText(IXLCell cell, string? text) => CoolingSummarySheet.SetNumberOrText(cell, text);
 
-    private static string RegionTitle(List<Row> rows)
-        => CoolingSummarySheet.RegionPrefix(rows.Select(x => x.Store)) + "MİGROS SATIŞ MAĞAZALARI SOĞUTMA GLİKOL KULLANIM";
+    /// <summary>Başlık hakediş türüne göre: "… SOĞUTMA GLİKOL KULLANIM" ya da "… SOĞUTMA GAZ KULLANIM".</summary>
+    private static string RegionTitle(List<Row> rows, ProgressClaim claim)
+        => CoolingSummarySheet.RegionPrefix(rows.Select(x => x.Store)) + GlycolClaim.TitleCore(claim.CoolingCategory);
 
-    private static void WriteFooter(IXLWorksheet ws, int r, int lastDataRow, List<Row> rows)
+    private static void WriteFooter(IXLWorksheet ws, int r, int lastDataRow, List<Row> rows, ProgressClaim claim)
     {
         var label = ws.Range(r, ColStoreCode, r, ColTotal);
         label.Merge();
-        label.Value = RegionTitle(rows) + " HAKEDİŞİ";
+        label.Value = RegionTitle(rows, claim) + " HAKEDİŞİ";
         label.Style.Font.Bold = true;
         label.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
         label.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
@@ -239,8 +240,13 @@ public static class GlycolClaimExcelBuilder
         var date = sample.ExchangeRateActualDate ?? sample.ExchangeRateDate;
         var source = string.IsNullOrWhiteSpace(sample.ExchangeRateSource) ? "" : $", {sample.ExchangeRateSource}";
         var datePart = date.HasValue ? $" {date.Value:dd.MM.yyyy}" : "";
-        var note = $"Not: Birim fiyat = {sample.ForeignPrice!.Value.ToString("0.####", Tr)} EUR × EUR kuru {EurPricing.FormatRate(rate)} TL " +
-                   $"= {(sample.ForeignPrice.Value * rate).ToString("N2", Tr)} TL (kur{source}{datePart}).";
+        // Tek fiyat varsa (glikol; ya da tüm gazlar aynı fiyatsa) hesap açıkça yazılır; farklı EUR fiyatları varsa genel not düşülür.
+        var eurPrices = rows.Select(x => x.Item).Where(i => i.ForeignPrice.HasValue && i.ExchangeRate.HasValue)
+            .Select(i => i.ForeignPrice!.Value).Distinct().Count();
+        var note = eurPrices == 1
+            ? $"Not: Birim fiyat = {sample.ForeignPrice!.Value.ToString("0.####", Tr)} EUR × EUR kuru {EurPricing.FormatRate(rate)} TL " +
+              $"= {(sample.ForeignPrice.Value * rate).ToString("N2", Tr)} TL (kur{source}{datePart})."
+            : $"Not: Birim fiyatlar = EUR fiyatı × EUR kuru {EurPricing.FormatRate(rate)} TL (kur{source}{datePart}).";
         var cell = ws.Cell(r, ColStoreCode);
         cell.Value = note;
         cell.Style.Font.Italic = true;

@@ -23,10 +23,10 @@ public class CoolingClaimCategoryTests
         new(db, new CurrentDisciplineService { CurrentDiscipline = discipline });
 
     [Fact]
-    public void KompresorGlikolKismiTadilatVeBakimOnarimSecilebilir_DigerleriYakinda()
+    public void KompresorGlikolKismiTadilatGazVeBakimOnarimSecilebilir_DigerleriYakinda()
     {
         var available = Enum.GetValues<CoolingClaimCategory>().Where(c => c.IsAvailable()).ToList();
-        Assert.Equal(new[] { CoolingClaimCategory.CompressorReplacement, CoolingClaimCategory.GlycolUsage, CoolingClaimCategory.PartialRenovation, CoolingClaimCategory.MaintenanceRepair }, available);
+        Assert.Equal(new[] { CoolingClaimCategory.CompressorReplacement, CoolingClaimCategory.GlycolUsage, CoolingClaimCategory.PartialRenovation, CoolingClaimCategory.GasUsage, CoolingClaimCategory.MaintenanceRepair }, available);
         Assert.Equal(8, Enum.GetValues<CoolingClaimCategory>().Length);
     }
 

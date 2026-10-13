@@ -325,7 +325,7 @@ public class GlycolClaimTests
         var claim = new MainClaim
         {
             Name = "Haziran Glikol", CompanyName = "İNTİKOŞ", Month = 6, Year = 2026, Discipline = MechanicalDiscipline.Cooling,
-            CoolingCategory = glycol ? CoolingClaimCategory.GlycolUsage : CoolingClaimCategory.GasUsage,
+            CoolingCategory = glycol ? CoolingClaimCategory.GlycolUsage : CoolingClaimCategory.Monitoring,   // kullanım (Glikol/Gaz) hakedişi OLMAYAN bir tür
             EurRate = Rate, EurRateSource = "TCMB", EurRateDate = new DateTime(2026, 7, 31),
         };
         db.ProgressClaims.Add(claim);

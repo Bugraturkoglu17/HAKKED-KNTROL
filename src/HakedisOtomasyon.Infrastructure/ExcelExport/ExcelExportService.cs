@@ -60,7 +60,8 @@ public class ExcelExportService : IExcelExportService
             : await _settings.GetAsync(SettingKeys.CompanyName, "Şirket Adı");
 
         // Soğutma "Glikol Kullanım" hakedişi: kendine özgü tek tablo düzeni (servis ücreti yok, mağaza bazlı toplamlar)
-        if (HakedisOtomasyon.Application.GlycolClaim.IsGlycol(claim.Discipline, claim.CoolingCategory))
+        // Gaz Kullanım hakedişi Glikol ile AYNI düzeni kullanır (başlık ve satırdaki gaz kalemi dışında fark yok).
+        if (HakedisOtomasyon.Application.GlycolClaim.IsUsageClaim(claim.Discipline, claim.CoolingCategory))
             return await ExportGlycolClaimAsync(claim, progress);
 
         // Soğutma "Bakım & Onarım" / "Kompresör Değişim" hakedişi: kalem bazlı tablo + icmal (her forma şehir içi/dışı servis bedeli).
@@ -172,7 +173,8 @@ public class ExcelExportService : IExcelExportService
 
     /// <summary>Soğutma Glikol Kullanım hakedişinin Excel'i (bkz. <see cref="GlycolClaimExcelBuilder"/>).</summary>
     private Task<string> ExportGlycolClaimAsync(ProgressClaim claim, IProgress<string>? progress)
-        => ExportCoolingWorkbookAsync(claim, progress, "Glikol hakediş tablosu oluşturuluyor...", "Glikol_Hakedis",
+        => ExportCoolingWorkbookAsync(claim, progress, "Hakediş tablosu oluşturuluyor...",
+            claim.CoolingCategory == CoolingClaimCategory.GasUsage ? "Gaz_Hakedis" : "Glikol_Hakedis",
             wb => GlycolClaimExcelBuilder.Build(wb, claim, claim.ServiceForms.Where(f => !f.IsArchived)));
 
     /// <summary>Soğutma Bakım &amp; Onarım hakedişinin Excel'i (bkz. <see cref="MaintenanceClaimExcelBuilder"/>).</summary>

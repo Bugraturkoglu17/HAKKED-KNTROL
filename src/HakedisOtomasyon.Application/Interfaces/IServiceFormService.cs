@@ -26,7 +26,7 @@ public interface IServiceFormService
     /// Soğutma Glikol hakedişi: bir form satırının kullanıcı girişlerini kaydeder — mağaza, form tarihi, form no
     /// ve glikol miktarı (kullanıcının düzenleyebildiği tek kalem alanı). Eksiksizse form "Tamamlandı" olur.
     /// </summary>
-    Task<ServiceFormDto> SaveGlycolRowAsync(int formId, int? storeId, DateTime? formDate, string? formNumber, decimal quantity);
+    Task<ServiceFormDto> SaveGlycolRowAsync(int formId, int? storeId, DateTime? formDate, string? formNumber, decimal quantity, int? priceItemId = null);
 
     /// <summary>
     /// Soğutma Glikol hakedişi: bir form satırını hakediş tablosundan çıkarır — mağaza, tarih, form no ve miktar temizlenir,
@@ -39,7 +39,9 @@ public interface IServiceFormService
     /// yer tutucu satırı varsa onu kullanır, yoksa aynı dosyaya bağlı yeni bir satır oluşturur — bir dosyadan istenen sayıda
     /// kayıt girilebilir. Dosyanın kendisi kopyalanmaz.
     /// </summary>
-    Task<ServiceFormDto> AddGlycolEntryAsync(int sourceFormId, int? storeId, DateTime? formDate, string? formNumber, decimal quantity);
+    /// <remarks><paramref name="priceItemId"/>: yalnız Gaz Kullanım hakedişinde — satırın gaz türü (fiyat listesindeki gaz kalemi).
+    /// Glikol hakedişinde yok sayılır (glikol kalemi otomatik).</remarks>
+    Task<ServiceFormDto> AddGlycolEntryAsync(int sourceFormId, int? storeId, DateTime? formDate, string? formNumber, decimal quantity, int? priceItemId = null);
 
     /// <summary>
     /// Soğutma Glikol hakedişi: bir kaydı siler. Aynı dosyada başka kayıt varsa satır tamamen kaldırılır; dosyanın son kaydıysa

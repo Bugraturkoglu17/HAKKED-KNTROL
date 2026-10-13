@@ -4,9 +4,11 @@
 @using HakedisOtomasyon.Domain.Enums
 @inject IServiceFormService FormService
 @inject IStoreService StoreService
+@inject IPriceListService PriceListService
 @inject ISnackbar Snackbar
 
-@* Soğutma — Glikol Kullanım hakedişi, tek ekran:
+@* Soğutma — Glikol Kullanım ve Gaz Kullanım hakedişleri, tek ekran (ikisi AYNI; Gaz'da ek olarak satırın gaz türü seçilir —
+   R22, R404, R407C, R410A, R134a ... fiyat listesindeki "SOĞUTUCU GAZ" kalemleri; seçim Ekle'den sonra yerinde kalır):
    SOL : yüklenen servis formu (PDF/görsel) her zaman açık; birden çok dosya varsa dosyalar arasında gezinilir.
    SAĞ : tek giriş alanı (mağaza, tarih, form no, miktar) → "Ekle" ile alt tabloya satır eklenir ve giriş alanı TEMİZLENİR;
          aynı dosyadan (örn. çok sayfalı PDF) istenen sayıda kayıt girilebilir. Glikol kalemi otomatik, servis ücreti yok.
@@ -68,7 +70,16 @@
                          Color="@(EurPricing.IsValidRate(Claim?.EurRate) ? Color.Info : Color.Warning)">
                     @(EurPricing.IsValidRate(Claim?.EurRate) ? $"EUR Kuru: {EurPricing.FormatRate(Claim!.EurRate!.Value)} ₺" : "EUR kuru girilmedi")
                 </MudChip>
-                @if (Info is not null)
+                @if (IsGas)
+                {
+                    @if (_gas is not null)
+                    {
+                        <MudChip T="string" Size="Size.Small" Icon="@Icons.Material.Filled.Inventory2">
+                            Malzeme: <b>@_gas.PozNo</b> — @_gas.Description · Fiyat: <b>@GasUnitPriceTl(_gas).ToString("N2", Tr) ₺</b>
+                        </MudChip>
+                    }
+                }
+                else if (Info is not null)
                 {
                     <MudChip T="string" Size="Size.Small" Icon="@Icons.Material.Filled.Inventory2">
                         Malzeme: <b>@Info.ItemCode</b> — @Info.Description · Fiyat: <b>@Info.UnitPrice.ToString("N2", Tr) ₺</b>
@@ -83,7 +94,20 @@
                     <MudText Typo="Typo.caption" Style="font-weight:600" Class="mb-2 d-block">
                         @(_editingId.HasValue ? "Kaydı güncelle" : "Yeni kayıt") — @CurrentFile.FileName
                     </MudText>
-                    <div @key="_entryKey">
+                    @if (IsGas)
+                    {
+                        @* Gaz türü: satırın kalemi. Ekle'den sonra TEMİZLENMEZ (art arda aynı gaz girilir); değiştirilebilir. *@
+                        <MudSelect T="PriceItemDto" Value="@_gas" ValueChanged="@(g => _gas = g)" Label="Gaz türü *"
+                                   Variant="Variant.Outlined" Margin="Margin.Dense" Dense Class="mb-2"
+                                   ToStringFunc="@(g => g is null ? string.Empty : GasText(g))"
+                                   Placeholder="@(_gasItems.Count == 0 ? "Fiyat listesinde soğutucu gaz kalemi yok" : "Seçin")">
+                            @foreach (var g in _gasItems)
+                            {
+                                <MudSelectItem T="PriceItemDto" Value="@g">@GasText(g) · @GasUnitPriceTl(g).ToString("N2", Tr) ₺/@(string.IsNullOrWhiteSpace(g.Unit) ? "kg" : g.Unit)</MudSelectItem>
+                            }
+                        </MudSelect>
+                    }
+                    <div @key="@($"kayit-{_entryKey}")">
                         <MudGrid Spacing="2">
                             <MudItem xs="12" md="9">
                                 <MudAutocomplete T="StoreDto" Value="@_store" ValueChanged="@(s => _store = s)"
@@ -117,7 +141,7 @@
                     </div>
                     <MudStack Row AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mt-2">
                         <MudText Typo="Typo.caption" Color="Color.Secondary">
-                            @if (Info is not null) { <span>Toplam: <b>@EntryTotal.ToString("N2", Tr) ₺</b></span> }
+                            @if (EntryTotal > 0m) { <span>Toplam: <b>@EntryTotal.ToString("N2", Tr) ₺</b></span> }
                         </MudText>
                         <MudStack Row Spacing="1">
                             @if (_editingId.HasValue)
@@ -155,6 +179,7 @@
                             <th>Fmt</th>
                             <th>Tarih</th>
                             <th>Form No</th>
+                            @if (IsGas) { <th>Gaz</th> }
                             <th class="num">Miktar</th>
                             <th class="num">Toplam</th>
                             <th style="width:30px"></th>
@@ -163,7 +188,7 @@
                     <tbody>
                         @if (AddedForms.Count == 0)
                         {
-                            <tr><td colspan="8" style="white-space:normal"><MudText Typo="Typo.caption" Color="Color.Secondary" Class="pa-2">Henüz satır eklenmedi. Formu inceleyip yukarıdan bilgileri girin ve "Ekle"ye basın.</MudText></td></tr>
+                            <tr><td colspan="@(IsGas ? 9 : 8)" style="white-space:normal"><MudText Typo="Typo.caption" Color="Color.Secondary" Class="pa-2">Henüz satır eklenmedi. Formu inceleyip yukarıdan bilgileri girin ve "Ekle"ye basın.</MudText></td></tr>
                         }
                         @{ int n = 0; }
                         @foreach (var f in AddedForms)
@@ -184,6 +209,10 @@
                                         </MudTooltip>
                                     }
                                 </td>
+                                @if (IsGas)
+                                {
+                                    <td title="@item?.Description"><b>@item?.ItemCode</b>&nbsp;@GasShortName(item?.Description)</td>
+                                }
                                 <td class="num">@((item?.Quantity ?? 0m).ToString("0.##", Tr))</td>
                                 <td class="num" style="font-weight:600">@RowTotal(f).ToString("N2", Tr)&nbsp;₺</td>
                                 <td style="padding:0 !important">
@@ -199,7 +228,7 @@
                     </tbody>
                     <tfoot>
                         <tr>
-                            <td colspan="5" class="num">TOPLAM</td>
+                            <td colspan="@(IsGas ? 6 : 5)" class="num">TOPLAM</td>
                             <td class="num">@AddedForms.Sum(f => GlycolItem(f)?.Quantity ?? 0m).ToString("0.##", Tr)</td>
                             <td class="num">@GrandTotal.ToString("N2", Tr)&nbsp;₺</td>
                             <td></td>
@@ -250,6 +279,27 @@
 
     private string Period => GlycolClaim.PeriodName(Claim?.Month ?? 0);
 
+    // ── Gaz Kullanım: satırın gaz türü (fiyat listesindeki "SOĞUTUCU GAZ" kalemleri) ──────────────
+    private bool IsGas => Claim is not null && GlycolClaim.IsGas(Claim.Discipline, Claim.CoolingCategory);
+    private List<PriceItemDto> _gasItems = new();
+    /// <summary>Seçili gaz türü. Ekle'den sonra temizlenmez — art arda aynı gaz girilebilsin.</summary>
+    private PriceItemDto? _gas;
+
+    private static string GasShortName(string? description)
+    {
+        var d = (description ?? string.Empty).Trim();
+        var i = d.LastIndexOf(' ');
+        return i >= 0 ? d[(i + 1)..] : d;   // "SOĞUTUCU GAZ 10,9 KG TÜP (kg fiyatı) R404" → "R404"
+    }
+
+    private static string GasText(PriceItemDto g) => $"{g.PozNo} — {GasShortName(g.Description)} ({g.Description})";
+
+    /// <summary>Gazın TL birim fiyatı: EUR fiyatı × hakediş EUR kuru (yuvarlanmadan); TL fiyatlıysa birim fiyat.</summary>
+    private decimal GasUnitPriceTl(PriceItemDto g)
+        => g.ForeignPrice is > 0m && EurPricing.IsEur(g.CurrencyCode)
+            ? (EurPricing.IsValidRate(Claim?.EurRate) ? g.ForeignPrice.Value * Claim!.EurRate!.Value : 0m)
+            : g.UnitPrice;
+
     /// <summary>Yüklenen dosyalar (yüklenme sırasıyla). Bir dosyadan birden çok kayıt girilebildiği için kayıtlar dosya yoluna göre gruplanır.</summary>
     private List<FileRef> Files => Forms
         .Where(f => !string.IsNullOrEmpty(f.FilePath))
@@ -282,6 +332,13 @@
     protected override async Task OnInitializedAsync()
     {
         _stores = await StoreService.GetAllAsync();
+        if (IsGas)
+        {
+            _gasItems = (await PriceListService.GetAllAsync())
+                .Where(p => GlycolClaim.IsGasPriceName(p.Description))
+                .OrderBy(p => p.PozNo, Comparer<string?>.Create((a, b) => GlycolClaim.CompareStoreCodes(a, b)))
+                .ToList();
+        }
         SyncOrder();
         var files = Files;
         var firstEmpty = files.FindIndex(f => EntryCount(f) == 0);
@@ -328,6 +385,7 @@
         _formNo = f.FormNumber;
         var item = GlycolItem(f);
         _qty = item is { Quantity: > 0m } ? item.Quantity : null;
+        if (IsGas) _gas = _gasItems.FirstOrDefault(g => g.PozNo == item?.ItemCode) ?? _gas;   // satırın gaz türü
         _error = null;
         _entryKey++;
         return Task.CompletedTask;
@@ -352,6 +410,7 @@
     {
         get
         {
+            if (IsGas) return _gas is not null && _qty > 0m ? _qty.Value * GasUnitPriceTl(_gas) : 0m;
             var info = Info;
             if (info is null || !(_qty > 0m)) return 0m;
             return info.ForeignPrice.HasValue && info.ExchangeRate.HasValue
@@ -385,6 +444,7 @@
     private string MissingText()
     {
         var m = new List<string>();
+        if (IsGas && _gas is null) m.Add("gaz türü");
         if (_store is null) m.Add("mağaza");
         if (!_date.HasValue) m.Add("tarih");
         if (string.IsNullOrWhiteSpace(_formNo)) m.Add("form no");
@@ -407,9 +467,10 @@
         _saving = true;
         try
         {
+            int? gasId = IsGas ? _gas!.Id : null;   // Glikol'de kalem otomatik; Gaz'da satırın gaz türü
             var saved = _editingId.HasValue
-                ? await FormService.SaveGlycolRowAsync(_editingId.Value, _store!.Id, _date, no, _qty!.Value)
-                : await FormService.AddGlycolEntryAsync(file.FirstFormId, _store!.Id, _date, no, _qty!.Value);
+                ? await FormService.SaveGlycolRowAsync(_editingId.Value, _store!.Id, _date, no, _qty!.Value, gasId)
+                : await FormService.AddGlycolEntryAsync(file.FirstFormId, _store!.Id, _date, no, _qty!.Value, gasId);
             UpsertForm(saved);
             if (!_order.Contains(saved.Id)) _order.Add(saved.Id);
             if (duplicate) Snackbar.Add($"Dikkat: \"{no}\" form numarası başka bir satırda da var.", Severity.Warning);

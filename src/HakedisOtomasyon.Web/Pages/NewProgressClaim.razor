@@ -568,7 +568,7 @@
     };
 
     /// <summary>Soğutma "Glikol Kullanım" hakedişi mi? (Form İşleme adımı ve Excel çıktısı farklıdır.)</summary>
-    private bool IsGlycol => _claim is not null && GlycolClaim.IsGlycol(_claim.Discipline, _claim.CoolingCategory);
+    private bool IsGlycol => _claim is not null && GlycolClaim.IsUsageClaim(_claim.Discipline, _claim.CoolingCategory);   // Glikol ya da Gaz Kullanım (aynı ekran)
 
     /// <summary>Soğutma "Bakım &amp; Onarım" hakedişi mi? (Form İşleme adımı tek ekrandır: <c>MaintenanceFormsTable</c>; Kompresör Değişim de aynı ekranı kullanır.)</summary>
     private bool IsMaintenance => _claim is not null && MaintenanceClaim.UsesMaterialScreen(_claim.Discipline, _claim.CoolingCategory);
