@@ -40,6 +40,41 @@ public static class MaintenanceClaim
     public static bool IsMaintenance(MechanicalDiscipline discipline, CoolingClaimCategory? category)
         => discipline == MechanicalDiscipline.Cooling && category == CoolingClaimCategory.MaintenanceRepair;
 
+    /// <summary>Soğutma "Kompresör Değişim" hakedişi mi? Bakım &amp; Onarım ile AYNI yapıdadır (form başına şehir içi/dışı servis
+    /// bedeli + fiyat listesinden kalemler); ek olarak hakedişe özel kalem (kompresör marka/modeli) ve FATURA + % kalemi girilir.</summary>
+    public static bool IsCompressor(MechanicalDiscipline discipline, CoolingClaimCategory? category)
+        => discipline == MechanicalDiscipline.Cooling && category == CoolingClaimCategory.CompressorReplacement;
+
+    /// <summary>Hakediş, "form bilgisi + alt alta kalem" tek ekranını (MaintenanceFormsTable) kullanan türlerden mi?</summary>
+    public static bool UsesMaterialScreen(MechanicalDiscipline discipline, CoolingClaimCategory? category)
+        => IsMaintenance(discipline, category) || IsCompressor(discipline, category);
+
+    /// <summary>Çıktı başlığının bölgeden sonraki kısmı ("İÇ ANADOLU " + bu + " HAKEDİŞİ" / " İCMALİ").</summary>
+    public static string TitleCore(CoolingClaimCategory? category) => category == CoolingClaimCategory.CompressorReplacement
+        ? "MİGROS SOĞUTMA KOMPRESÖR TEMİN VE DEĞİŞİM"
+        : "MİGROS SATIŞ MAĞAZALARI SOĞUTMA SERVİS VE BAKIM MALZEMELERİ";
+
+    /// <summary>
+    /// Hakedişe özel kalemin birim fiyatı ve çıktıdaki MALZEME KODU etiketi:
+    ///   • Liste fiyatı            → fiyat = tutar                    → "LİSTE FİYATI"
+    ///   • İskontolu liste fiyatı  → fiyat = tutar × (1 − %/100)      → "%10 İSKONTOLU LİSTE FİYATI"
+    ///   • Fatura + ilave          → fiyat = tutar × (1 + %/100)      → "FATURA +%10 M.K."
+    /// Yüzde elle girilir (sabit %10 değildir). Fiyat yuvarlanmaz; çıktı 2 hane gösterir.
+    /// </summary>
+    public static (decimal UnitPrice, string CodeLabel) CustomItemPricing(CustomPriceBasis basis, decimal baseAmount, decimal percent)
+    {
+        if (baseAmount <= 0m) throw new InvalidOperationException("Tutar sıfırdan büyük olmalıdır.");
+        if (basis != CustomPriceBasis.ListPrice && (percent < 0m || percent > 100m))
+            throw new InvalidOperationException("Yüzde 0 ile 100 arasında olmalıdır.");
+        var p = percent.ToString("0.##", Tr);
+        return basis switch
+        {
+            CustomPriceBasis.DiscountedListPrice => (baseAmount * (1m - percent / 100m), percent == 0m ? "LİSTE FİYATI" : $"%{p} İSKONTOLU LİSTE FİYATI"),
+            CustomPriceBasis.InvoicePlusMarkup => (baseAmount * (1m + percent / 100m), percent == 0m ? "FATURA" : $"FATURA +%{p} M.K."),
+            _ => (baseAmount, "LİSTE FİYATI"),
+        };
+    }
+
     private static string Norm(string? s)
         => string.Join(' ', (s ?? string.Empty).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)).ToUpper(Tr);
 

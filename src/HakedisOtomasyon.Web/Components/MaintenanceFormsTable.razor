@@ -6,8 +6,11 @@
 @inject IStoreService StoreService
 @inject IPriceListService PriceListService
 @inject ISnackbar Snackbar
+@inject IDialogService DialogService
 
-@* Soğutma — Bakım & Onarım hakedişi, tek ekran (Glikol ekranının malzeme eklenebilir hâli):
+@* Soğutma — Bakım & Onarım ve Kompresör Değişim hakedişleri, tek ekran (Glikol ekranının malzeme eklenebilir hâli).
+   Kompresör Değişim'de ayrıca "Özel kalem / Fatura": fiyat listesinde olmayan, YALNIZ bu hakedişe eklenen kalem
+   (kompresör marka/modeli; FATURA + %, liste fiyatı ya da iskontolu liste fiyatı). Faturalı satırda ataç simgesi görünür.
    SOL : yüklenen servis formu (PDF/görsel) her zaman açık; birden çok dosya varsa dosyalar arasında gezinilir.
    SAĞ : üstte formun bilgisi (mağaza, tarih, bakım form no) — bir kez girilir; altında malzeme + miktar → "Ekle" ile tabloya satır
          eklenir. Aynı forma alt alta malzeme eklenmeye devam edilir (yalnız malzeme/miktar temizlenir). İlk "Ekle"de mağazanın iline
@@ -176,6 +179,15 @@
                                            StartIcon="@Icons.Material.Filled.CleaningServices" OnClick="ClearAll">
                                     Temizle
                                 </MudButton>
+                                @if (AllowCustomItems)
+                                {
+                                    <MudTooltip Text="Fiyat listesinde olmayan kalem (kompresör marka/modeli) ya da FATURA + % — yalnız bu hakedişe eklenir">
+                                        <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Small" Disabled="@_saving"
+                                                   StartIcon="@Icons.Material.Filled.AttachFile" OnClick="AddCustomAsync">
+                                            Özel kalem / Fatura
+                                        </MudButton>
+                                    </MudTooltip>
+                                }
                             }
                             <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" Disabled="@_saving"
                                        StartIcon="@(_editingItemId.HasValue ? Icons.Material.Filled.Save : Icons.Material.Filled.Add)"
@@ -239,6 +251,14 @@
                                 <td><b>@it.ItemCode</b></td>
                                 <td class="item" title="@name @type">
                                     @if (isFee) { <MudIcon Icon="@Icons.Material.Filled.AutoAwesome" Style="font-size:12px;vertical-align:middle;color:#1976d2" />@(" ") }
+                                    @if (it.IsInvoiceBased)
+                                    {
+                                        var inv = f.Invoices.FirstOrDefault(x => x.Id == it.InvoiceId);
+                                        var hasFile = !string.IsNullOrWhiteSpace(inv?.FilePath);
+                                        <MudTooltip Text="@InvoiceTooltip(inv)">
+                                            <MudIcon Icon="@Icons.Material.Filled.AttachFile" Style="@($"font-size:14px;vertical-align:middle;color:{(hasFile ? "#e65100" : "#bdbdbd")}")" />
+                                        </MudTooltip>
+                                    }
                                     @name
                                     @if (type.Length > 0) { <span style="color:#78909c">&nbsp;· @type</span> }
                                 </td>
@@ -287,6 +307,9 @@
     [Parameter] public EventCallback OnBack { get; set; }
     [Parameter] public EventCallback OnExport { get; set; }
     [Parameter] public EventCallback OnChanged { get; set; }
+
+    /// <summary>Hakedişe özel kalem / FATURA + % girişi açık mı? (Kompresör Değişim'de açık.)</summary>
+    [Parameter] public bool AllowCustomItems { get; set; }
 
     private static readonly CultureInfo Tr = CultureInfo.GetCultureInfo("tr-TR");
 
@@ -526,6 +549,77 @@
         if (idx >= 0) Forms[idx] = saved; else Forms.Add(saved);
     }
 
+    private static string InvoiceTooltip(InvoiceDto? inv)
+        => inv is null || string.IsNullOrWhiteSpace(inv.FilePath)
+            ? "Faturalı kalem — fatura dosyası eklenmemiş"
+            : $"Faturalı kalem — {inv.FileName} (fatura {inv.InvoiceAmount.ToString("N2", Tr)} ₺ + %{(inv.MarkupRate * 100m).ToString("0.##", Tr)})";
+
+    /// <summary>Formun bu ekleme öncesindeki kalem kimlikleri (yeni satırları ayırt etmek için).</summary>
+    private HashSet<int> ItemIdsOfCurrentEntry(FileRef file)
+        => Forms.FirstOrDefault(f => f.FilePath == file.FilePath && f.StoreId == _store!.Id && f.FormDate == _date!.Value.Date
+                                     && string.Equals(f.FormNumber?.Trim(), _formNo!.Trim(), StringComparison.OrdinalIgnoreCase))
+               ?.ServiceItems.Select(i => i.Id).ToHashSet() ?? new HashSet<int>();
+
+    /// <summary>Ekleme sonucunu ekrana işler: yeni satırlar EN ÜSTE (önce otomatik servis bedeli, en üstte az önce eklenen kalem).</summary>
+    private void ApplyAdded(MaintenanceEntryResult result, HashSet<int> before)
+    {
+        UpsertForm(result.Form);
+        _flashIds.Clear();
+        var added = result.Form.ServiceItems.Where(i => !before.Contains(i.Id)).OrderBy(i => i.SortOrder).Select(i => i.Id).ToList();
+        foreach (var id in added) { _order.Remove(id); _order.Insert(0, id); _flashIds.Add(id); }
+        if (result.ItemId is { } itemId)   // miktarı artan mevcut kalem de en üste gelsin
+        {
+            _order.Remove(itemId); _order.Insert(0, itemId); _flashIds.Add(itemId);
+        }
+
+        if (result.Merged)
+            Snackbar.Add("Bu kalem formda zaten vardı — miktarı güncellendi.", Severity.Info);
+        switch (result.Fee)
+        {
+            case MaintenanceClaim.ServiceFeeResult.UnknownCity:
+                Snackbar.Add("Mağazanın ili kayıtlı değil; servis bedeli eklenmedi. Gerekirse S1/S2 kalemini elle ekleyin.", Severity.Warning);
+                break;
+            case MaintenanceClaim.ServiceFeeResult.MissingPriceItem:
+                Snackbar.Add("Fiyat listesinde servis bedeli kalemi (1 EKIP ŞEHİR İÇİ / DIŞI SERVİS BEDELİ) bulunamadı.", Severity.Warning);
+                break;
+        }
+    }
+
+    // ── Özel kalem / Fatura + % (yalnız bu hakedişe eklenir; fiyat listesine yazılmaz) ──────────────
+    private async Task AddCustomAsync()
+    {
+        var file = CurrentFile;
+        if (file is null || _saving) return;
+        var missing = MissingHeader();
+        if (missing.Length > 0) { _error = $"Önce form bilgisini girin — eksik alan: {missing}"; return; }
+        _error = null;
+
+        var parameters = new DialogParameters<CustomClaimItemDialog>
+        {
+            { x => x.Year, Claim?.Year ?? DateTime.Now.Year },
+            { x => x.Month, Claim?.Month ?? DateTime.Now.Month },
+        };
+        var dialog = await DialogService.ShowAsync<CustomClaimItemDialog>("Özel kalem / Fatura", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true });
+        var dialogResult = await dialog.Result;
+        if (dialogResult is null || dialogResult.Canceled || dialogResult.Data is not CustomClaimItemInput input) return;
+
+        _saving = true;
+        try
+        {
+            var before = ItemIdsOfCurrentEntry(file);
+            var result = await FormService.AddCustomMaintenanceItemAsync(file.FirstFormId, _store!.Id, _date!.Value, _formNo!, input);
+            ApplyAdded(result, before);
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally { _saving = false; }
+        StateHasChanged();
+        await OnChanged.InvokeAsync();
+    }
+
     // ── Ekle ────────────────────────────────────────────────────────────
     private async Task AddAsync()
     {
@@ -539,34 +633,9 @@
         _saving = true;
         try
         {
-            var before = Forms.FirstOrDefault(f => f.FilePath == file.FilePath && f.StoreId == _store!.Id && f.FormDate == _date!.Value.Date
-                                                   && string.Equals(f.FormNumber?.Trim(), _formNo!.Trim(), StringComparison.OrdinalIgnoreCase))
-                             ?.ServiceItems.Select(i => i.Id).ToHashSet() ?? new HashSet<int>();
-
+            var before = ItemIdsOfCurrentEntry(file);
             var result = await FormService.AddMaintenanceItemAsync(file.FirstFormId, _store!.Id, _date!.Value, _formNo!, _priceItem?.Id, _qty ?? 0m);
-            UpsertForm(result.Form);
-
-            // Yeni satırlar EN ÜSTE: önce otomatik servis bedeli (varsa), en üstte az önce eklenen kalem
-            _flashIds.Clear();
-            var added = result.Form.ServiceItems.Where(i => !before.Contains(i.Id)).OrderBy(i => i.SortOrder).Select(i => i.Id).ToList();
-            foreach (var id in added) { _order.Remove(id); _order.Insert(0, id); _flashIds.Add(id); }
-            if (result.ItemId is { } itemId)   // miktarı artan mevcut kalem de en üste gelsin
-            {
-                _order.Remove(itemId); _order.Insert(0, itemId); _flashIds.Add(itemId);
-            }
-
-            if (result.Merged)
-                Snackbar.Add("Bu kalem formda zaten vardı — miktarı güncellendi.", Severity.Info);
-            switch (result.Fee)
-            {
-                case MaintenanceClaim.ServiceFeeResult.UnknownCity:
-                    Snackbar.Add("Mağazanın ili kayıtlı değil; servis bedeli eklenmedi. Gerekirse S1/S2 kalemini elle ekleyin.", Severity.Warning);
-                    break;
-                case MaintenanceClaim.ServiceFeeResult.MissingPriceItem:
-                    Snackbar.Add("Fiyat listesinde servis bedeli kalemi (1 EKIP ŞEHİR İÇİ / DIŞI SERVİS BEDELİ) bulunamadı.", Severity.Warning);
-                    break;
-            }
-
+            ApplyAdded(result, before);
             ClearItem();   // form bilgisi kalır — aynı forma alt alta malzeme eklenmeye devam edilir
         }
         catch (Exception ex)

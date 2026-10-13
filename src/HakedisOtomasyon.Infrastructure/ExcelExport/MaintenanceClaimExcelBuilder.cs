@@ -6,7 +6,8 @@ using HakedisOtomasyon.Domain.Entities;
 namespace HakedisOtomasyon.Infrastructure.ExcelExport;
 
 /// <summary>
-/// Soğutma "Bakım &amp; Onarım" (servis ve bakım malzemeleri) hakediş Excel çıktısı. İki sayfa:
+/// Soğutma "Bakım &amp; Onarım" (servis ve bakım malzemeleri) ve "Kompresör Değişim" hakediş Excel çıktısı (aynı düzen,
+/// başlık türe göre). İki sayfa:
 /// 1) "GENEL ICMAL" — mağaza bazında özet (bkz. <see cref="CoolingSummarySheet"/>).
 /// 2) "MALZ HAKEDIS" — ayrıntı (onaylı örnek tabloya göre), her KALEM bir satırdır:
 ///   SIRA NO | MAĞAZA KODU | MAĞAZA ADI | FORMAT | TARİH | BAKIM FORM NO | MALZEME KODU | MALZEME ADI | MALZEME TİPİ |
@@ -25,7 +26,8 @@ public static class MaintenanceClaimExcelBuilder
     private const string DateFormat = "[$-41F]d mmmm yy";   // 23 Temmuz 26
     public const string DetailSheetName = "MALZ HAKEDIS";
     public const string SummarySheetName = CoolingSummarySheet.SheetName;
-    public const string TitleCore = "MİGROS SATIŞ MAĞAZALARI SOĞUTMA SERVİS VE BAKIM MALZEMELERİ";
+    /// <summary>Ayrıntı tablosunun son sütunu (GENEL TOPLAM) — sağına fatura görselleri dizilirken kullanılır.</summary>
+    public const int LastTableColumn = ColGrand;
 
     private const int ColNo = 1, ColStoreCode = 2, ColStoreName = 3, ColFormat = 4, ColDate = 5, ColFormNo = 6, ColItemCode = 7,
         ColItemName = 8, ColItemType = 9, ColQty = 10, ColUnit = 11, ColPrice = 12, ColTotal = 13, ColGrand = 14;
@@ -90,6 +92,8 @@ public static class MaintenanceClaimExcelBuilder
         var allForms = forms.Where(f => !f.IsArchived).ToList();
         var rows = CollectRows(allForms);
         var regionPrefix = CoolingSummarySheet.RegionPrefix(rows.Select(x => x.Store));
+        // Başlık hakediş türüne göre: Bakım & Onarım → "… SERVİS VE BAKIM MALZEMELERİ", Kompresör Değişim → "… KOMPRESÖR TEMİN VE DEĞİŞİM"
+        var titleCore = MaintenanceClaim.TitleCore(claim.CoolingCategory);
 
         var ws = wb.Worksheets.Add(DetailSheetName);
         ws.SetTabColor(XLColor.FromHtml("#339966"));
@@ -99,7 +103,7 @@ public static class MaintenanceClaimExcelBuilder
         // Başlık
         var title = ws.Range(TitleRow, ColNo, TitleRow, ColGrand);
         title.Merge();
-        title.Value = regionPrefix + TitleCore + " HAKEDİŞİ";
+        title.Value = regionPrefix + titleCore + " HAKEDİŞİ";
         title.Style.Font.Bold = true;
         title.Style.Font.FontSize = 11;
         title.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
@@ -136,7 +140,7 @@ public static class MaintenanceClaimExcelBuilder
         }
 
         int lastDataRow = r - 1;
-        WriteFooter(ws, r + 1, lastDataRow, regionPrefix);
+        WriteFooter(ws, r + 1, lastDataRow, regionPrefix + titleCore);
         WriteRateNote(ws, r + 3, rows);
 
         ws.SheetView.FreezeRows(SpacerRow);
@@ -146,7 +150,7 @@ public static class MaintenanceClaimExcelBuilder
         ws.Column(ColFormat).Width = 25;   // "SERVİS REYONLU M" sığsın
         ws.Column(ColDate).Width = 14;
         ws.Column(ColFormNo).Width = 12;
-        ws.Column(ColItemCode).Width = 12;
+        ws.Column(ColItemCode).Width = 16;   // "FATURA +%10 M.K." / "%10 İSKONTOLU LİSTE FİYATI" (iki satıra sarılır)
         ws.Column(ColItemName).Width = 52;
         ws.Column(ColItemType).Width = 30;
         ws.Column(ColQty).Width = 11;
@@ -158,7 +162,7 @@ public static class MaintenanceClaimExcelBuilder
         ws.PageSetup.FitToPages(1, 0);
         ws.PageSetup.SetRowsToRepeatAtTop(TitleRow, HeaderRow);
 
-        CoolingSummarySheet.Write(wb, CoolingSummarySheet.PeriodText(claim.Month, claim.Year), regionPrefix + TitleCore + " İCMALİ",
+        CoolingSummarySheet.Write(wb, CoolingSummarySheet.PeriodText(claim.Month, claim.Year), regionPrefix + titleCore + " İCMALİ",
             DetailSheetName, ColStoreCode, ColGrand, blocks);
         WriteMissingSheet(wb, allForms);
         return ws;
@@ -234,14 +238,16 @@ public static class MaintenanceClaimExcelBuilder
         range.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
         foreach (var c in new[] { ColPrice, ColTotal })
             ws.Cell(r, c).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
-        ws.Row(r).Height = 20;
+        // Uzun kod etiketi ("%10 İSKONTOLU LİSTE FİYATI") iki satıra sarılır; satır ona göre yükselir
+        ws.Cell(r, ColItemCode).Style.Alignment.WrapText = true;
+        ws.Row(r).Height = (item.ItemCode?.Trim().Length ?? 0) > 16 ? 30 : 20;
     }
 
-    private static void WriteFooter(IXLWorksheet ws, int r, int lastDataRow, string regionPrefix)
+    private static void WriteFooter(IXLWorksheet ws, int r, int lastDataRow, string title)
     {
         var label = ws.Range(r, ColNo, r, ColTotal);
         label.Merge();
-        label.Value = regionPrefix + TitleCore + " HAKEDİŞİ";
+        label.Value = title + " HAKEDİŞİ";
         label.Style.Font.Bold = true;
         label.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
         label.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;

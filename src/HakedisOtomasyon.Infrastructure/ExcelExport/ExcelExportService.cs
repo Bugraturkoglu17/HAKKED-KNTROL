@@ -63,8 +63,9 @@ public class ExcelExportService : IExcelExportService
         if (HakedisOtomasyon.Application.GlycolClaim.IsGlycol(claim.Discipline, claim.CoolingCategory))
             return await ExportGlycolClaimAsync(claim, progress);
 
-        // Soğutma "Bakım & Onarım" hakedişi: kalem bazlı tablo + icmal (her forma şehir içi/dışı servis bedeli)
-        if (HakedisOtomasyon.Application.MaintenanceClaim.IsMaintenance(claim.Discipline, claim.CoolingCategory))
+        // Soğutma "Bakım & Onarım" / "Kompresör Değişim" hakedişi: kalem bazlı tablo + icmal (her forma şehir içi/dışı servis bedeli).
+        // Kompresör Değişim'de fatura bazlı kalemlerin faturaları tablonun SAĞINA dizilir.
+        if (HakedisOtomasyon.Application.MaintenanceClaim.UsesMaterialScreen(claim.Discipline, claim.CoolingCategory))
             return await ExportMaintenanceClaimAsync(claim, progress);
 
         // Görsel kalite ayarını oku
@@ -176,16 +177,98 @@ public class ExcelExportService : IExcelExportService
 
     /// <summary>Soğutma Bakım &amp; Onarım hakedişinin Excel'i (bkz. <see cref="MaintenanceClaimExcelBuilder"/>).</summary>
     private Task<string> ExportMaintenanceClaimAsync(ProgressClaim claim, IProgress<string>? progress)
-        => ExportCoolingWorkbookAsync(claim, progress, "Bakım & Onarım hakediş tablosu oluşturuluyor...", "BakimOnarim_Hakedis",
-            wb => MaintenanceClaimExcelBuilder.Build(wb, claim, claim.ServiceForms.Where(f => !f.IsArchived)));
+    {
+        bool compressor = HakedisOtomasyon.Application.MaintenanceClaim.IsCompressor(claim.Discipline, claim.CoolingCategory);
+        var forms = claim.ServiceForms.Where(f => !f.IsArchived).ToList();
+        return ExportCoolingWorkbookAsync(claim, progress,
+            compressor ? "Kompresör Değişim hakediş tablosu oluşturuluyor..." : "Bakım & Onarım hakediş tablosu oluşturuluyor...",
+            compressor ? "KompresorDegisim_Hakedis" : "BakimOnarim_Hakedis",
+            wb => MaintenanceClaimExcelBuilder.Build(wb, claim, forms),
+            async wb =>
+            {
+                progress?.Report("Faturalar ekleniyor...");
+                await AddCoolingInvoiceBlocksAsync(wb.Worksheet(MaintenanceClaimExcelBuilder.DetailSheetName), forms,
+                    MaintenanceClaimExcelBuilder.LastTableColumn);
+            });
+    }
+
+    /// <summary>
+    /// Fatura bazlı kalemlerin faturalarını (görsel/PDF ilk sayfa) ayrıntı tablosunun SAĞINA, yan yana bloklar hâlinde dizer
+    /// (Yangın çıktısındaki "EK BELGELER" düzeni). Blok başlığında mağaza ve form no, altında kalem, fatura tutarı, ilave oranı
+    /// ve hakedişe yazılan tutar yer alır. Dosyası olmayan fatura için yalnız bilgi kartı yazılır. Fatura yoksa hiçbir şey eklenmez.
+    /// </summary>
+    public async Task AddCoolingInvoiceBlocksAsync(IXLWorksheet ws, IReadOnlyList<ServiceForm> forms, int lastTableColumn)
+    {
+        const int blockWidth = 6;       // bir fatura bloğunun sütun sayısı
+        const int gapWidth = 1;
+        const double colCharW = 14.0;
+        const int titleRow = 1, blockRow = 3;
+
+        var invoices = forms
+            .Where(f => f.Store is not null)
+            .OrderBy(f => f.Store!.Code, Comparer<string>.Create(HakedisOtomasyon.Application.GlycolClaim.CompareStoreCodes))
+            .ThenBy(f => f.FormDate ?? DateTime.MaxValue)
+            .ThenBy(f => f.Id)
+            .SelectMany(f => f.Invoices.Where(i => !i.IsArchived).OrderBy(i => i.Id).Select(i => (Form: f, Invoice: i)))
+            .ToList();
+        if (invoices.Count == 0) return;
+
+        // Yazdırma alanı tabloyla sınırlı kalsın — sağdaki fatura görselleri çıktıyı küçültmesin
+        var lastRow = ws.LastRowUsed()?.RowNumber() ?? 1;
+        ws.PageSetup.PrintAreas.Clear();
+        ws.PageSetup.PrintAreas.Add(1, 1, lastRow, lastTableColumn);
+
+        int startCol = lastTableColumn + 2;   // tablo ile faturalar arasında bir boş sütun
+        int BlockStart(int i) => startCol + i * (blockWidth + gapWidth);
+        int BlockEnd(int i) => BlockStart(i) + blockWidth - 1;
+        int overallLast = BlockEnd(invoices.Count - 1);
+        for (int c = startCol; c <= overallLast; c++) ws.Column(c).Width = colCharW;
+
+        var titleRange = ws.Range(titleRow, startCol, titleRow, overallLast);
+        titleRange.Merge().Value = "FATURALAR";
+        titleRange.Style.Font.Bold = true;
+        titleRange.Style.Font.FontSize = 12;
+        titleRange.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        titleRange.Style.Fill.BackgroundColor = XLColor.FromArgb(44, 62, 80);
+        titleRange.Style.Font.FontColor = XLColor.White;
+        ApplyThinBorder(titleRange);
+
+        for (int i = 0; i < invoices.Count; i++)
+        {
+            var (form, inv) = invoices[i];
+            int bStart = BlockStart(i), bEnd = BlockEnd(i), row = blockRow;
+            var item = form.ServiceItems.FirstOrDefault(x => x.InvoiceId == inv.Id);
+
+            var hdr = ws.Range(row, bStart, row, bEnd);
+            hdr.Merge().Value = $"Fatura #{i + 1} — {form.Store!.Code} {form.Store.Name}";
+            hdr.Style.Font.Bold = true;
+            hdr.Style.Fill.BackgroundColor = XLColor.FromArgb(230, 126, 34);
+            hdr.Style.Font.FontColor = XLColor.White;
+            ApplyThinBorder(hdr);
+            row++;
+
+            AddInfoRowCard(ws, ref row, bStart, blockWidth, "Bakım Form No", form.FormNumber ?? string.Empty);
+            AddInfoRowCard(ws, ref row, bStart, blockWidth, "Kalem", item?.ExportDescription ?? inv.Description);
+            AddInfoRowCard(ws, ref row, bStart, blockWidth, "Fatura tutarı", inv.InvoiceAmount.ToString("N2", TrCulture) + " TL");
+            AddInfoRowCard(ws, ref row, bStart, blockWidth, "İlave", "%" + (inv.MarkupRate * 100m).ToString("0.##", TrCulture));
+            if (item is not null)
+                AddInfoRowCard(ws, ref row, bStart, blockWidth, "Hakediş tutarı",
+                    (item.UnitPrice * item.Quantity).ToString("N2", TrCulture) + " TL");
+            AddInfoRowCard(ws, ref row, bStart, blockWidth, "Dosya", string.IsNullOrWhiteSpace(inv.FilePath) ? "(fatura dosyası eklenmedi)" : inv.FileName ?? "fatura");
+
+            if (!string.IsNullOrWhiteSpace(inv.FilePath))
+                await InsertFittedImageAsync(ws, inv.FilePath, row, bStart, bEnd);
+        }
+    }
 
     /// <summary>Soğutma türlerinin ortak dışa aktarma akışı: çalışma kitabını kur, kaydet, eski çıktıyı arşivle, kaydı tut.</summary>
     private async Task<string> ExportCoolingWorkbookAsync(ProgressClaim claim, IProgress<string>? progress, string buildingMessage,
-        string filePrefix, Action<XLWorkbook> build)
+        string filePrefix, Action<XLWorkbook> build, Func<XLWorkbook, Task>? afterBuild = null)
     {
         progress?.Report(buildingMessage);
         using var wb = new XLWorkbook();
         build(wb);
+        if (afterBuild is not null) await afterBuild(wb);
 
         progress?.Report("Excel dosyası kaydediliyor...");
         var fileName = $"{filePrefix}_{claim.Year}_{claim.Month:D2}_{SanitizeSheetName(claim.Name)}_{DateTime.Now:HHmmss}.xlsx";

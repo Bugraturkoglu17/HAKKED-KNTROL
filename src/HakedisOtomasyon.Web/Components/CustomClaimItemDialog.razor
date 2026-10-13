@@ -1,0 +1,177 @@
+@namespace HakedisOtomasyon.Web.Components
+@using System.Globalization
+@using HakedisOtomasyon.Application
+@using HakedisOtomasyon.Application.DTOs
+@inject IFilePickerService FilePicker
+@inject IFileStorageService FileStorage
+@inject ISnackbar Snackbar
+
+@* Soğutma Kompresör Değişim: hakedişe ÖZEL kalem (kompresör marka/modeli vb.). Genel fiyat listesine EKLENMEZ.
+   Fiyat üç şekilde girilir: FATURA + % (fatura dosyası eklenir), liste fiyatı, iskontolu liste fiyatı. Yüzdeler elle girilir. *@
+
+<MudDialog Style="min-width:560px">
+    <DialogContent>
+        <MudAlert Severity="Severity.Info" Dense Class="mb-3" Style="padding:2px 10px">
+            Bu kalem yalnızca bu hakedişe eklenir; genel fiyat listesine kaydedilmez.
+        </MudAlert>
+        <MudGrid Spacing="2">
+            <MudItem xs="12">
+                <MudTextField T="string" @bind-Value="_name" Label="Malzeme adı *" Variant="Variant.Outlined" Margin="Margin.Dense"
+                              MaxLength="300" Immediate Placeholder="Örn. BİTZER 4J-13-2Y-40P" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField T="string" @bind-Value="_type" Label="Malzeme tipi" Variant="Variant.Outlined" Margin="Margin.Dense"
+                              MaxLength="200" Placeholder="Örn. SIFIR KOMPRESÖR" />
+            </MudItem>
+            <MudItem xs="6" sm="3">
+                <MudNumericField T="decimal?" @bind-Value="_qty" Label="Miktar *" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                 Min="0" Culture="@Tr" Format="0.##" HideSpinButtons Immediate />
+            </MudItem>
+            <MudItem xs="6" sm="3">
+                <MudTextField T="string" @bind-Value="_unit" Label="Birim *" Variant="Variant.Outlined" Margin="Margin.Dense" MaxLength="20" />
+            </MudItem>
+
+            <MudItem xs="12">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Fiyat neye göre?</MudText>
+                <MudRadioGroup T="CustomPriceBasis" @bind-Value="_basis">
+                    <MudRadio T="CustomPriceBasis" Value="CustomPriceBasis.InvoicePlusMarkup" Color="Color.Primary" Dense>Fatura + %</MudRadio>
+                    <MudRadio T="CustomPriceBasis" Value="CustomPriceBasis.ListPrice" Color="Color.Primary" Dense>Liste fiyatı</MudRadio>
+                    <MudRadio T="CustomPriceBasis" Value="CustomPriceBasis.DiscountedListPrice" Color="Color.Primary" Dense>İskontolu liste fiyatı</MudRadio>
+                </MudRadioGroup>
+            </MudItem>
+
+            <MudItem xs="12" sm="7">
+                <MudNumericField T="decimal?" @bind-Value="_amount" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                 Label="@(_basis == CustomPriceBasis.InvoicePlusMarkup ? "Fatura tutarı (₺, birim, KDV hariç) *" : "Liste fiyatı (₺, birim) *")"
+                                 Min="0" Culture="@Tr" Format="0.##" HideSpinButtons Immediate />
+            </MudItem>
+            @if (_basis != CustomPriceBasis.ListPrice)
+            {
+                <MudItem xs="12" sm="5">
+                    <MudNumericField T="decimal?" @bind-Value="_percent" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                     Label="@(_basis == CustomPriceBasis.InvoicePlusMarkup ? "İlave oranı (%) *" : "İskonto oranı (%) *")"
+                                     Min="0" Max="100" Culture="@Tr" Format="0.##" HideSpinButtons Immediate />
+                </MudItem>
+            }
+
+            @if (_basis == CustomPriceBasis.InvoicePlusMarkup)
+            {
+                <MudItem xs="12">
+                    <MudStack Row AlignItems="AlignItems.Center" Spacing="1">
+                        <MudButton Variant="Variant.Outlined" Size="Size.Small" StartIcon="@Icons.Material.Filled.AttachFile" OnClick="PickFileAsync">
+                            @(_filePath is null ? "Fatura dosyası seç" : "Faturayı değiştir")
+                        </MudButton>
+                        @if (_filePath is not null)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Success" Icon="@Icons.Material.Filled.AttachFile"
+                                     OnClose="@(_ => _filePath = null)">@System.IO.Path.GetFileName(_filePath)</MudChip>
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Warning">Fatura eklenmedi (PDF / JPG / PNG)</MudText>
+                        }
+                    </MudStack>
+                </MudItem>
+            }
+
+            <MudItem xs="12">
+                <MudPaper Elevation="0" Class="pa-2" Style="background:#f5f7f8">
+                    @if (Preview is { } p)
+                    {
+                        <MudText Typo="Typo.body2">
+                            Malzeme kodu: <b>@p.CodeLabel</b> &nbsp;·&nbsp; Birim fiyat: <b>@p.UnitPrice.ToString("N2", Tr) ₺</b>
+                            &nbsp;·&nbsp; Toplam: <b>@((p.UnitPrice * (_qty ?? 0m)).ToString("N2", Tr)) ₺</b>
+                        </MudText>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">@(_previewError ?? "Tutarı girin.")</MudText>
+                    }
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Variant="Variant.Text">İptal</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SubmitAsync" Disabled="@(!IsValid || _saving)">Ekle</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+
+    /// <summary>Hakedişin dönemi — fatura dosyası bu dönemin klasörüne kopyalanır.</summary>
+    [Parameter] public int Year { get; set; }
+    [Parameter] public int Month { get; set; }
+
+    private static readonly CultureInfo Tr = CultureInfo.GetCultureInfo("tr-TR");
+
+    private string _name = string.Empty;
+    private string? _type;
+    private decimal? _qty = 1m;
+    private string _unit = "ADET";
+    private CustomPriceBasis _basis = CustomPriceBasis.InvoicePlusMarkup;
+    private decimal? _amount;
+    private decimal? _percent = 10m;
+    /// <summary>Kullanıcının seçtiği fatura dosyasının bilgisayardaki tam yolu (Ekle'ye basılınca uygulama deposuna kopyalanır).</summary>
+    private string? _filePath;
+    private bool _saving;
+    private string? _previewError;
+
+    private (decimal UnitPrice, string CodeLabel)? Preview
+    {
+        get
+        {
+            _previewError = null;
+            if (!(_amount > 0m)) return null;
+            try { return MaintenanceClaim.CustomItemPricing(_basis, _amount.Value, _basis == CustomPriceBasis.ListPrice ? 0m : _percent ?? 0m); }
+            catch (Exception ex) { _previewError = ex.Message; return null; }
+        }
+    }
+
+    private bool IsValid => !string.IsNullOrWhiteSpace(_name) && !string.IsNullOrWhiteSpace(_unit) && _qty > 0m && Preview is not null
+                            && (_basis == CustomPriceBasis.ListPrice || _percent.HasValue);
+
+    private async Task PickFileAsync()
+    {
+        try
+        {
+            var paths = await FilePicker.PickInvoiceFilesAsync();
+            if (paths.Count > 0) _filePath = paths[0];
+        }
+        catch (Exception ex) { Snackbar.Add($"Dosya seçme hatası: {ex.Message}", Severity.Error); }
+    }
+
+    private async Task SubmitAsync()
+    {
+        if (!IsValid || _saving) return;
+        _saving = true;
+        try
+        {
+            var input = new CustomClaimItemInput
+            {
+                Name = _name.Trim(),
+                Type = string.IsNullOrWhiteSpace(_type) ? null : _type.Trim(),
+                Quantity = _qty!.Value,
+                Unit = _unit.Trim(),
+                Basis = _basis,
+                BaseAmount = _amount!.Value,
+                Percent = _basis == CustomPriceBasis.ListPrice ? 0m : _percent ?? 0m,
+            };
+            if (_basis == CustomPriceBasis.InvoicePlusMarkup && _filePath is not null)
+            {
+                // Fatura dosyası uygulama deposuna (hakediş dönemi klasörüne) kopyalanır
+                input.InvoiceFilePath = await FileStorage.CopyInvoiceAsync(_filePath, Year, Month);
+                input.InvoiceFileName = System.IO.Path.GetFileName(_filePath);
+            }
+            MudDialog.Close(DialogResult.Ok(input));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Fatura dosyası kopyalanamadı: {ex.Message}", Severity.Error);
+        }
+        finally { _saving = false; }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

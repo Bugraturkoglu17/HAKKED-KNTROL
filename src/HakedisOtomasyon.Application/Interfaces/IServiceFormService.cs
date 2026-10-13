@@ -57,6 +57,14 @@ public interface IServiceFormService
         int? priceItemId, decimal quantity);
 
     /// <summary>
+    /// Soğutma Kompresör Değişim: forma, fiyat listesinde OLMAYAN hakedişe özel bir kalem ekler (kompresör marka/modeli; liste
+    /// fiyatı, iskontolu liste fiyatı ya da FATURA + %). Kalem genel fiyat listesine EKLENMEZ. Fatura bazlı kalemde fatura kaydı
+    /// (dosyasıyla) forma bağlanır. Form kaydı ve otomatik servis bedeli <see cref="AddMaintenanceItemAsync"/> ile aynı kurallarla oluşur.
+    /// </summary>
+    Task<MaintenanceEntryResult> AddCustomMaintenanceItemAsync(int sourceFormId, int storeId, DateTime formDate, string formNumber,
+        CustomClaimItemInput input);
+
+    /// <summary>
     /// Soğutma Bakım &amp; Onarım: bir form kaydının mağaza/tarih/bakım form no bilgisini ve (verilmişse) bir kaleminin miktarını
     /// günceller. Mağazanın ili değiştiyse servis bedeli şehir içi ↔ dışı olarak değişir.
     /// </summary>

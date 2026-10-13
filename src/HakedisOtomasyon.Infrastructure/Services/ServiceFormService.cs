@@ -54,7 +54,7 @@ public class ServiceFormService : IServiceFormService
         bool glycolClaim = ownerClaim is not null && GlycolClaim.IsGlycol(ownerClaim.Discipline, ownerClaim.CoolingCategory);
         // Soğutma Bakım & Onarım: sabit "Servis Ücreti" yerine mağazanın iline göre şehir içi/dışı servis bedeli
         // mağaza seçilince eklenir (bkz. MaintenanceClaim.ApplyServiceFee).
-        bool maintenanceClaim = ownerClaim is not null && MaintenanceClaim.IsMaintenance(ownerClaim.Discipline, ownerClaim.CoolingCategory);
+        bool maintenanceClaim = ownerClaim is not null && MaintenanceClaim.UsesMaterialScreen(ownerClaim.Discipline, ownerClaim.CoolingCategory);
         bool noDefaultFee = glycolClaim || maintenanceClaim;
         var defaultFee = noDefaultFee ? 0m : await _settings.GetDecimalAsync("DefaultServiceFee", 4550m);
 
@@ -125,7 +125,7 @@ public class ServiceFormService : IServiceFormService
     {
         var defaultFee = await _settings.GetDecimalAsync("DefaultServiceFee", 4550m);
         var blankOwner = await _db.ProgressClaims.FindAsync(claimId);
-        bool blankMaintenance = blankOwner is not null && MaintenanceClaim.IsMaintenance(blankOwner.Discipline, blankOwner.CoolingCategory);
+        bool blankMaintenance = blankOwner is not null && MaintenanceClaim.UsesMaterialScreen(blankOwner.Discipline, blankOwner.CoolingCategory);
 
         var entity = new ServiceForm
         {
@@ -434,8 +434,8 @@ public class ServiceFormService : IServiceFormService
     {
         var claim = await _db.ProgressClaims.FirstOrDefaultAsync(c => c.Id == claimId)
             ?? throw new InvalidOperationException($"Hakediş bulunamadı: {claimId}");
-        if (!MaintenanceClaim.IsMaintenance(claim.Discipline, claim.CoolingCategory))
-            throw new InvalidOperationException("Bu hakediş Bakım & Onarım türünde değil.");
+        if (!MaintenanceClaim.UsesMaterialScreen(claim.Discipline, claim.CoolingCategory))
+            throw new InvalidOperationException("Bu hakediş Bakım & Onarım / Kompresör Değişim türünde değil.");
         return claim;
     }
 
@@ -550,8 +550,12 @@ public class ServiceFormService : IServiceFormService
         return entity;
     }
 
-    public async Task<MaintenanceEntryResult> AddMaintenanceItemAsync(int sourceFormId, int storeId, DateTime formDate, string formNumber,
-        int? priceItemId, decimal quantity)
+    /// <summary>
+    /// Kalemin ekleneceği form kaydını bulur ya da oluşturur (aynı dosyada aynı mağaza + tarih + form no → o form; yoksa dosyanın
+    /// boş yer tutucusu; o da yoksa aynı dosyaya bağlı yeni kayıt), mağazanın iline göre servis bedelini ekler ve kaydeder.
+    /// </summary>
+    private async Task<(ProgressClaim Claim, ServiceForm Target, MaintenanceClaim.ServiceFeeResult Fee)> ResolveMaintenanceTargetAsync(
+        int sourceFormId, int storeId, DateTime formDate, string formNumber)
     {
         var source = await _db.ServiceForms.FirstOrDefaultAsync(f => f.Id == sourceFormId)
             ?? throw new InvalidOperationException($"Form bulunamadı: {sourceFormId}");
@@ -560,15 +564,6 @@ public class ServiceFormService : IServiceFormService
         var number = NormalizeFormNumber(formNumber);
         var date = formDate.Date;
 
-        PriceItem? price = null;
-        if (priceItemId.HasValue)
-        {
-            if (quantity <= 0m) throw new InvalidOperationException("Miktar sıfırdan büyük olmalıdır.");
-            price = await _db.PriceItems.FirstOrDefaultAsync(p => p.Id == priceItemId.Value && p.Discipline == MechanicalDiscipline.Cooling)
-                ?? throw new InvalidOperationException("Kalem Soğutma fiyat listesinde bulunamadı.");
-        }
-
-        // Aynı dosyadaki kayıtlar: aynı mağaza + tarih + form no varsa o forma eklenir
         var siblings = await _db.ServiceForms.Include(f => f.ServiceItems)
             .Where(f => f.ProgressClaimId == source.ProgressClaimId && f.FilePath == source.FilePath && !f.IsArchived)
             .ToListAsync();
@@ -597,6 +592,30 @@ public class ServiceFormService : IServiceFormService
 
         var fee = await EnsureMaintenanceFeeAsync(target, store);
         await _db.SaveChangesAsync();   // form + servis bedeli kaydedilir (kalemlerin kimliği oluşur)
+        return (claim, target, fee);
+    }
+
+    private static int NextSortOrder(ServiceForm form) => form.ServiceItems.Count == 0 ? 2 : form.ServiceItems.Max(i => i.SortOrder) + 1;
+
+    public async Task<MaintenanceEntryResult> AddMaintenanceItemAsync(int sourceFormId, int storeId, DateTime formDate, string formNumber,
+        int? priceItemId, decimal quantity)
+    {
+        // Girdi denetimi form kaydı oluşturulmadan ÖNCE yapılır (geçersiz istek boş form bırakmasın)
+        NormalizeFormNumber(formNumber);
+        PriceItem? price = null;
+        if (priceItemId.HasValue)
+        {
+            if (quantity <= 0m) throw new InvalidOperationException("Miktar sıfırdan büyük olmalıdır.");
+            price = await _db.PriceItems.FirstOrDefaultAsync(p => p.Id == priceItemId.Value && p.Discipline == MechanicalDiscipline.Cooling)
+                ?? throw new InvalidOperationException("Kalem Soğutma fiyat listesinde bulunamadı.");
+        }
+        var owner = await _db.ServiceForms.Where(f => f.Id == sourceFormId).Select(f => (int?)f.ProgressClaimId).FirstOrDefaultAsync()
+            ?? throw new InvalidOperationException($"Form bulunamadı: {sourceFormId}");
+        var ownerClaim = await LoadMaintenanceClaimAsync(owner);
+        if (price is { ForeignPrice: > 0m } && EurPricing.IsEur(price.CurrencyCode) && !EurPricing.IsValidRate(ownerClaim.EurRate))
+            throw new InvalidOperationException("EUR fiyatlı kalem için EUR kuru girilmemiş. Hakediş Bilgileri adımından EUR kurunu girin.");
+
+        var (claim, target, fee) = await ResolveMaintenanceTargetAsync(sourceFormId, storeId, formDate, formNumber);
 
         ServiceItem? item = null;
         bool merged = false;
@@ -624,7 +643,7 @@ public class ServiceFormService : IServiceFormService
                     ServiceForm = target,
                     Quantity = quantity,
                     ItemKey = Guid.NewGuid().ToString(),
-                    SortOrder = target.ServiceItems.Count == 0 ? 2 : target.ServiceItems.Max(i => i.SortOrder) + 1,
+                    SortOrder = NextSortOrder(target),
                 };
                 ApplyMaintenancePricing(item, price, claim);
                 _db.ServiceItems.Add(item);
@@ -633,6 +652,65 @@ public class ServiceFormService : IServiceFormService
         }
 
         return new MaintenanceEntryResult((await GetByIdAsync(target.Id))!, item?.Id, merged, fee);
+    }
+
+    public async Task<MaintenanceEntryResult> AddCustomMaintenanceItemAsync(int sourceFormId, int storeId, DateTime formDate, string formNumber,
+        CustomClaimItemInput input)
+    {
+        // Girdi denetimi form kaydı oluşturulmadan ÖNCE
+        NormalizeFormNumber(formNumber);
+        var name = string.Join(' ', (input.Name ?? string.Empty).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        if (name.Length == 0) throw new InvalidOperationException("Malzeme adı zorunludur.");
+        if (input.Quantity <= 0m) throw new InvalidOperationException("Miktar sıfırdan büyük olmalıdır.");
+        var (unitPrice, codeLabel) = MaintenanceClaim.CustomItemPricing(input.Basis, input.BaseAmount, input.Percent);
+        var type = string.Join(' ', (input.Type ?? string.Empty).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        var unit = string.IsNullOrWhiteSpace(input.Unit) ? "ADET" : input.Unit.Trim();
+
+        var (_, target, fee) = await ResolveMaintenanceTargetAsync(sourceFormId, storeId, formDate, formNumber);
+
+        // Fatura bazlı kalem: fatura kaydı (dosyasıyla) forma bağlanır. Tutar KALEMDE tutulur; fatura kaydının CalculatedTotal'ı 0'dır —
+        // aksi halde hakediş toplamı hesaplanırken (kalemler + faturalar) aynı tutar iki kez sayılırdı.
+        Invoice? invoice = null;
+        if (input.Basis == CustomPriceBasis.InvoicePlusMarkup)
+        {
+            invoice = new Invoice
+            {
+                ServiceForm = target,
+                FileName = string.IsNullOrWhiteSpace(input.InvoiceFileName) ? null : input.InvoiceFileName.Trim(),
+                FilePath = string.IsNullOrWhiteSpace(input.InvoiceFilePath) ? null : input.InvoiceFilePath,
+                Description = name.Length > 500 ? name[..500] : name,
+                InvoiceAmount = input.BaseAmount,
+                Quantity = input.Quantity,
+                MarkupRate = input.Percent / 100m,
+                CalculatedTotal = 0m,
+                UploadedAt = DateTime.Now,
+            };
+            _db.Invoices.Add(invoice);
+        }
+
+        var item = new ServiceItem
+        {
+            ServiceForm = target,
+            Description = type.Length > 0 ? $"{name} {type}" : name,
+            ExportDescription = name,
+            ItemType = type.Length > 0 ? type : null,
+            ItemCode = codeLabel,                 // çıktıda MALZEME KODU: "FATURA +%10 M.K." / "LİSTE FİYATI" ...
+            Quantity = input.Quantity,
+            Unit = unit,
+            MaterialPrice = unitPrice,
+            LaborPrice = 0m,
+            UnitPrice = unitPrice,
+            TotalPrice = Math.Round(unitPrice * input.Quantity, 2, MidpointRounding.AwayFromZero),
+            IsManualEntry = true,                 // fiyat listesinden gelmedi; genel fiyat listesine de EKLENMEZ
+            IsInvoiceBased = invoice is not null,
+            Invoice = invoice,
+            ItemKey = Guid.NewGuid().ToString(),
+            SortOrder = NextSortOrder(target),
+        };
+        _db.ServiceItems.Add(item);
+        await _db.SaveChangesAsync();
+
+        return new MaintenanceEntryResult((await GetByIdAsync(target.Id))!, item.Id, false, fee);
     }
 
     public async Task<ServiceFormDto> UpdateMaintenanceEntryAsync(int formId, int storeId, DateTime formDate, string formNumber, int? itemId, decimal? quantity)
@@ -674,6 +752,21 @@ public class ServiceFormService : IServiceFormService
         return (await GetByIdAsync(formId))!;
     }
 
+    /// <summary>Kaleme bağlı fatura kaydını kaldırır; dosyası varsa arşive taşınır (başka kalem kullanmıyorsa).</summary>
+    private async Task RemoveAttachedInvoiceAsync(int invoiceId)
+    {
+        if (await _db.ServiceItems.AnyAsync(i => i.InvoiceId == invoiceId)) return;
+        if (_cleanup is not null)
+        {
+            await _cleanup.ArchiveRemovedInvoiceAsync(invoiceId);   // dosyayı arşive taşır + kaydı siler
+            return;
+        }
+        var invoice = await _db.Invoices.FirstOrDefaultAsync(i => i.Id == invoiceId);
+        if (invoice is null) return;
+        _db.Invoices.Remove(invoice);
+        await _db.SaveChangesAsync();
+    }
+
     public async Task<ServiceFormDto?> RemoveMaintenanceItemAsync(int itemId)
     {
         var item = await _db.ServiceItems.FirstOrDefaultAsync(i => i.Id == itemId)
@@ -681,7 +774,11 @@ public class ServiceFormService : IServiceFormService
         var form = await _db.ServiceForms.Include(f => f.ServiceItems).FirstAsync(f => f.Id == item.ServiceFormId);
         await LoadMaintenanceClaimAsync(form.ProgressClaimId);
 
+        var invoiceId = item.InvoiceId;
         _db.ServiceItems.Remove(item);
+        await _db.SaveChangesAsync();
+        if (invoiceId.HasValue) await RemoveAttachedInvoiceAsync(invoiceId.Value);
+
         if (form.ServiceItems.Any(i => i.Id != itemId))
         {
             await _db.SaveChangesAsync();

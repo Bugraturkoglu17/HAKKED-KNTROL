@@ -265,6 +265,7 @@
             <!-- Soğutma — Bakım & Onarım: tek ekran, sol panelde form, sağda form bilgisi + alt alta malzeme ekleme -->
             <MaintenanceFormsTable Forms="@_forms"
                                    Claim="@_claim"
+                                   AllowCustomItems="@IsCompressor"
                                    OnBack="@(() => _activeStep = 1)"
                                    OnExport="ExportExcelAsync"
                                    OnChanged="@StateHasChanged" />
@@ -569,8 +570,11 @@
     /// <summary>Soğutma "Glikol Kullanım" hakedişi mi? (Form İşleme adımı ve Excel çıktısı farklıdır.)</summary>
     private bool IsGlycol => _claim is not null && GlycolClaim.IsGlycol(_claim.Discipline, _claim.CoolingCategory);
 
-    /// <summary>Soğutma "Bakım &amp; Onarım" hakedişi mi? (Form İşleme adımı tek ekrandır: <c>MaintenanceFormsTable</c>.)</summary>
-    private bool IsMaintenance => _claim is not null && MaintenanceClaim.IsMaintenance(_claim.Discipline, _claim.CoolingCategory);
+    /// <summary>Soğutma "Bakım &amp; Onarım" hakedişi mi? (Form İşleme adımı tek ekrandır: <c>MaintenanceFormsTable</c>; Kompresör Değişim de aynı ekranı kullanır.)</summary>
+    private bool IsMaintenance => _claim is not null && MaintenanceClaim.UsesMaterialScreen(_claim.Discipline, _claim.CoolingCategory);
+
+    /// <summary>Soğutma Kompresör Değişim hakedişi mi? (Aynı tek ekran + hakedişe özel kalem / FATURA + % girişi.)</summary>
+    private bool IsCompressor => _claim is not null && MaintenanceClaim.IsCompressor(_claim.Discipline, _claim.CoolingCategory);
 
     private string EurRateDisplay => EurPricing.IsValidRate(_dto.EurRate)
         ? $"{EurPricing.FormatRate(_dto.EurRate!.Value)} ₺"
