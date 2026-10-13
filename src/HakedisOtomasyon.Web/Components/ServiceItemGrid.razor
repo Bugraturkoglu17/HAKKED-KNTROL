@@ -54,6 +54,10 @@
                             {
                                 <span>Fiyat: @item.ForeignPrice.Value.ToString("N2", TrCulture)&nbsp;@(item.CurrencyCode ?? "EUR") | Birim: @item.Unit@(HasEurRate ? $" | TL karşılığı: {EurPricing.ToTl(item.ForeignPrice.Value, Claim!.EurRate!.Value).ToString("N2", TrCulture)} ₺" : "")</span>
                             }
+                            else if (IsCooling)
+                            {
+                                <span>Birim Fiyat: @item.UnitPrice.ToString("N2", TrCulture)&nbsp;₺ | Birim: @item.Unit</span>
+                            }
                             else
                             {
                                 <span>Malzeme: @item.MaterialPrice.ToString("N2", TrCulture)&nbsp;₺ | İşçilik: @item.LaborPrice.ToString("N2", TrCulture)&nbsp;₺ | Birim: @item.Unit | Toplam: @item.UnitPrice.ToString("N2", TrCulture)&nbsp;₺</span>
@@ -89,8 +93,11 @@
                 <MudTh Style="width:190px">Açıklama</MudTh>
                 <MudTh Style="width:66px; text-align:center">Miktar</MudTh>
                 <MudTh Style="width:46px; text-align:center">Birim</MudTh>
-                <MudTh Style="width:98px; text-align:center">Malzeme (₺)</MudTh>
-                <MudTh Style="width:98px; text-align:center">İşçilik (₺)</MudTh>
+                @if (!IsCooling)
+                {
+                    <MudTh Style="width:98px; text-align:center">Malzeme (₺)</MudTh>
+                    <MudTh Style="width:98px; text-align:center">İşçilik (₺)</MudTh>
+                }
                 <MudTh Style="width:116px; text-align:center">Birim Fiyat</MudTh>
                 <MudTh Style="width:124px; text-align:center">Toplam Fiyat</MudTh>
                 <MudTh Style="width:58px"></MudTh>
@@ -143,15 +150,18 @@
                     <span class="sit-unit-text">@context.Unit</span>
                 </MudTd>
 
-                <!-- Malzeme -->
-                <MudTd Class="sit-td-num">
-                    <span class="price-amount">@context.MaterialPrice.ToString("N2", TrCulture)&nbsp;₺</span>
-                </MudTd>
+                @if (!IsCooling)
+                {
+                    <!-- Malzeme -->
+                    <MudTd Class="sit-td-num">
+                        <span class="price-amount">@context.MaterialPrice.ToString("N2", TrCulture)&nbsp;₺</span>
+                    </MudTd>
 
-                <!-- İşçilik -->
-                <MudTd Class="sit-td-num">
-                    <span class="price-amount">@context.LaborPrice.ToString("N2", TrCulture)&nbsp;₺</span>
-                </MudTd>
+                    <!-- İşçilik -->
+                    <MudTd Class="sit-td-num">
+                        <span class="price-amount">@context.LaborPrice.ToString("N2", TrCulture)&nbsp;₺</span>
+                    </MudTd>
+                }
 
                 <!-- Birim Fiyat (hesaplanan, sadece gösterim) -->
                 <MudTd Class="sit-td-price">

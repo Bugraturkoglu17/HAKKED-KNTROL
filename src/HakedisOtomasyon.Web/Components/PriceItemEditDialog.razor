@@ -1,4 +1,5 @@
 @namespace HakedisOtomasyon.Web.Components
+@inject HakedisOtomasyon.Infrastructure.Services.CurrentDisciplineService CurrentDiscipline
 
 <MudDialog Style="min-width:600px">
     <TitleContent>
@@ -33,25 +34,34 @@
                 <MudSelect T="PriceType" @bind-Value="Item.PriceType"
                            Label="Fiyat Tipi" Variant="Variant.Outlined">
                     <MudSelectItem T="PriceType" Value="PriceType.FixedPrice">Sabit</MudSelectItem>
-                    <MudSelectItem T="PriceType" Value="PriceType.LaborOnly">Sadece İşçilik</MudSelectItem>
-                    <MudSelectItem T="PriceType" Value="PriceType.MaterialOnly">Sadece Malzeme</MudSelectItem>
+                    @if (!IsCooling)
+                    {
+                        <MudSelectItem T="PriceType" Value="PriceType.LaborOnly">Sadece İşçilik</MudSelectItem>
+                        <MudSelectItem T="PriceType" Value="PriceType.MaterialOnly">Sadece Malzeme</MudSelectItem>
+                    }
                     <MudSelectItem T="PriceType" Value="PriceType.VariablePrice">Değişken</MudSelectItem>
-                    <MudSelectItem T="PriceType" Value="PriceType.PercentageBased">Yüzdesel</MudSelectItem>
+                    @if (!IsCooling)
+                    {
+                        <MudSelectItem T="PriceType" Value="PriceType.PercentageBased">Yüzdesel</MudSelectItem>
+                    }
                 </MudSelect>
             </MudItem>
             <MudItem xs="12" md="3">
                 <MudNumericField T="decimal" @bind-Value="Item.MaterialPrice"
-                                 Label="Malzeme (TL)" Variant="Variant.Outlined"
+                                 Label="@(IsCooling ? "Birim Fiyat (TL)" : "Malzeme (TL)")" Variant="Variant.Outlined"
                                  Min="0" Format="N2"
                                  Disabled="@(Item.PriceType == PriceType.VariablePrice || Item.PriceType == PriceType.LaborOnly || Item.ForeignPrice.HasValue)" />
             </MudItem>
-            <MudItem xs="12" md="3">
-                <MudNumericField T="decimal" @bind-Value="Item.LaborPrice"
-                                 Label="İşçilik (TL)" Variant="Variant.Outlined"
-                                 Min="0" Format="N2"
-                                 Disabled="@(Item.PriceType == PriceType.VariablePrice || Item.PriceType == PriceType.MaterialOnly || Item.ForeignPrice.HasValue)" />
-            </MudItem>
-            @if (Item.PriceType != PriceType.VariablePrice)
+            @if (!IsCooling)
+            {
+                <MudItem xs="12" md="3">
+                    <MudNumericField T="decimal" @bind-Value="Item.LaborPrice"
+                                     Label="İşçilik (TL)" Variant="Variant.Outlined"
+                                     Min="0" Format="N2"
+                                     Disabled="@(Item.PriceType == PriceType.VariablePrice || Item.PriceType == PriceType.MaterialOnly || Item.ForeignPrice.HasValue)" />
+                </MudItem>
+            }
+            @if (Item.PriceType != PriceType.VariablePrice && !IsCooling)
             {
                 <MudItem xs="12" md="3">
                     <MudTextField Value="@((Item.MaterialPrice + Item.LaborPrice).ToString("N2"))"
@@ -127,6 +137,9 @@
     [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
     [Parameter] public PriceItemDto Item { get; set; } = new();
 
+    // Soğutma'da işçilik/malzeme ayrımı yok: tek "Birim Fiyat" (TL kalemlerde MaterialPrice alanında tutulur, işçilik 0).
+    private bool IsCooling => CurrentDiscipline.CurrentDiscipline == MechanicalDiscipline.Cooling;
+
     private string DiscountedUsdDisplay =>
         ((Item.ListPriceUsd ?? 0m) * (1m - (Item.DiscountRate ?? 20m) / 100m)).ToString("N2") + " USD";
 
@@ -134,6 +147,12 @@
     {
         Item.Description = Item.Description.Trim();
         Item.Unit = Item.Unit.Trim();
+        if (IsCooling)
+        {
+            Item.LaborPrice = 0;
+            if (Item.PriceType is PriceType.LaborOnly or PriceType.MaterialOnly or PriceType.PercentageBased)
+                Item.PriceType = PriceType.FixedPrice;
+        }
         // LaborOnly/MaterialOnly → diğer fiyatı sıfırla
         if (Item.PriceType == PriceType.LaborOnly) Item.MaterialPrice = 0;
         if (Item.PriceType == PriceType.MaterialOnly) Item.LaborPrice = 0;

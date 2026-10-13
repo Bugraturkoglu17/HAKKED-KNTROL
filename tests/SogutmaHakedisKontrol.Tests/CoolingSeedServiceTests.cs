@@ -169,4 +169,76 @@ public class CoolingSeedServiceTests
         Assert.Equal("EUR", cooling.CurrencyCode);
         Assert.Equal(0m, cooling.MaterialPrice);
     }
+
+    [Fact]
+    public async Task SogutmaDaTekBirimFiyat_IscilikHerZamanSifirVeTlKalemFiyatiMaterialPriceIcinde()
+    {
+        using var db = CreateMainDb();
+        await CoolingSeedService.SeedIfNeededAsync(db, SeedDir());
+
+        Assert.All(await db.PriceItems.ToListAsync(), p => Assert.Equal(0m, p.LaborPrice));
+        // Genleşme tankı TL kalem: tek "Birim Fiyat" 1950 TL (eskiden "Malzeme" sütunundaydı)
+        var tank = await db.PriceItems.SingleAsync(p => p.Description.StartsWith("GENLEŞME TANKI"));
+        Assert.Equal(1950m, tank.MaterialPrice + tank.LaborPrice);
+        Assert.Null(tank.CurrencyCode);
+        Assert.Null(tank.Notes); // Marka sütunu kaldırıldı — uyarı notu yok
+    }
+
+    [Fact]
+    public async Task GuncelListeYuklenince_SeedKalemleriYenilenir_KullaniciVerisiKorunur()
+    {
+        using var db = CreateMainDb();
+        await CoolingSeedService.SeedIfNeededAsync(db, SeedDir());
+
+        // Eski sürümden kalma durumu taklit et: eski fiyat, kullanıcının girdiği birim, listeden kalkmış kalem, elle eklenen kalem
+        var tank = await db.PriceItems.SingleAsync(p => p.Description.StartsWith("GENLEŞME TANKI"));
+        tank.MaterialPrice = 1m;                       // eski/yanlış fiyat
+        tank.Unit = "Ad"; tank.HasMissingUnit = false; // kullanıcı birimi girdi
+        db.PriceItems.Add(new MainPriceItem
+        {
+            Description = "ESKİ KALEM (listeden kalktı)", Unit = "", HasMissingUnit = true, MaterialPrice = 5m,
+            SourceSheetName = CoolingSeedService.SourceSheetLabel, Discipline = MechanicalDiscipline.Cooling,
+        });
+        db.PriceItems.Add(new MainPriceItem
+        {
+            Description = "Kullanıcının kendi kalemi", Unit = "ad", MaterialPrice = 99m, IsManuallyAdded = true,
+            Discipline = MechanicalDiscipline.Cooling,
+        });
+        db.AppSettings.RemoveRange(db.AppSettings.Where(a => a.Key == CoolingSeedService.PriceRefreshFlagKey));
+        await db.SaveChangesAsync();
+
+        var result = await CoolingSeedService.SeedIfNeededAsync(db, SeedDir());
+
+        Assert.True(result.Applied);
+        Assert.Equal(0, result.StoresAdded);   // mağazalar tekrar eklenmez
+        Assert.Equal(1, result.PriceItemsRemoved);
+        var fixedTank = await db.PriceItems.SingleAsync(p => p.Description.StartsWith("GENLEŞME TANKI"));
+        Assert.Equal(1950m, fixedTank.MaterialPrice);  // fiyat listeden düzeltildi
+        Assert.Equal("Ad", fixedTank.Unit);            // kullanıcının girdiği birim korundu
+        Assert.False(fixedTank.HasMissingUnit);
+        Assert.DoesNotContain(await db.PriceItems.ToListAsync(), p => p.Description.StartsWith("ESKİ KALEM"));
+        Assert.Contains(await db.PriceItems.ToListAsync(), p => p.Description == "Kullanıcının kendi kalemi" && p.MaterialPrice == 99m);
+        Assert.Equal(253 + 1, await db.PriceItems.CountAsync(p => p.Discipline == MechanicalDiscipline.Cooling)); // 253 liste + 1 kullanıcı
+        Assert.Equal(4141, await db.Stores.CountAsync());
+    }
+
+    [Fact]
+    public async Task KullanicininDuzenledigiKalem_ListedenKalksaBileSilinmez()
+    {
+        using var db = CreateMainDb();
+        await CoolingSeedService.SeedIfNeededAsync(db, SeedDir());
+        db.PriceItems.Add(new MainPriceItem
+        {
+            Description = "ESKİ KALEM (kullanıcı düzenledi)", Unit = "mt", MaterialPrice = 7m,
+            SourceSheetName = CoolingSeedService.SourceSheetLabel, Discipline = MechanicalDiscipline.Cooling,
+            UpdatedAt = DateTime.Now, // UpdateAsync ile düzenlenmiş
+        });
+        db.AppSettings.RemoveRange(db.AppSettings.Where(a => a.Key == CoolingSeedService.PriceRefreshFlagKey));
+        await db.SaveChangesAsync();
+
+        var result = await CoolingSeedService.SeedIfNeededAsync(db, SeedDir());
+
+        Assert.Equal(0, result.PriceItemsRemoved);
+        Assert.Contains(await db.PriceItems.ToListAsync(), p => p.Description.StartsWith("ESKİ KALEM"));
+    }
 }

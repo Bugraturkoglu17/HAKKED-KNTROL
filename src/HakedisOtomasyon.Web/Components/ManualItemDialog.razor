@@ -2,6 +2,7 @@
 @using System.Globalization
 @using HakedisOtomasyon.Application.DTOs
 @using MudBlazor
+@inject HakedisOtomasyon.Infrastructure.Services.CurrentDisciplineService CurrentDiscipline
 
 <MudDialog Style="min-width:480px">
     <DialogContent>
@@ -24,20 +25,23 @@
             </MudItem>
             <MudItem xs="12" md="4">
                 <MudNumericField T="decimal" @bind-Value="_materialPrice"
-                                 Label="Malzeme (₺)"
+                                 Label="@(IsCooling ? "Birim Fiyat (₺)" : "Malzeme (₺)")"
                                  Variant="Variant.Outlined"
                                  Min="0"
                                  Format="N2"
                                  HideSpinButtons="true" />
             </MudItem>
-            <MudItem xs="12" md="4">
-                <MudNumericField T="decimal" @bind-Value="_laborPrice"
-                                 Label="İşçilik (₺)"
-                                 Variant="Variant.Outlined"
-                                 Min="0"
-                                 Format="N2"
-                                 HideSpinButtons="true" />
-            </MudItem>
+            @if (!IsCooling)
+            {
+                <MudItem xs="12" md="4">
+                    <MudNumericField T="decimal" @bind-Value="_laborPrice"
+                                     Label="İşçilik (₺)"
+                                     Variant="Variant.Outlined"
+                                     Min="0"
+                                     Format="N2"
+                                     HideSpinButtons="true" />
+                </MudItem>
+            }
             <MudItem xs="12" md="4">
                 <MudNumericField T="decimal" @bind-Value="_quantity"
                                  Label="Miktar *"
@@ -79,6 +83,9 @@
 
     private static readonly CultureInfo TrCulture = new("tr-TR");
 
+    // Soğutma'da işçilik/malzeme ayrımı yok: tek "Birim Fiyat" (MaterialPrice alanında tutulur, işçilik 0).
+    private bool IsCooling => CurrentDiscipline.CurrentDiscipline == MechanicalDiscipline.Cooling;
+
     private string _desc = "";
     private string _unit = "Ad";
     private decimal _materialPrice;
@@ -105,6 +112,7 @@
     private void Submit()
     {
         if (_quantity <= 0) _quantity = 1;
+        if (IsCooling) _laborPrice = 0;
 
         var dto = new ServiceItemDto
         {

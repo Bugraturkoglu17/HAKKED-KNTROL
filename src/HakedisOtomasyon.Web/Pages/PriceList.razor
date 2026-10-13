@@ -6,6 +6,7 @@
 @inject IPriceListService PriceListService
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
+@inject HakedisOtomasyon.Infrastructure.Services.CurrentDisciplineService CurrentDiscipline
 
 <PageTitle>Fiyat Listesi</PageTitle>
 
@@ -83,8 +84,11 @@
             <MudTh><MudTableSortLabel SortBy="new Func<PriceItemDto,object>(x => x.MainCategory ?? string.Empty)">Ana Grup</MudTableSortLabel></MudTh>
             <MudTh><MudTableSortLabel SortBy="new Func<PriceItemDto,object>(x => x.Description)">Aciklama</MudTableSortLabel></MudTh>
             <MudTh>Birim</MudTh>
-            <MudTh><MudTableSortLabel SortBy="new Func<PriceItemDto,object>(x => x.MaterialPrice)">Malzeme</MudTableSortLabel></MudTh>
-            <MudTh><MudTableSortLabel SortBy="new Func<PriceItemDto,object>(x => x.LaborPrice)">Iscilik</MudTableSortLabel></MudTh>
+            @if (!IsCooling)
+            {
+                <MudTh><MudTableSortLabel SortBy="new Func<PriceItemDto,object>(x => x.MaterialPrice)">Malzeme</MudTableSortLabel></MudTh>
+                <MudTh><MudTableSortLabel SortBy="new Func<PriceItemDto,object>(x => x.LaborPrice)">Iscilik</MudTableSortLabel></MudTh>
+            }
             <MudTh><MudTableSortLabel SortBy="new Func<PriceItemDto,object>(x => x.UnitPrice)">Birim Fiyat</MudTableSortLabel></MudTh>
             <MudTh>Tip</MudTh>
             <MudTh>Durum</MudTh>
@@ -115,12 +119,15 @@
                     <MudChip T="string" Size="Size.Small">@context.Unit</MudChip>
                 }
             </MudTd>
-            <MudTd DataLabel="Malzeme">
-                @(context.PriceType == PriceType.VariablePrice || context.ForeignPrice.HasValue ? "—" : context.MaterialPrice.ToString("N2") + " TL")
-            </MudTd>
-            <MudTd DataLabel="Iscilik">
-                @(context.PriceType == PriceType.VariablePrice || context.ForeignPrice.HasValue ? "—" : context.LaborPrice.ToString("N2") + " TL")
-            </MudTd>
+            @if (!IsCooling)
+            {
+                <MudTd DataLabel="Malzeme">
+                    @(context.PriceType == PriceType.VariablePrice || context.ForeignPrice.HasValue ? "—" : context.MaterialPrice.ToString("N2") + " TL")
+                </MudTd>
+                <MudTd DataLabel="Iscilik">
+                    @(context.PriceType == PriceType.VariablePrice || context.ForeignPrice.HasValue ? "—" : context.LaborPrice.ToString("N2") + " TL")
+                </MudTd>
+            }
             <MudTd DataLabel="Birim Fiyat" Style="font-weight:600">
                 @if (context.ForeignPrice.HasValue)
                 {
@@ -158,6 +165,7 @@
 </MudPaper>
 
 @code {
+    private bool IsCooling => CurrentDiscipline.CurrentDiscipline == MechanicalDiscipline.Cooling;
     private List<PriceItemDto> _items = new();
     private List<string> _categories = new();
     private HashSet<PriceItemDto> _selected = new();

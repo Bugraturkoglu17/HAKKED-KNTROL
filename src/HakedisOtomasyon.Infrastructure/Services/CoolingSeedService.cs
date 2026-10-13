@@ -8,25 +8,33 @@ namespace HakedisOtomasyon.Infrastructure.Services;
 
 /// <summary>
 /// Soğutma disiplini için kurulumla birlikte gelen başlangıç verisini (birim fiyat listesi + mağaza
-/// listesi) ilk açılışta içeri alır. Veri, uygulama klasöründeki SeedData\cooling_price_items.json ve
+/// listesi) içeri alır. Veri, uygulama klasöründeki SeedData\cooling_price_items.json ve
 /// SeedData\cooling_stores.json dosyalarındadır.
 ///
 /// Kurallar (kullanıcının mevcut verisini asla bozmaz):
-///  • Her kurulum için YALNIZCA BİR KEZ çalışır (AppSetting bayrağı) — kullanıcı sonradan kalemleri
-///    silerse yeniden eklenmez.
-///  • Soğutma fiyat listesinde zaten kalem varsa fiyatlar eklenmez (kullanıcının kendi listesi korunur).
-///  • Mağazalar kod bazında eklenir; zaten kayıtlı bir kod atlanır (adı/durumu değiştirilmez).
+///  • Mağazalar: kurulum başına YALNIZCA BİR KEZ (CoolingSeedV1); kod bazında eklenir, zaten kayıtlı
+///    kod atlanır (adı/durumu değiştirilmez). Kullanıcı sonradan silerse yeniden eklenmez.
+///  • Fiyat listesi: yayımlanan liste güncellendikçe sürüm bayrağı artar (şu an CoolingPricesV2).
+///      – Soğutma'da hiç kalem yoksa tüm liste eklenir.
+///      – Önceden seed'den gelmiş (SourceSheetName etiketli, elle eklenmemiş) kalemler varsa listedeki
+///        güncel değerlerle YENİLENİR: fiyat/para birimi/ad/ana grup güncellenir, yeni kalemler eklenir,
+///        listeden kalkan ve kullanıcının dokunmadığı kalemler silinir. Kullanıcının girdiği birim,
+///        aktif/pasif durumu ve kendi eklediği kalemler KORUNUR.
+///      – Soğutma'da yalnızca kullanıcının kendi kalemleri varsa fiyat listesine dokunulmaz.
 ///  • Para birimi korunur: EUR kalemler ForeignPrice + CurrencyCode="EUR" olarak saklanır (TL alanları 0),
-///    TL kalemler MaterialPrice'a yazılır. Hiçbir EUR tutar TL gibi saklanmaz.
+///    TL kalemler MaterialPrice'a yazılır (Soğutma'da tek "Birim Fiyat" — işçilik/malzeme ayrımı yoktur).
+///  • Yalnızca Soğutma disiplinine yazar; Yangın/Klima/Asansör verisine dokunmaz.
 /// </summary>
 public static class CoolingSeedService
 {
-    public const string SeedFlagKey = "CoolingSeedV1";
+    public const string SeedFlagKey = "CoolingSeedV1";          // mağazalar + ilk fiyat yüklemesi
+    public const string PriceRefreshFlagKey = "CoolingPricesV2"; // 2026 Yayım listesi (Marka sütunsuz, tek Birim Fiyat)
     public const string PriceFileName = "cooling_price_items.json";
     public const string StoreFileName = "cooling_stores.json";
-    private const string SourceSheetLabel = "2026 Soğutma Malzeme Birim Fiyatlar (Yayım)";
+    public const string SourceSheetLabel = "2026 Soğutma Malzeme Birim Fiyatlar (Yayım)";
 
-    public record SeedResult(bool Applied, int PriceItemsAdded, int StoresAdded, string? SkippedReason);
+    public record SeedResult(bool Applied, int PriceItemsAdded, int StoresAdded, string? SkippedReason,
+        int PriceItemsUpdated = 0, int PriceItemsRemoved = 0);
 
     private class SeedPrice
     {
@@ -47,9 +55,14 @@ public static class CoolingSeedService
 
     private static readonly JsonSerializerOptions Json = new() { PropertyNameCaseInsensitive = true };
 
+    private static string Key(string? description)
+        => string.Join(' ', (description ?? string.Empty).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)).ToLowerInvariant();
+
     public static async Task<SeedResult> SeedIfNeededAsync(AppDbContext db, string seedDirectory)
     {
-        if (await db.AppSettings.AnyAsync(s => s.Key == SeedFlagKey))
+        var storesDone = await db.AppSettings.AnyAsync(s => s.Key == SeedFlagKey);
+        var pricesDone = await db.AppSettings.AnyAsync(s => s.Key == PriceRefreshFlagKey);
+        if (storesDone && pricesDone)
             return new SeedResult(false, 0, 0, "Bu kurulumda daha önce uygulandı.");
 
         var pricePath = Path.Combine(seedDirectory, PriceFileName);
@@ -57,20 +70,51 @@ public static class CoolingSeedService
         if (!File.Exists(pricePath) && !File.Exists(storePath))
             return new SeedResult(false, 0, 0, "Seed dosyaları bulunamadı."); // bayrak konmaz — dosyalar gelince tekrar denenir
 
-        int pricesAdded = 0, storesAdded = 0;
+        int added = 0, updated = 0, removed = 0, storesAdded = 0;
 
-        if (File.Exists(pricePath) && !await db.PriceItems.AnyAsync(p => p.Discipline == MechanicalDiscipline.Cooling))
+        // ── Fiyat listesi ───────────────────────────────────────────────────
+        if (!pricesDone && File.Exists(pricePath))
         {
-            var prices = JsonSerializer.Deserialize<List<SeedPrice>>(await File.ReadAllTextAsync(pricePath), Json) ?? new();
-            foreach (var sp in prices.Where(p => !string.IsNullOrWhiteSpace(p.Description)))
+            var prices = (JsonSerializer.Deserialize<List<SeedPrice>>(await File.ReadAllTextAsync(pricePath), Json) ?? new())
+                .Where(p => !string.IsNullOrWhiteSpace(p.Description)).ToList();
+            var cooling = await db.PriceItems.Where(p => p.Discipline == MechanicalDiscipline.Cooling).ToListAsync();
+
+            if (cooling.Count == 0)
             {
-                var entity = MapPrice(sp);
-                db.PriceItems.Add(entity);
-                pricesAdded++;
+                foreach (var sp in prices) { db.PriceItems.Add(NewItem(sp)); added++; }
+            }
+            else
+            {
+                var seeded = cooling.Where(p => !p.IsManuallyAdded && p.SourceSheetName == SourceSheetLabel).ToList();
+                if (seeded.Count > 0)
+                {
+                    var existing = new Dictionary<string, PriceItem>();
+                    foreach (var p in seeded) existing.TryAdd(Key(p.Description), p);
+                    var keep = new HashSet<PriceItem>();
+
+                    foreach (var sp in prices)
+                    {
+                        if (existing.TryGetValue(Key(sp.Description), out var item))
+                        {
+                            ApplyPrice(item, sp);   // birim / aktif-pasif kullanıcıda kalır; UpdatedAt'e dokunulmaz (kullanıcı düzenlemesi sayılmaz)
+                            keep.Add(item);
+                            updated++;
+                        }
+                        else { db.PriceItems.Add(NewItem(sp)); added++; }
+                    }
+                    // Listeden kalkan ve kullanıcının hiç düzenlemediği seed kalemleri silinir (kopya/eski ad kalmasın).
+                    foreach (var p in seeded.Where(p => !keep.Contains(p) && p.UpdatedAt == null))
+                    {
+                        db.PriceItems.Remove(p);
+                        removed++;
+                    }
+                }
+                // else: Soğutma'da yalnızca kullanıcının kendi kalemleri var — dokunma.
             }
         }
 
-        if (File.Exists(storePath))
+        // ── Mağazalar (kurulum başına bir kez) ──────────────────────────────
+        if (!storesDone && File.Exists(storePath))
         {
             var stores = JsonSerializer.Deserialize<List<SeedStore>>(await File.ReadAllTextAsync(storePath), Json) ?? new();
             var existingCodes = (await db.Stores
@@ -95,28 +139,20 @@ public static class CoolingSeedService
             }
         }
 
-        db.AppSettings.Add(new AppSetting
-        {
-            Key = SeedFlagKey,
-            Value = DateTime.Now.ToString("O"),
-            Description = "Soğutma başlangıç verisi (fiyat listesi + mağazalar) kurulumdan içeri alındı.",
-        });
+        var now = DateTime.Now.ToString("O");
+        if (!storesDone)
+            db.AppSettings.Add(new AppSetting { Key = SeedFlagKey, Value = now, Description = "Soğutma mağaza listesi + ilk fiyat listesi kurulumdan içeri alındı." });
+        if (!pricesDone)
+            db.AppSettings.Add(new AppSetting { Key = PriceRefreshFlagKey, Value = now, Description = "Soğutma birim fiyat listesi 2026 Yayım sürümüyle güncellendi." });
         await db.SaveChangesAsync();
-        return new SeedResult(true, pricesAdded, storesAdded, null);
+        return new SeedResult(true, added, storesAdded, null, updated, removed);
     }
 
-    private static PriceItem MapPrice(SeedPrice sp)
+    private static PriceItem NewItem(SeedPrice sp)
     {
-        var isEur = string.Equals(sp.Currency, "EUR", StringComparison.OrdinalIgnoreCase);
-        var description = sp.Description.Length > 500 ? sp.Description[..500] : sp.Description;
         var entity = new PriceItem
         {
             SourceSheetName = SourceSheetLabel,
-            PozNo = sp.PozNo,
-            MainCategory = sp.MainCategory,
-            Description = description,
-            DisplayName = description,
-            Notes = sp.Notes,
             // Kaynak listede birim sütunu yok — kullanıcı "Birimi Eksik" filtresiyle tamamlayabilir.
             // Kalemler yine de listede görünsün diye aktif bırakılır.
             Unit = string.Empty,
@@ -124,9 +160,25 @@ public static class CoolingSeedService
             IsActive = true,
             IsSelectable = true,
             IsManuallyAdded = false,
-            PriceType = sp.Price == 0m ? PriceType.VariablePrice : PriceType.FixedPrice,
             Discipline = MechanicalDiscipline.Cooling,
         };
+        ApplyPrice(entity, sp);
+        return entity;
+    }
+
+    /// <summary>Listeden gelen değerleri uygular (birim, aktiflik ve elle-eklenmişlik dokunulmaz).</summary>
+    private static void ApplyPrice(PriceItem entity, SeedPrice sp)
+    {
+        var isEur = string.Equals(sp.Currency, "EUR", StringComparison.OrdinalIgnoreCase);
+        var description = sp.Description.Length > 500 ? sp.Description[..500] : sp.Description;
+
+        entity.PozNo = sp.PozNo;
+        entity.MainCategory = sp.MainCategory;
+        entity.Description = description;
+        entity.DisplayName = description;
+        entity.Notes = sp.Notes;
+        entity.PriceType = sp.Price == 0m ? PriceType.VariablePrice : PriceType.FixedPrice;
+        entity.LaborPrice = 0m; // Soğutma'da işçilik ayrımı yok — tek "Birim Fiyat"
 
         if (isEur)
         {
@@ -134,13 +186,17 @@ public static class CoolingSeedService
             entity.CurrencyCode = "EUR";
             entity.ForeignPrice = sp.Price;
             entity.ExchangeRateRequired = true;
+            entity.MaterialPrice = 0m;
         }
         else
         {
-            entity.MaterialPrice = sp.Price;
+            entity.IsCurrencyBased = false;
+            entity.CurrencyCode = null;
+            entity.ForeignPrice = null;
+            entity.ExchangeRateRequired = false;
+            entity.MaterialPrice = sp.Price;   // TL birim fiyat (alan adı eski şemadan "MaterialPrice")
         }
 
         entity.SearchText = PriceListService.BuildSearchTextFromItem(entity);
-        return entity;
     }
 }
