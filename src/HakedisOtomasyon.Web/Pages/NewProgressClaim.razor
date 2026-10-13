@@ -54,7 +54,7 @@
     }
 </MudStack>
 
-<MudStepper @ref="_stepper" ActiveIndex="@_activeStep" NonLinear="false" HeaderSize="Size.Medium" Color="Color.Primary">
+<MudStepper @ref="_stepper" ActiveIndex="@_activeStep" ActiveIndexChanged="OnActiveStepChangedAsync" NonLinear="false" HeaderSize="Size.Medium" Color="Color.Primary">
 
     <!-- ─── ADIM 1: Hakediş Bilgileri ──────────────────────────────── -->
     <MudStep Title="Hakediş Bilgileri" Icon="@Icons.Material.Filled.Edit">
@@ -721,6 +721,25 @@
         // Aynı dosyaya bağlı tüm kayıtlar (Glikol'da bir dosyadan çok kayıt girilebilir) listeden kalkar
         _forms.RemoveAll(f => f.Id == form.Id || (!string.IsNullOrEmpty(form.FilePath) && f.FilePath == form.FilePath));
         Snackbar.Add("Form silindi.", Severity.Info);
+    }
+
+    /// <summary>
+    /// Adım göstergesinin kendi PREVIOUS/NEXT düğmeleri adımı sayfadan bağımsız değiştirir. Sayfadaki <see cref="_activeStep"/>
+    /// onunla eşitlenmezse "Formları İşle" zaten o adımdaymış gibi görünür ve hiçbir şey yapmaz.
+    /// </summary>
+    private async Task OnActiveStepChangedAsync(int index)
+    {
+        if (index == _activeStep) return;
+
+        if (index == 2)
+        {
+            // Form İşleme'ye NEXT ile gelindi: "Formları İşle" ile aynı hazırlık yapılır
+            await GoToProcessing();
+            if (_activeStep != 2 && _stepper is not null)
+                await _stepper.PreviousStepAsync();   // hazırlık reddedildi (örn. form yok) → gösterge geri alınır
+            return;
+        }
+        _activeStep = index;
     }
 
     private async Task GoToProcessing()
