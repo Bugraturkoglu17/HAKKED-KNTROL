@@ -87,18 +87,9 @@
             {
                 <MudPaper Elevation="2" Class="pa-3">
                     @* 1) Servis formunun bilgisi — bir kez girilir, malzeme eklerken yerinde kalır *@
-                    <MudStack Row AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-2">
-                        <MudText Typo="Typo.caption" Style="font-weight:600">
-                            @(_editingItemId.HasValue ? "Satırı düzenle" : "Servis formu") — @CurrentFile.FileName
-                        </MudText>
-                        @if (!_editingItemId.HasValue)
-                        {
-                            <MudButton Variant="Variant.Text" Size="Size.Small" StartIcon="@Icons.Material.Filled.NoteAdd"
-                                       OnClick="NewForm" Disabled="@(_store is null && !_date.HasValue && string.IsNullOrWhiteSpace(_formNo))">
-                                Yeni form
-                            </MudButton>
-                        }
-                    </MudStack>
+                    <MudText Typo="Typo.caption" Style="font-weight:600" Class="mb-2 d-block">
+                        @(_editingItemId.HasValue ? "Satırı düzenle" : "Servis formu") — @CurrentFile.FileName
+                    </MudText>
                     <div @key="@($"form-{_headerKey}")">
                         <MudGrid Spacing="2">
                             <MudItem xs="12" md="9">
@@ -177,6 +168,14 @@
                             @if (_editingItemId.HasValue)
                             {
                                 <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="CancelEdit">Vazgeç</MudButton>
+                            }
+                            else
+                            {
+                                @* Tüm alanları (mağaza, tarih, form no, malzeme, miktar) boşaltır — sıradaki servis formuna geçmek için *@
+                                <MudButton Variant="Variant.Outlined" Color="Color.Default" Size="Size.Small" Disabled="@(_saving || IsEntryEmpty)"
+                                           StartIcon="@Icons.Material.Filled.CleaningServices" OnClick="ClearAll">
+                                    Temizle
+                                </MudButton>
                             }
                             <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" Disabled="@_saving"
                                        StartIcon="@(_editingItemId.HasValue ? Icons.Material.Filled.Save : Icons.Material.Filled.Add)"
@@ -484,8 +483,10 @@
         ClearItem();
     }
 
-    /// <summary>Sıradaki servis formuna geç: form bilgisi (mağaza/tarih/form no) ve malzeme temizlenir.</summary>
-    private void NewForm() => ResetAll();
+    /// <summary>"Temizle": form bilgisi (mağaza/tarih/form no) ve malzeme/miktar birlikte boşaltılır — sıradaki servis formu için.</summary>
+    private void ClearAll() => ResetAll();
+
+    private bool IsEntryEmpty => _store is null && !_date.HasValue && string.IsNullOrWhiteSpace(_formNo) && _priceItem is null && !_qty.HasValue;
 
     private void CancelEdit() => ResetAll();
 
