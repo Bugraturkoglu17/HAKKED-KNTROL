@@ -31,8 +31,8 @@ public class GlycolClaimTests
     }
 
     // ---------------------------------------------------------------- yardımcı: gerçek örnek tablo verisi
-    private static MainStore Store(string code, string name, string format, string region = "İÇ ANADOLU") =>
-        new() { Code = code, Name = name, Format = format, Region = region, Discipline = MechanicalDiscipline.Cooling };
+    private static MainStore Store(string code, string name, string format, string region = "İÇ ANADOLU", string? city = "ANKARA") =>
+        new() { Code = code, Name = name, Format = format, Region = region, City = city, Discipline = MechanicalDiscipline.Cooling };
 
     private static MainItem GlycolItem(decimal qty) => new()
     {
@@ -81,6 +81,9 @@ public class GlycolClaimTests
     }
 
     // ---------------------------------------------------------------- Excel çıktısı
+    /// <summary>Kuruşun çok altında tolerans — yuvarlama sınırındaki (…,xx5) değerlerde hane karşılaştırması yanıltır.</summary>
+    private static void Near(double expected, double actual) => Assert.InRange(actual, expected - 1e-6, expected + 1e-6);
+
     [Fact]
     public void Excel_BaslikSatiriOrnekTabloyla_AyniSutunlarVeSirada()
     {
@@ -88,12 +91,12 @@ public class GlycolClaimTests
         var ws = BuildSheet(claim, forms, out var wb);
         using (wb)
         {
-            var headers = Enumerable.Range(1, 14).Select(c => ws.Cell(1, c).GetString()).ToArray();
+            var headers = Enumerable.Range(1, 14).Select(c => ws.Cell(1, c).GetString()).Where(h => h.Length > 0).ToArray();
             Assert.Equal(new[]
             {
                 "MAĞAZA KODU", "MAĞAZA ADI", "FORMAT", "TARİH", "FORM NO", "MALZEME KODU", "MALZEME ADI",
-                "ONAYA SUNULAN MİKTAR", "KESİLEN MİKTAR", "FATURA DÖNEMİ", "FİYAT", "TOPLAM", "GENEL TOPLAM", "ONAYLANAN MİKTAR",
-            }, headers);
+                "ONAYA SUNULAN MİKTAR", "KESİLEN MİKTAR", "FATURA DÖNEMİ", "FİYAT", "TOPLAM", "GENEL TOPLAM",
+            }, headers);   // ONAYLANAN MİKTAR sütunu yok — kesilen doğrudan GENEL TOPLAM'dan düşer
         }
     }
 
@@ -154,13 +157,8 @@ public class GlycolClaimTests
             Assert.Equal(4588.90, Disp(ws.Cell(5, 13)));
             Assert.Equal(9177.79, Disp(ws.Cell(6, 13)));
             Assert.Equal(18355.58, Disp(ws.Cell(7, 13)));
-            // ONAYLANAN: kesilen boşken hiçbir şey yazmaz (formül var, görünen değer boş)
-            wb.RecalculateAllFormulas();
-            foreach (var r in new[] { 2, 4, 5, 6, 7, 8 })
-            {
-                Assert.True(ws.Cell(r, 14).HasFormula);
-                Assert.Equal(string.Empty, ws.Cell(r, 14).GetString());
-            }
+            // ONAYLANAN MİKTAR sütunu yok
+            Assert.True(ws.Column(14).IsEmpty());
 
             // Alt satır: 71.127,87 (satırlar yuvarlanmadan toplanır — yuvarlanıp toplansa 71.127,88 olurdu)
             Assert.Equal("İÇ ANADOLU MİGROS SATIŞ MAĞAZALARI SOĞUTMA GLİKOL KULLANIM HAKEDİŞİ", ws.Cell(8, 1).GetString());
@@ -169,7 +167,7 @@ public class GlycolClaimTests
     }
 
     [Fact]
-    public void Excel_KesilenMiktarOnaylananiDusurur()
+    public void Excel_KesilenMiktarDogrudanGenelToplamdanDuser()
     {
         var (claim, forms) = ScreenshotData();
         var ws = BuildSheet(claim, forms, out var wb);
@@ -179,10 +177,83 @@ public class GlycolClaimTests
             wb.RecalculateAllFormulas();
 
             var expected = 22944.475 - 5 * 458.8895;
-            Assert.Equal(expected, ws.Cell(2, 14).GetDouble(), 3);
-            Assert.Equal(22944.475, ws.Cell(2, 13).GetDouble(), 3);       // GENEL TOPLAM değişmez
-            Assert.Equal(string.Empty, ws.Cell(4, 14).GetString());       // kesilen girilmeyen mağaza boş kalır (#DEĞER! yok)
-            Assert.Equal(expected, ws.Cell(8, 14).GetDouble(), 3);        // alt toplam yalnız hesaplananları toplar
+            Near(expected, ws.Cell(2, 13).GetDouble());                // GENEL TOPLAM düştü
+            Near(30 * 458.8895, ws.Cell(2, 12).GetDouble());           // TOPLAM (miktar × fiyat) değişmez
+            Near(16061.1325, ws.Cell(4, 13).GetDouble());              // kesilmeyen mağaza aynı
+            Near(71127.8725 - 5 * 458.8895, ws.Cell(8, 13).GetDouble()); // alt toplam da düşer
+
+            // icmal sayfası aynı hücrelere bağlı olduğundan o da güncellenir
+            var icmal = wb.Worksheet(GlycolClaimExcelBuilder.SummarySheetName);
+            Near(expected, icmal.Cell(4, 6).GetDouble());
+            Near(71127.8725 - 5 * 458.8895, icmal.Cell(10, 6).GetDouble());
+        }
+    }
+
+    /// <summary>Kullanıcının örneği: 20 adet × 450,50 = 9.010,00; 5 kesilince GENEL TOPLAM 6.757,50, tablo toplamı 51.807,50.</summary>
+    [Fact]
+    public void Excel_KesilenMiktar_KullaniciOrnegi_6757_50_ve_51807_50()
+    {
+        var claim = new MainClaim { Id = 1, Name = "Temmuz Glikol", CompanyName = "OKUR", Month = 7, Year = 2026,
+            Discipline = MechanicalDiscipline.Cooling, CoolingCategory = CoolingClaimCategory.GlycolUsage, EurRate = 53m };
+        var forms = Enumerable.Range(1, 6).Select(i =>
+        {
+            var f = Form(i, Store((3000 + i).ToString(), $"MAĞAZA {i}", "MM"), (5000 + i).ToString(), new DateTime(2026, 7, i), 20);
+            var item = f.ServiceItems.Single();
+            item.ForeignPrice = 8.5m; item.ExchangeRate = 53m; item.UnitPrice = 450.50m;   // 8,5 × 53 = 450,50
+            return f;
+        }).ToList();
+        var ws = BuildSheet(claim, forms, out var wb);
+        using (wb)
+        {
+            ws.Cell(2, 9).Value = 5;
+            wb.RecalculateAllFormulas();
+
+            Assert.Equal("TEMMUZ", ws.Cell(2, 10).GetString());
+            Assert.Equal(450.50, ws.Cell(2, 11).GetDouble(), 4);
+            Assert.Equal(9010.00, ws.Cell(2, 12).GetDouble(), 4);
+            Assert.Equal(6757.50, ws.Cell(2, 13).GetDouble(), 4);
+            Assert.Equal(9010.00, ws.Cell(3, 13).GetDouble(), 4);
+            Assert.Equal(51807.50, ws.Cell(8, 13).GetDouble(), 4);
+        }
+    }
+
+    [Fact]
+    public void Excel_GenelIcmalSayfasi_IlkSayfa_MagazaBasinaBirSatirVeGenelToplam()
+    {
+        var (claim, forms) = ScreenshotData();
+        forms.Single(f => f.Store!.Code == "3239").Store!.City = "BARTIN";
+        var ws = BuildSheet(claim, forms, out var wb);
+        using (wb)
+        {
+            wb.RecalculateAllFormulas();
+            var icmal = wb.Worksheet(1);
+            Assert.Equal("GENEL ICMAL", icmal.Name);
+            Assert.Equal("MALZ HAKEDIS", ws.Name);
+            Assert.Equal(2, ws.Position);
+
+            Assert.Equal("Haziran 26", icmal.Cell(1, 1).GetString());
+            Assert.Equal("İÇ ANADOLU MİGROS SATIŞ MAĞAZALARI SOĞUTMA GLİKOL KULLANIM İCMALİ", icmal.Cell(2, 1).GetString());
+            Assert.Equal(new[] { "S/N", "MAĞAZA KODU", "MAĞAZA ADI", "İL", "FORMAT", "TOPLAM FİYAT" },
+                Enumerable.Range(1, 6).Select(c => icmal.Cell(3, c).GetString()).ToArray());
+
+            // 5 mağaza (1761'in iki formu TEK satır), mağaza koduna göre sıralı
+            Assert.Equal(new[] { 1761, 3239, 7796, 8039, 8696 }, Enumerable.Range(4, 5).Select(r => (int)icmal.Cell(r, 2).GetDouble()).ToArray());
+            Assert.Equal(new[] { 1, 2, 3, 4, 5 }, Enumerable.Range(4, 5).Select(r => (int)icmal.Cell(r, 1).GetDouble()).ToArray());
+            Assert.Equal("GÖKSUPARK MMM MİGROS", icmal.Cell(4, 3).GetString());
+            Assert.Contains("HYPERLINK", icmal.Cell(4, 3).FormulaA1);
+            Assert.Contains("'MALZ HAKEDIS'!A2", icmal.Cell(4, 3).FormulaA1);
+            Assert.Contains("'MALZ HAKEDIS'!A4", icmal.Cell(5, 3).FormulaA1);   // 3239 bloğu 4. satırda başlar
+            Assert.Equal("ANKARA", icmal.Cell(4, 4).GetString());
+            Assert.Equal("BARTIN", icmal.Cell(5, 4).GetString());
+            Assert.Equal("M ANADOLU", icmal.Cell(6, 5).GetString());
+
+            static double Disp(IXLCell c) => Math.Round(c.GetDouble(), 2, MidpointRounding.AwayFromZero);
+            Assert.Equal(new[] { 22944.48, 16061.13, 4588.90, 9177.79, 18355.58 },
+                Enumerable.Range(4, 5).Select(r => Disp(icmal.Cell(r, 6))).ToArray());
+
+            Assert.True(icmal.Row(9).IsEmpty());                                  // boş ayırıcı satır
+            Assert.Equal("GENEL TOPLAM :", icmal.Cell(10, 1).GetString());
+            Assert.Equal(71127.87, Disp(icmal.Cell(10, 6)));
         }
     }
 
@@ -596,6 +667,7 @@ public class GlycolClaimTests
         var a = await db.Stores.SingleAsync(s => s.Code == "1761");
         Assert.Equal("MMM", a.Format);
         Assert.Equal("İÇ ANADOLU", a.Region);
+        Assert.Equal("ANKARA", a.City);                             // il (GENEL İCMAL sayfası için)
         Assert.Equal("BENİM ADIM", a.Name);                         // ad değişmez
         var b = await db.Stores.SingleAsync(s => s.Code == "3239");
         Assert.Equal("ÖZEL", b.Format);                             // kullanıcının girdiği korunur

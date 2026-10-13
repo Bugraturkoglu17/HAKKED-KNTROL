@@ -17,5 +17,8 @@ public class Store
     /// <summary>Mağazanın bölgesi (İÇ ANADOLU, BATI MARMARA ...) — hakediş çıktısı başlığında kullanılır.</summary>
     public string? Region { get; set; }
 
+    /// <summary>Mağazanın ili (ANKARA, ESKİŞEHİR ...) — Soğutma Glikol hakedişinin GENEL İCMAL sayfasında gösterilir.</summary>
+    public string? City { get; set; }
+
     public ICollection<ServiceForm> ServiceForms { get; set; } = new List<ServiceForm>();
 }

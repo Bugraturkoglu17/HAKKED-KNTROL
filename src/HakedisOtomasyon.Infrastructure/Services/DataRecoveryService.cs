@@ -217,6 +217,7 @@ public class DataRecoveryService : IDataRecoveryService
             {
                 if (ex.Format is null && s.Format is not null) ex.Format = s.Format;
                 if (ex.Region is null && s.Region is not null) ex.Region = s.Region;
+                if (ex.City is null && s.City is not null) ex.City = s.City;
                 if (ex.Name != s.Name || ex.IsActive != s.IsActive)
                 {
                     ex.Name     = s.Name ?? ex.Name;
@@ -234,6 +235,7 @@ public class DataRecoveryService : IDataRecoveryService
                     Discipline = (MechanicalDiscipline)s.Discipline,
                     Format    = s.Format,
                     Region    = s.Region,
+                    City      = s.City,
                     CreatedAt = DateTime.Now,
                 });
                 result.StoresAdded++;
@@ -381,10 +383,11 @@ public class DataRecoveryService : IDataRecoveryService
         bool hasDiscipline = storeCols.Contains("Discipline");
         bool hasFormat = storeCols.Contains("Format");
         bool hasRegion = storeCols.Contains("Region");
+        bool hasCity = storeCols.Contains("City");
 
         await using var cmd = conn.CreateCommand();
         cmd.CommandText = $"SELECT Code, Name, IsActive, {(hasDiscipline ? "Discipline" : "0")}, " +
-                          $"{(hasFormat ? "Format" : "NULL")}, {(hasRegion ? "Region" : "NULL")} FROM Stores";
+                          $"{(hasFormat ? "Format" : "NULL")}, {(hasRegion ? "Region" : "NULL")}, {(hasCity ? "City" : "NULL")} FROM Stores";
         await using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
@@ -396,6 +399,7 @@ public class DataRecoveryService : IDataRecoveryService
                 Discipline = hasDiscipline && !reader.IsDBNull(3) ? reader.GetInt32(3) : 0,
                 Format   = reader.IsDBNull(4) ? null : reader.GetString(4),
                 Region   = reader.IsDBNull(5) ? null : reader.GetString(5),
+                City     = reader.IsDBNull(6) ? null : reader.GetString(6),
             });
         }
         return list;
@@ -676,6 +680,7 @@ public class DataRecoveryService : IDataRecoveryService
         Discipline = (int)s.Discipline,
         Format   = s.Format,
         Region   = s.Region,
+        City     = s.City,
     };
 
     private static PriceItemSnapshot MapPriceItem(PriceItem p) => new()
@@ -727,6 +732,7 @@ public class DataRecoveryService : IDataRecoveryService
         public int     Discipline { get; init; }
         public string? Format     { get; init; }
         public string? Region     { get; init; }
+        public string? City       { get; init; }
     }
 
     private record PriceItemSnapshot

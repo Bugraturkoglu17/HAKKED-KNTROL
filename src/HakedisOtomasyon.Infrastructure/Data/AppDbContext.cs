@@ -40,6 +40,7 @@ public class AppDbContext : DbContext
             e.Property(s => s.Name).HasMaxLength(200).IsRequired();
             e.Property(s => s.Format).HasMaxLength(100);
             e.Property(s => s.Region).HasMaxLength(100);
+            e.Property(s => s.City).HasMaxLength(100);
         });
 
         modelBuilder.Entity<PriceItem>(e =>

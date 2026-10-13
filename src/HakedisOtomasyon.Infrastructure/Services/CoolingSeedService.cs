@@ -15,7 +15,8 @@ namespace HakedisOtomasyon.Infrastructure.Services;
 ///  • Mağazalar: kurulum başına YALNIZCA BİR KEZ (CoolingSeedV1); kod bazında eklenir, zaten kayıtlı
 ///    kod atlanır (adı/durumu değiştirilmez). Kullanıcı sonradan silerse yeniden eklenmez.
 ///  • Mağaza formatı/bölgesi (MMM, M-JET ... / İÇ ANADOLU ...): Glikol hakediş çıktısında gösterilir. Daha önce yüklenmiş
-///    mağazaların boş Format/Bölge alanları bir kez doldurulur (CoolingStoreInfoV2); dolu alanlar ve adlar değiştirilmez.
+///    mağazaların boş Format/Bölge/İl alanları bir kez doldurulur (CoolingStoreInfoV3); dolu alanlar ve adlar değiştirilmez.
+///    İl, Glikol hakedişinin GENEL İCMAL sayfasında gösterilir.
 ///  • Fiyat listesi: yayımlanan liste güncellendikçe sürüm bayrağı artar (şu an CoolingPricesV2).
 ///      – Soğutma'da hiç kalem yoksa tüm liste eklenir.
 ///      – Önceden seed'den gelmiş (SourceSheetName etiketli, elle eklenmemiş) kalemler varsa listedeki
@@ -31,7 +32,7 @@ public static class CoolingSeedService
 {
     public const string SeedFlagKey = "CoolingSeedV1";          // mağazalar + ilk fiyat yüklemesi
     public const string PriceRefreshFlagKey = "CoolingPricesV2"; // 2026 Yayım listesi (Marka sütunsuz, tek Birim Fiyat)
-    public const string StoreInfoFlagKey = "CoolingStoreInfoV2"; // mağaza Format + Bölge bilgisi
+    public const string StoreInfoFlagKey = "CoolingStoreInfoV3"; // mağaza Format + Bölge + İl bilgisi (V2: il yoktu)
     public const string PriceFileName = "cooling_price_items.json";
     public const string StoreFileName = "cooling_stores.json";
     public const string SourceSheetLabel = "2026 Soğutma Malzeme Birim Fiyatlar (Yayım)";
@@ -56,6 +57,7 @@ public static class CoolingSeedService
         public bool Active { get; set; } = true;
         public string? Format { get; set; }
         public string? Region { get; set; }
+        public string? City { get; set; }
     }
 
     private static readonly JsonSerializerOptions Json = new() { PropertyNameCaseInsensitive = true };
@@ -145,6 +147,7 @@ public static class CoolingSeedService
                     Discipline = MechanicalDiscipline.Cooling,
                     Format = ss.Format,
                     Region = ss.Region,
+                    City = ss.City,
                 });
                 storesAdded++;
             }
@@ -156,7 +159,7 @@ public static class CoolingSeedService
             var byCode = stores.Where(x => !string.IsNullOrWhiteSpace(x.Code))
                 .GroupBy(x => x.Code.Trim().ToUpperInvariant()).ToDictionary(g => g.Key, g => g.First());
             var missing = await db.Stores
-                .Where(s => s.Discipline == MechanicalDiscipline.Cooling && (s.Format == null || s.Region == null))
+                .Where(s => s.Discipline == MechanicalDiscipline.Cooling && (s.Format == null || s.Region == null || s.City == null))
                 .ToListAsync();
             foreach (var st in missing)
             {
@@ -164,6 +167,7 @@ public static class CoolingSeedService
                 var changed = false;
                 if (st.Format is null && src.Format is not null) { st.Format = src.Format; changed = true; }
                 if (st.Region is null && src.Region is not null) { st.Region = src.Region; changed = true; }
+                if (st.City is null && src.City is not null) { st.City = src.City; changed = true; }
                 if (changed) infoFilled++;
             }
         }
@@ -174,7 +178,7 @@ public static class CoolingSeedService
         if (!pricesDone)
             db.AppSettings.Add(new AppSetting { Key = PriceRefreshFlagKey, Value = now, Description = "Soğutma birim fiyat listesi 2026 Yayım sürümüyle güncellendi." });
         if (!storeInfoDone && File.Exists(storePath))
-            db.AppSettings.Add(new AppSetting { Key = StoreInfoFlagKey, Value = now, Description = "Soğutma mağazalarına Format/Bölge bilgisi işlendi." });
+            db.AppSettings.Add(new AppSetting { Key = StoreInfoFlagKey, Value = now, Description = "Soğutma mağazalarına Format/Bölge/İl bilgisi işlendi." });
         await db.SaveChangesAsync();
         return new SeedResult(true, added, storesAdded, null, updated, removed, infoFilled);
     }
