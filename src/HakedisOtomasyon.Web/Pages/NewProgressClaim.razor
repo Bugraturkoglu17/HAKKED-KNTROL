@@ -500,7 +500,7 @@
     private bool IsCooling => (_claim?.Discipline ?? CurrentDiscipline.CurrentDiscipline) == MechanicalDiscipline.Cooling;
 
     private string EurRateDisplay => EurPricing.IsValidRate(_dto.EurRate)
-        ? $"{_dto.EurRate!.Value.ToString("N4", System.Globalization.CultureInfo.GetCultureInfo("tr-TR"))} ₺"
+        ? $"{EurPricing.FormatRate(_dto.EurRate!.Value)} ₺"
           + (_dto.EurRateDate.HasValue ? $"  ({_dto.EurRateSource} {_dto.EurRateDate:dd.MM.yyyy})" : "")
         : string.Empty;
 

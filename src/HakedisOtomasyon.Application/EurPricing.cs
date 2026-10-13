@@ -1,3 +1,4 @@
+using System.Globalization;
 using HakedisOtomasyon.Application.DTOs;
 
 namespace HakedisOtomasyon.Application;
@@ -38,6 +39,36 @@ public static class EurPricing
             count++;
         }
         return count;
+    }
+
+    private static readonly CultureInfo Tr = CultureInfo.GetCultureInfo("tr-TR");
+
+    /// <summary>Kuru Türkçe biçimde, gereksiz sıfırsız gösterir: 53,987 (en fazla 4 ondalık).</summary>
+    public static string FormatRate(decimal rate) => rate.ToString("0.####", Tr);
+
+    /// <summary>
+    /// Kullanıcının yazdığı kuru okur; makine/uygulama kültüründen BAĞIMSIZDIR. Ondalık ayraç olarak virgül ya da
+    /// nokta kabul edilir (son ayraç ondalıktır, öncekiler binlik sayılır): "53,987", "53.987", "1.053,5" → geçerli.
+    /// Kur 0'dan büyük ve 10.000'den küçük olmalıdır.
+    /// </summary>
+    public static bool TryParseRate(string? text, out decimal rate)
+    {
+        rate = 0m;
+        if (string.IsNullOrWhiteSpace(text)) return false;
+        var t = text.Trim()
+            .Replace("\u00A0", "").Replace(" ", "")
+            .Replace("₺", "").Replace("TL", "", StringComparison.OrdinalIgnoreCase);
+
+        int dec = Math.Max(t.LastIndexOf(','), t.LastIndexOf('.'));
+        string intPart = dec < 0 ? t : t[..dec];
+        string fracPart = dec < 0 ? "" : t[(dec + 1)..];
+        intPart = intPart.Replace(",", "").Replace(".", "");
+
+        if (!intPart.All(char.IsAsciiDigit) || !fracPart.All(char.IsAsciiDigit)) return false;
+        if (intPart.Length == 0 && fracPart.Length == 0) return false;
+
+        var normalized = (intPart.Length == 0 ? "0" : intPart) + (fracPart.Length > 0 ? "." + fracPart : "");
+        return decimal.TryParse(normalized, NumberStyles.Number, CultureInfo.InvariantCulture, out rate) && IsValidRate(rate);
     }
 
     /// <summary>Kur geçerli mi? (0 veya negatif kurla fiyat hesaplanamaz.)</summary>

@@ -42,6 +42,41 @@ public class EurPricingTests
     public void IsValidRate_SifirVeNegatifiReddeder(double? rate, bool valid)
         => Assert.Equal(valid, EurPricing.IsValidRate(rate.HasValue ? (decimal)rate.Value : null));
 
+    [Theory]
+    [InlineData("53,987", 53.987)]       // Türkçe yazım
+    [InlineData("53.987", 53.987)]       // nokta ondalık
+    [InlineData("53,98", 53.98)]
+    [InlineData("1.053,5", 1053.5)]      // binlik nokta + ondalık virgül
+    [InlineData("1,053.5", 1053.5)]      // binlik virgül + ondalık nokta
+    [InlineData(" 51,68 ₺ ", 51.68)]
+    [InlineData("51", 51)]
+    [InlineData("5,398.0000", 5398)]     // eski bozuk gösterim yine de okunur
+    public void TryParseRate_VirgulVeNoktaKabulEder(string text, double expected)
+    {
+        Assert.True(EurPricing.TryParseRate(text, out var rate));
+        Assert.Equal((decimal)expected, rate);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("abc")]
+    [InlineData("0")]
+    [InlineData("-5")]
+    [InlineData("12,3,4x")]
+    [InlineData("10000")]
+    public void TryParseRate_GecersizGirdiyiReddeder(string? text)
+        => Assert.False(EurPricing.TryParseRate(text, out _));
+
+    [Theory]
+    [InlineData(53.987, "53,987")]
+    [InlineData(53.98, "53,98")]
+    [InlineData(51.68, "51,68")]
+    [InlineData(54, "54")]
+    [InlineData(53.98701, "53,987")]   // en fazla 4 ondalık, gereksiz sıfır yok
+    public void FormatRate_GereksizSifirEklemez(double rate, string expected)
+        => Assert.Equal(expected, EurPricing.FormatRate((decimal)rate));
+
     [Fact]
     public void Reprice_SadeceEurKalemleriniGunceller()
     {

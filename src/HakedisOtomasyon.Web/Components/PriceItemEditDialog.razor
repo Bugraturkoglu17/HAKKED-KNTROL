@@ -92,7 +92,8 @@
                 <MudItem xs="12" md="4">
                     <MudNumericField T="decimal?" @bind-Value="Item.ForeignPrice"
                                      Label="@($"Birim Fiyat ({Item.CurrencyCode ?? "EUR"})")" Variant="Variant.Outlined"
-                                     Min="0" Format="N4" HideSpinButtons="true" />
+                                     Culture="@System.Globalization.CultureInfo.GetCultureInfo("tr-TR")"
+                                     Min="0" Format="0.####" HideSpinButtons="true" />
                 </MudItem>
             }
             @if (Item.IsCurrencyBased && !Item.ForeignPrice.HasValue)

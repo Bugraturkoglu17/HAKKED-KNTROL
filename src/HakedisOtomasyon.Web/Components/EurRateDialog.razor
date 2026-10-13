@@ -32,10 +32,12 @@
                 </MudButton>
             </MudItem>
             <MudItem xs="12">
-                <MudNumericField T="decimal?" @bind-Value="_rate" Immediate="true"
-                                 Label="EUR Kuru (TL / 1 EUR) *" Variant="Variant.Outlined"
-                                 Min="0" Format="N4" HideSpinButtons="true" Autofocus
-                                 HelperText="TCMB'den getirebilir ya da elle girebilirsiniz." />
+                @* Sayı alanı (MudNumericField) yerine metin: makine kültürüne bağlı olmadan "53,987" ya da "53.987"
+                   yazılabilir; gereksiz sıfır eklenmez. *@
+                <MudTextField T="string" @bind-Value="_rateText" Immediate="true"
+                              Label="EUR Kuru (TL / 1 EUR) *" Variant="Variant.Outlined" Autofocus
+                              Adornment="Adornment.End" AdornmentText="₺"
+                              HelperText="Örn: 53,987 — virgül ya da nokta kullanabilirsiniz. TCMB'den getirebilirsiniz." />
             </MudItem>
             @if (!string.IsNullOrEmpty(_message))
             {
@@ -64,7 +66,7 @@
     [Parameter] public decimal? Rate { get; set; }
     [Parameter] public DateTime? RateDate { get; set; }
 
-    private decimal? _rate;
+    private string? _rateText;
     private DateTime? _date = DateTime.Today;
     private DateTime? _actualDate;
     private decimal? _fetchedRate;
@@ -75,11 +77,11 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _rate = Rate;
+        _rateText = EurPricing.IsValidRate(Rate) ? EurPricing.FormatRate(Rate!.Value) : string.Empty;
         _date = RateDate ?? DateTime.Today;
         _actualDate = RateDate;
         // Kur henüz girilmemişse bugünkü TCMB kurunu öneri olarak getirmeyi dene (sessiz; olmazsa elle girilir).
-        if (!EurPricing.IsValidRate(_rate))
+        if (!EurPricing.TryParseRate(_rateText, out _))
             await FetchAsync();
     }
 
@@ -92,12 +94,12 @@
             var r = await ExchangeRateService.GetEurRateAsync(_date.Value, ExchangeRateType.ForexSelling);
             if (r.IsSuccess)
             {
-                _rate = r.Rate;
+                _rateText = EurPricing.FormatRate(r.Rate);
                 _fetchedRate = r.Rate;
                 _actualDate = r.ActualDate;
                 _message = r.IsFallbackDate
-                    ? $"Seçilen tarihte bülten yok; en yakın önceki bülten kullanıldı ({r.ActualDate:dd.MM.yyyy}): {r.Rate:N4} TL"
-                    : $"TCMB kuru alındı ({r.ActualDate:dd.MM.yyyy}): {r.Rate:N4} TL";
+                    ? $"Seçilen tarihte bülten yok; en yakın önceki bülten kullanıldı ({r.ActualDate:dd.MM.yyyy}): {EurPricing.FormatRate(r.Rate)} TL"
+                    : $"TCMB kuru alındı ({r.ActualDate:dd.MM.yyyy}): {EurPricing.FormatRate(r.Rate)} TL";
                 _severity = r.IsFallbackDate ? Severity.Warning : Severity.Success;
             }
             else
@@ -116,14 +118,14 @@
 
     private void Submit()
     {
-        if (!EurPricing.IsValidRate(_rate))
+        if (!EurPricing.TryParseRate(_rateText, out var rate))
         {
-            _error = "Lütfen geçerli bir EUR kuru girin (0'dan büyük).";
+            _error = "Lütfen geçerli bir EUR kuru girin (0'dan büyük, örn. 53,987).";
             return;
         }
         // Değer TCMB'den gelenle aynıysa kaynak TCMB, kullanıcı değiştirdiyse Manuel.
-        var fromTcmb = _fetchedRate.HasValue && _fetchedRate.Value == _rate!.Value;
+        var fromTcmb = _fetchedRate.HasValue && _fetchedRate.Value == rate;
         var date = fromTcmb ? (_actualDate ?? _date) : _date;
-        MudDialog.Close(DialogResult.Ok((_rate!.Value, date, fromTcmb ? "TCMB" : "Manuel")));
+        MudDialog.Close(DialogResult.Ok((rate, date, fromTcmb ? "TCMB" : "Manuel")));
     }
 }

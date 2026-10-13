@@ -16,7 +16,7 @@
             <MudChip T="string" Icon="@Icons.Material.Filled.CurrencyExchange" Size="Size.Medium"
                      Color="@(HasEurRate ? Color.Info : Color.Warning)">
                 @(HasEurRate
-                    ? $"EUR Kuru: {Claim!.EurRate!.Value.ToString("N4", TrCulture)} ₺" + (Claim.EurRateDate.HasValue ? $" ({Claim.EurRateSource} {Claim.EurRateDate:dd.MM.yyyy})" : "")
+                    ? $"EUR Kuru: {EurPricing.FormatRate(Claim!.EurRate!.Value)} ₺" + (Claim.EurRateDate.HasValue ? $" ({Claim.EurRateSource} {Claim.EurRateDate:dd.MM.yyyy})" : "")
                     : "EUR kuru girilmedi")
             </MudChip>
             <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Primary"
@@ -359,7 +359,7 @@
         Claim.EurRateSource = t.Item3;
         // Ekrandaki (henüz kaydedilmemiş olabilecek) kalemler de aynı kurla
         var n = EurPricing.Reprice(Items, t.Item1, t.Item2, t.Item3);
-        if (n > 0) Snackbar.Add($"{n} EUR kalemi yeni kurla ({t.Item1.ToString("N4", TrCulture)} ₺) yeniden fiyatlandı.", Severity.Info);
+        if (n > 0) Snackbar.Add($"{n} EUR kalemi yeni kurla ({EurPricing.FormatRate(t.Item1)} ₺) yeniden fiyatlandı.", Severity.Info);
         await OnEurRateChanged.InvokeAsync();
         await OnChanged.InvokeAsync();
         StateHasChanged();
