@@ -38,6 +38,8 @@ public class AppDbContext : DbContext
             e.HasIndex(s => new { s.Discipline, s.Code }).IsUnique();
             e.Property(s => s.Code).HasMaxLength(50).IsRequired();
             e.Property(s => s.Name).HasMaxLength(200).IsRequired();
+            e.Property(s => s.Format).HasMaxLength(100);
+            e.Property(s => s.Region).HasMaxLength(100);
         });
 
         modelBuilder.Entity<PriceItem>(e =>
@@ -92,6 +94,7 @@ public class AppDbContext : DbContext
             e.Property(i => i.TotalPrice).HasColumnType("decimal(18,2)");
             e.Property(i => i.Quantity).HasColumnType("decimal(18,4)");
             e.Property(i => i.ForeignPrice).HasColumnType("decimal(18,4)");
+            e.Property(i => i.ItemCode).HasMaxLength(50);
 
             e.HasOne(i => i.ServiceForm)
                 .WithMany(f => f.ServiceItems)

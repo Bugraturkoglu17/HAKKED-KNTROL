@@ -13,6 +13,12 @@ public class ServiceForm
     public ServiceFormStatus Status { get; set; } = ServiceFormStatus.Bekliyor;
     public string? Notes { get; set; }
 
+    /// <summary>Servis formunun numarası (Soğutma Glikol hakedişinde kullanıcı girer).</summary>
+    public string? FormNumber { get; set; }
+
+    /// <summary>Servis formunun tarihi (Soğutma Glikol hakedişinde kullanıcı seçer).</summary>
+    public DateTime? FormDate { get; set; }
+
     // ── Arşiv / Hash alanı (yeni) ──
     public string? FileHash { get; set; }          // SHA256 hex
     public long FileSize { get; set; }              // bayt

@@ -93,6 +93,8 @@ public class ProgressClaimService : IProgressClaimService
         dto.Id = entity.Id;
         dto.CreatedAt = entity.CreatedAt;
         dto.Status = entity.Status;
+        dto.Discipline = entity.Discipline;
+        dto.CoolingCategory = entity.CoolingCategory;
         return dto;
     }
 
@@ -136,7 +138,7 @@ public class ProgressClaimService : IProgressClaimService
             item.MaterialPrice = EurPricing.ToTl(item.ForeignPrice!.Value, rate);
             item.LaborPrice = 0m;
             item.UnitPrice = item.MaterialPrice;
-            item.TotalPrice = Math.Round(item.UnitPrice * item.Quantity, 2, MidpointRounding.AwayFromZero);
+            item.TotalPrice = EurPricing.TotalTl(item.Quantity, item.ForeignPrice!.Value, rate);
             item.ExchangeRate = rate;
             item.ExchangeRateDate = rateDate;
             item.ExchangeRateActualDate = rateDate;

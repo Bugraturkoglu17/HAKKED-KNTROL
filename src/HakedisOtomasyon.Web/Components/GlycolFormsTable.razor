@@ -1,0 +1,346 @@
+@namespace HakedisOtomasyon.Web.Components
+@using System.Globalization
+@using HakedisOtomasyon.Application
+@inject IServiceFormService FormService
+@inject IStoreService StoreService
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+@* Soğutma — Glikol Kullanım hakedişi: yüklenen TÜM servis formları tek tabloda. Her form tek satır; glikol kalemi otomatik,
+   kullanıcı yalnızca mağaza + tarih + form no seçer/girer ve miktarı düzenler. Servis ücreti yoktur. *@
+
+<MudStack Spacing="3">
+    <MudAlert Severity="Severity.Info" Dense>
+        Glikol hakedişinde <b>servis ücreti yoktur</b>. Glikol kalemi her forma otomatik eklenir — yalnızca <b>miktarı</b> girin.
+        Her form için <b>mağazayı</b> seçin, <b>tarihi</b> seçin ve <b>form numarasını</b> girin. Mağaza kodu/adı/formatı, malzeme kodu,
+        fatura dönemi ve fiyat otomatik gelir.
+    </MudAlert>
+
+    <MudStack Row AlignItems="AlignItems.Center" Spacing="2" Style="flex-wrap:wrap">
+        <MudChip T="string" Icon="@Icons.Material.Filled.CalendarMonth" Color="Color.Default" Size="Size.Medium">
+            Fatura Dönemi: <b>@Period</b>
+        </MudChip>
+        <MudChip T="string" Icon="@Icons.Material.Filled.CurrencyExchange" Color="@(EurPricing.IsValidRate(Claim?.EurRate) ? Color.Info : Color.Warning)" Size="Size.Medium">
+            @(EurPricing.IsValidRate(Claim?.EurRate) ? $"EUR Kuru: {EurPricing.FormatRate(Claim!.EurRate!.Value)} ₺" : "EUR kuru girilmedi")
+        </MudChip>
+        <MudChip T="string" Icon="@Icons.Material.Filled.Description" Size="Size.Medium">@_rows.Count form</MudChip>
+        <MudChip T="string" Icon="@(CompleteCount == _rows.Count && _rows.Count > 0 ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.WarningAmber)"
+                 Color="@(CompleteCount == _rows.Count && _rows.Count > 0 ? Color.Success : Color.Warning)" Size="Size.Medium">
+            @CompleteCount / @_rows.Count tamamlandı
+        </MudChip>
+        <MudSpacer />
+        <MudButton Variant="@(_sortByStore ? Variant.Filled : Variant.Outlined)" Color="Color.Primary" Size="Size.Small"
+                   StartIcon="@Icons.Material.Filled.SortByAlpha" OnClick="@(() => _sortByStore = !_sortByStore)">
+            Mağaza koduna göre diz
+        </MudButton>
+    </MudStack>
+
+    <MudPaper Elevation="2" Style="overflow-x:auto">
+        <MudSimpleTable Dense Hover Bordered Style="min-width:1320px">
+            <thead>
+                <tr>
+                    <th style="width:36px">#</th>
+                    <th style="min-width:170px">Servis Formu</th>
+                    <th style="min-width:300px">Mağaza *</th>
+                    <th style="min-width:110px">Format</th>
+                    <th style="min-width:150px">Tarih *</th>
+                    <th style="min-width:110px">Form No *</th>
+                    <th style="min-width:110px">Miktar *</th>
+                    <th style="min-width:90px">Malzeme Kodu</th>
+                    <th style="min-width:100px">Fatura Dönemi</th>
+                    <th style="min-width:100px; text-align:right">Fiyat</th>
+                    <th style="min-width:120px; text-align:right">Toplam</th>
+                    <th style="min-width:170px">Durum</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (_rows.Count == 0)
+                {
+                    <tr><td colspan="12"><MudText Typo="Typo.body2" Color="Color.Secondary" Class="pa-3">Henüz servis formu yüklenmedi. Önceki adımdan formları yükleyin.</MudText></td></tr>
+                }
+                @{ int n = 0; }
+                @foreach (var row in DisplayRows)
+                {
+                    n++;
+                    var missing = MissingText(row);
+                    <tr @key="row.Form.Id">
+                        <td>@n</td>
+                        <td>
+                            <MudStack Row AlignItems="AlignItems.Center" Spacing="1" Style="flex-wrap:nowrap">
+                                <MudTooltip Text="Formu göster">
+                                    <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" Color="Color.Info"
+                                                   OnClick="@(() => ShowFormAsync(row))" />
+                                </MudTooltip>
+                                <MudText Typo="Typo.caption" Style="overflow:hidden;text-overflow:ellipsis;max-width:120px;white-space:nowrap" title="@row.Form.OriginalFileName">
+                                    @row.Form.OriginalFileName
+                                </MudText>
+                            </MudStack>
+                        </td>
+                        <td>
+                            <MudAutocomplete T="StoreDto" Value="@row.Store" ValueChanged="@(s => OnStoreChangedAsync(row, s))"
+                                             SearchFunc="@SearchStoresAsync"
+                                             ToStringFunc="@(s => s is null ? string.Empty : $"{s.Code} — {s.Name}")"
+                                             Variant="Variant.Outlined" Margin="Margin.Dense" Dense Clearable ResetValueOnEmptyText
+                                             MinCharacters="1" MaxItems="30" Placeholder="Kod veya ad yazın"
+                                             Error="@(row.Store is null)" />
+                        </td>
+                        <td>
+                            @if (!string.IsNullOrWhiteSpace(row.Store?.Format))
+                            {
+                                <span style="color:#d32f2f;font-weight:700">@row.Store!.Format</span>
+                            }
+                            else { <span style="color:#9e9e9e">—</span> }
+                        </td>
+                        <td>
+                            <MudDatePicker Date="@row.Date" DateChanged="@(d => OnDateChangedAsync(row, d))"
+                                           Variant="Variant.Outlined" Margin="Margin.Dense" Editable DateFormat="dd.MM.yyyy"
+                                           Culture="@Tr" Placeholder="gg.aa.yyyy" Error="@(!row.Date.HasValue)" />
+                        </td>
+                        <td>
+                            <MudTextField T="string" Value="@row.FormNo" ValueChanged="@(v => OnFormNoChangedAsync(row, v))"
+                                          Variant="Variant.Outlined" Margin="Margin.Dense" MaxLength="50"
+                                          Error="@(string.IsNullOrWhiteSpace(row.FormNo))" />
+                        </td>
+                        <td>
+                            <MudNumericField T="decimal?" Value="@row.Qty" ValueChanged="@(v => OnQtyChangedAsync(row, v))"
+                                             Variant="Variant.Outlined" Margin="Margin.Dense" Min="0" Culture="@Tr" Format="0.##"
+                                             HideSpinButtons Error="@(!(row.Qty > 0m))" />
+                        </td>
+                        <td>@(row.Item?.ItemCode ?? "—")</td>
+                        <td>@Period</td>
+                        <td style="text-align:right">@(row.Item is null ? "—" : row.Item.UnitPrice.ToString("N2", Tr) + " ₺")</td>
+                        <td style="text-align:right;font-weight:600">@(RowTotal(row).ToString("N2", Tr)) ₺</td>
+                        <td>
+                            @if (row.Saving)
+                            {
+                                <MudProgressCircular Size="Size.Small" Indeterminate />
+                            }
+                            else if (missing.Length == 0)
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Success" Icon="@Icons.Material.Filled.CheckCircle">Tamam</MudChip>
+                            }
+                            else
+                            {
+                                <MudTooltip Text="@("Eksik: " + missing)">
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Warning" Icon="@Icons.Material.Filled.WarningAmber">Eksik: @missing</MudChip>
+                                </MudTooltip>
+                            }
+                            @if (IsDuplicateFormNo(row))
+                            {
+                                <MudTooltip Text="Bu form numarası başka bir satırda da var">
+                                    <MudIcon Icon="@Icons.Material.Filled.ContentCopy" Color="Color.Error" Size="Size.Small" />
+                                </MudTooltip>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+            <tfoot>
+                <tr style="font-weight:700; background:#f1f8e9">
+                    <td colspan="6" style="text-align:right">TOPLAM</td>
+                    <td>@TotalQty.ToString("0.##", Tr)</td>
+                    <td colspan="3"></td>
+                    <td style="text-align:right">@GrandTotal.ToString("N2", Tr) ₺</td>
+                    <td></td>
+                </tr>
+            </tfoot>
+        </MudSimpleTable>
+    </MudPaper>
+
+    @if (StoreSummaries.Count > 0)
+    {
+        <MudPaper Elevation="1" Class="pa-3">
+            <MudText Typo="Typo.subtitle2" Class="mb-2">Mağaza bazında özet <span style="font-weight:400;color:#757575">(Excel'deki GENEL TOPLAM)</span></MudText>
+            <MudSimpleTable Dense Hover>
+                <thead>
+                    <tr><th>Mağaza Kodu</th><th>Mağaza Adı</th><th>Format</th><th style="text-align:right">Form</th><th style="text-align:right">Miktar</th><th style="text-align:right">Genel Toplam</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var s in StoreSummaries)
+                    {
+                        <tr>
+                            <td>@s.Code</td><td>@s.Name</td>
+                            <td><span style="color:#d32f2f;font-weight:700">@s.Format</span></td>
+                            <td style="text-align:right">@s.FormCount</td>
+                            <td style="text-align:right">@s.Qty.ToString("0.##", Tr)</td>
+                            <td style="text-align:right;font-weight:600">@s.Total.ToString("N2", Tr) ₺</td>
+                        </tr>
+                    }
+                </tbody>
+            </MudSimpleTable>
+        </MudPaper>
+    }
+
+    <MudStack Row Justify="Justify.SpaceBetween">
+        <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.ArrowBack" OnClick="@(() => OnBack.InvokeAsync())">
+            Form Yükleme
+        </MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Success" EndIcon="@Icons.Material.Filled.TableChart"
+                   OnClick="@(() => OnExport.InvokeAsync())" Disabled="@(_rows.Count == 0)">
+            Excel Oluştur
+        </MudButton>
+    </MudStack>
+</MudStack>
+
+@code {
+    [Parameter] public List<ServiceFormDto> Forms { get; set; } = new();
+    [Parameter] public ProgressClaimDto? Claim { get; set; }
+    [Parameter] public EventCallback OnBack { get; set; }
+    [Parameter] public EventCallback OnExport { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private static readonly CultureInfo Tr = CultureInfo.GetCultureInfo("tr-TR");
+
+    private sealed class Row
+    {
+        public ServiceFormDto Form { get; set; } = null!;
+        public StoreDto? Store { get; set; }
+        public DateTime? Date { get; set; }
+        public string? FormNo { get; set; }
+        public decimal? Qty { get; set; }
+        public bool Saving { get; set; }
+        public ServiceItemDto? Item => Form.ServiceItems.FirstOrDefault(i => i.ItemCode != null);
+    }
+
+    private sealed record StoreSummary(string Code, string Name, string? Format, int FormCount, decimal Qty, decimal Total);
+
+    private readonly List<Row> _rows = new();
+    private List<StoreDto> _stores = new();
+    private bool _sortByStore;
+
+    private string Period => GlycolClaim.PeriodName(Claim?.Month ?? 0);
+
+    protected override async Task OnInitializedAsync()
+    {
+        _stores = await StoreService.GetAllAsync();
+        SyncRows();
+    }
+
+    protected override void OnParametersSet() => SyncRows();
+
+    /// <summary>Üst bileşendeki form listesiyle satırları eşitler; kullanıcı henüz yazdığı bir satırı sıfırlamaz.</summary>
+    private void SyncRows()
+    {
+        _rows.RemoveAll(r => Forms.All(f => f.Id != r.Form.Id));
+        foreach (var form in Forms.Where(f => !string.IsNullOrEmpty(f.FilePath)))
+        {
+            var existing = _rows.FirstOrDefault(r => r.Form.Id == form.Id);
+            if (existing is not null) { existing.Form = form; continue; }
+            var item = form.ServiceItems.FirstOrDefault(i => i.ItemCode != null);
+            _rows.Add(new Row
+            {
+                Form = form,
+                Store = form.StoreId.HasValue ? (_stores.FirstOrDefault(s => s.Id == form.StoreId.Value) ?? FromForm(form)) : null,
+                Date = form.FormDate,
+                FormNo = form.FormNumber,
+                Qty = item is { Quantity: > 0m } ? item.Quantity : null,
+            });
+        }
+    }
+
+    private static StoreDto FromForm(ServiceFormDto f) => new()
+    { Id = f.StoreId ?? 0, Code = f.StoreCode, Name = f.StoreName, Format = f.StoreFormat, Region = f.StoreRegion };
+
+    private IEnumerable<Row> DisplayRows => _sortByStore
+        ? _rows.OrderBy(r => r.Store?.Code, Comparer<string?>.Create(GlycolClaim.CompareStoreCodes))
+               .ThenBy(r => r.Date ?? DateTime.MaxValue).ThenBy(r => r.FormNo)
+        : _rows;
+
+    // ── Hesaplar ────────────────────────────────────────────────────────
+    /// <summary>Satır toplamı: adet × EUR fiyatı × kur (yuvarlanmadan) — Excel'deki TOPLAM ile aynı.</summary>
+    private static decimal RowTotal(Row row)
+    {
+        var qty = row.Qty ?? 0m;
+        var item = row.Item;
+        if (item is null) return 0m;
+        return item.ForeignPrice.HasValue && item.ExchangeRate.HasValue
+            ? qty * item.ForeignPrice.Value * item.ExchangeRate.Value
+            : qty * item.UnitPrice;
+    }
+
+    private decimal TotalQty => _rows.Sum(r => r.Qty ?? 0m);
+    private decimal GrandTotal => _rows.Where(r => r.Store is not null).Sum(RowTotal);
+    private int CompleteCount => _rows.Count(r => MissingText(r).Length == 0);
+
+    private List<StoreSummary> StoreSummaries => _rows
+        .Where(r => r.Store is not null)
+        .GroupBy(r => r.Store!.Code)
+        .Select(g => new StoreSummary(g.Key, g.First().Store!.Name, g.First().Store!.Format, g.Count(), g.Sum(x => x.Qty ?? 0m), g.Sum(RowTotal)))
+        .OrderBy(s => s.Code, Comparer<string>.Create((a, b) => GlycolClaim.CompareStoreCodes(a, b)))
+        .ToList();
+
+    private static string MissingText(Row row)
+    {
+        var m = new List<string>();
+        if (row.Store is null) m.Add("mağaza");
+        if (!row.Date.HasValue) m.Add("tarih");
+        if (string.IsNullOrWhiteSpace(row.FormNo)) m.Add("form no");
+        if (!(row.Qty > 0m)) m.Add("miktar");
+        return string.Join(", ", m);
+    }
+
+    private bool IsDuplicateFormNo(Row row)
+        => !string.IsNullOrWhiteSpace(row.FormNo)
+           && _rows.Count(r => r != row && string.Equals(r.FormNo?.Trim(), row.FormNo.Trim(), StringComparison.OrdinalIgnoreCase)) > 0;
+
+    // ── Mağaza araması ──────────────────────────────────────────────────
+    private Task<IEnumerable<StoreDto>> SearchStoresAsync(string? text, CancellationToken ct)
+    {
+        var q = (text ?? string.Empty).Trim();
+        if (q.Length == 0) return Task.FromResult<IEnumerable<StoreDto>>(_stores.Take(30).ToList());
+        var found = _stores
+            .Where(s => s.Code.StartsWith(q, StringComparison.OrdinalIgnoreCase)
+                        || Tr.CompareInfo.IndexOf(s.Name, q, CompareOptions.IgnoreCase) >= 0)
+            .OrderBy(s => s.Code.Equals(q, StringComparison.OrdinalIgnoreCase) ? 0 : s.Code.StartsWith(q, StringComparison.OrdinalIgnoreCase) ? 1 : 2)
+            .ThenBy(s => s.Code, Comparer<string>.Create((a, b) => GlycolClaim.CompareStoreCodes(a, b)))
+            .Take(30)
+            .ToList();
+        return Task.FromResult<IEnumerable<StoreDto>>(found);
+    }
+
+    // ── Düzenleme olayları (her değişiklik anında kaydedilir) ─────────────
+    private async Task OnStoreChangedAsync(Row row, StoreDto? store) { row.Store = store; await SaveRowAsync(row); }
+    private async Task OnDateChangedAsync(Row row, DateTime? date) { row.Date = date; await SaveRowAsync(row); }
+    private async Task OnFormNoChangedAsync(Row row, string? value) { row.FormNo = value?.Trim(); await SaveRowAsync(row); }
+    private async Task OnQtyChangedAsync(Row row, decimal? value) { row.Qty = value; await SaveRowAsync(row); }
+
+    private async Task SaveRowAsync(Row row)
+    {
+        row.Saving = true;
+        StateHasChanged();
+        try
+        {
+            var saved = await FormService.SaveGlycolRowAsync(row.Form.Id, row.Store?.Id, row.Date, row.FormNo, row.Qty ?? 0m);
+            row.Form = saved;
+            var idx = Forms.FindIndex(f => f.Id == saved.Id);
+            if (idx >= 0) Forms[idx] = saved;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Kaydedilemedi: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            row.Saving = false;
+        }
+        await OnChanged.InvokeAsync();
+        StateHasChanged();
+    }
+
+    private async Task ShowFormAsync(Row row)
+    {
+        if (string.IsNullOrEmpty(row.Form.FileUrl))
+        {
+            Snackbar.Add("Bu form için önizleme dosyası yok.", Severity.Warning);
+            return;
+        }
+        var parameters = new DialogParameters
+        {
+            ["FileUrl"] = row.Form.FileUrl,
+            ["FileName"] = row.Form.OriginalFileName,
+            ["FilePath"] = row.Form.FilePath,
+        };
+        await DialogService.ShowAsync<ServiceFormPreviewDialog>(row.Form.OriginalFileName, parameters,
+            new DialogOptions { FullScreen = true, CloseButton = true, MaxWidth = MaxWidth.False });
+    }
+}

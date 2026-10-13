@@ -15,6 +15,10 @@ public static class EurPricing
     public static decimal ToTl(decimal eurAmount, decimal rate)
         => Math.Round(eurAmount * rate, 2, MidpointRounding.AwayFromZero);
 
+    /// <summary>Satır toplamı: adet × EUR fiyatı × kur, kuruşa yuvarlanır (birim fiyat önce yuvarlanmaz).</summary>
+    public static decimal TotalTl(decimal quantity, decimal eurAmount, decimal rate)
+        => Math.Round(quantity * eurAmount * rate, 2, MidpointRounding.AwayFromZero);
+
     public static bool IsEur(string? currencyCode)
         => string.Equals(currencyCode, CurrencyCode, StringComparison.OrdinalIgnoreCase);
 
@@ -35,7 +39,7 @@ public static class EurPricing
             item.ExchangeRateActualDate = rateDate;
             item.ExchangeRateSource = source;
             item.UnitPrice = item.MaterialPrice;
-            item.TotalPrice = Math.Round(item.UnitPrice * item.Quantity, 2, MidpointRounding.AwayFromZero);
+            item.TotalPrice = TotalTl(item.Quantity, eur, rate);
             count++;
         }
         return count;

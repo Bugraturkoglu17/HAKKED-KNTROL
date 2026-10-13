@@ -25,7 +25,7 @@ public class StoreService : IStoreService
         var query = _db.Stores.Where(s => s.Discipline == _currentDiscipline.CurrentDiscipline);
         if (!includeInactive) query = query.Where(s => s.IsActive);
         return await query.OrderBy(s => s.Code)
-            .Select(s => new StoreDto { Id = s.Id, Code = s.Code, Name = s.Name, IsActive = s.IsActive, Discipline = s.Discipline })
+            .Select(s => new StoreDto { Id = s.Id, Code = s.Code, Name = s.Name, IsActive = s.IsActive, Discipline = s.Discipline, Format = s.Format, Region = s.Region })
             .ToListAsync();
     }
 
@@ -33,13 +33,13 @@ public class StoreService : IStoreService
     {
         var s = await _db.Stores.FirstOrDefaultAsync(x =>
             x.Code == code.Trim().ToUpper() && x.Discipline == _currentDiscipline.CurrentDiscipline);
-        return s is null ? null : new StoreDto { Id = s.Id, Code = s.Code, Name = s.Name, IsActive = s.IsActive, Discipline = s.Discipline };
+        return s is null ? null : new StoreDto { Id = s.Id, Code = s.Code, Name = s.Name, IsActive = s.IsActive, Discipline = s.Discipline, Format = s.Format, Region = s.Region };
     }
 
     public async Task<StoreDto?> GetByIdAsync(int id)
     {
         var s = await _db.Stores.FindAsync(id);
-        return s is null ? null : new StoreDto { Id = s.Id, Code = s.Code, Name = s.Name, IsActive = s.IsActive, Discipline = s.Discipline };
+        return s is null ? null : new StoreDto { Id = s.Id, Code = s.Code, Name = s.Name, IsActive = s.IsActive, Discipline = s.Discipline, Format = s.Format, Region = s.Region };
     }
 
     public async Task<StoreDto> CreateAsync(StoreDto dto)

@@ -20,6 +20,7 @@ public class ServiceItemDto
     public string? AutoRuleTrigger { get; set; }    // trigger on parent: "Fittings" | "InsulationMounting" | "FlexivaAir"
     public string? ExportDescription { get; set; }
     public Guid LocalId { get; set; } = Guid.NewGuid();
+    public string? ItemCode { get; set; }
     public Guid? ParentLocalId { get; set; }
 
     // -- Doviz bazli kalemler (BDTX / BDKF) -----------------------------------------------
@@ -46,5 +47,10 @@ public class ServiceItemDto
     {
         UnitPrice = MaterialPrice + LaborPrice;
         TotalPrice = UnitPrice * Quantity;
+
+        // EUR fiyatlı kalemde toplam, kuruşa yuvarlanmış birim fiyat × adet değil, adet × EUR fiyatı × kur'dur
+        // (aksi halde 30 × 458,89 = 13.766,70 çıkar; doğrusu 30 × 458,8895 = 13.766,69).
+        if (string.Equals(CurrencyCode, "EUR", StringComparison.OrdinalIgnoreCase) && ForeignPrice.HasValue && ExchangeRate.HasValue)
+            TotalPrice = EurPricing.TotalTl(Quantity, ForeignPrice.Value, ExchangeRate.Value);
     }
 }

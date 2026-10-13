@@ -20,6 +20,9 @@ public class ServiceItem
     public string? AutoRuleTrigger { get; set; }
     public string? ExportDescription { get; set; }
     public string ItemKey { get; set; } = string.Empty;
+
+    /// <summary>Fiyat listesindeki malzeme/poz kodu (örn. glikol için 171) — Soğutma hakediş çıktısında MALZEME KODU.</summary>
+    public string? ItemCode { get; set; }
     public string? ParentItemKey { get; set; }
 
     // ── Döviz bazlı kalemler (BDTX / BDKF) ──────────────────────────────────

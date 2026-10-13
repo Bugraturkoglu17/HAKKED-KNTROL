@@ -1,3 +1,4 @@
+using HakedisOtomasyon.Application;
 using HakedisOtomasyon.Application.DTOs;
 using HakedisOtomasyon.Application.Interfaces;
 using HakedisOtomasyon.Domain.Entities;
@@ -48,7 +49,10 @@ public class ServiceFormService : IServiceFormService
 
     public async Task<ServiceFormDto> AddFormAsync(int claimId, string filePath, string originalFileName)
     {
-        var defaultFee = await _settings.GetDecimalAsync("DefaultServiceFee", 4550m);
+        // Soğutma Glikol hakedişinde servis ücreti YOKTUR (glikol kalemi sonradan otomatik eklenir)
+        var ownerClaim = await _db.ProgressClaims.FindAsync(claimId);
+        bool glycolClaim = ownerClaim is not null && GlycolClaim.IsGlycol(ownerClaim.Discipline, ownerClaim.CoolingCategory);
+        var defaultFee = glycolClaim ? 0m : await _settings.GetDecimalAsync("DefaultServiceFee", 4550m);
 
         // Hash + duplicate detection
         var absPath = _fileStorage.GetAbsolutePath(filePath);
@@ -84,21 +88,24 @@ public class ServiceFormService : IServiceFormService
         _db.ServiceForms.Add(entity);
         await _db.SaveChangesAsync();
 
-        // Otomatik Servis Ücreti satırı ekle
-        var defaultItem = new ServiceItem
+        // Otomatik Servis Ücreti satırı ekle (Glikol hakedişi hariç)
+        if (!glycolClaim)
         {
-            ServiceFormId = entity.Id,
-            Description = "Servis Ücreti",
-            Quantity = 1,
-            Unit = "Ad",
-            MaterialPrice = 0,
-            LaborPrice = defaultFee,
-            UnitPrice = defaultFee,
-            TotalPrice = defaultFee,
-            SortOrder = 1
-        };
-        _db.ServiceItems.Add(defaultItem);
-        await _db.SaveChangesAsync();
+            var defaultItem = new ServiceItem
+            {
+                ServiceFormId = entity.Id,
+                Description = "Servis Ücreti",
+                Quantity = 1,
+                Unit = "Ad",
+                MaterialPrice = 0,
+                LaborPrice = defaultFee,
+                UnitPrice = defaultFee,
+                TotalPrice = defaultFee,
+                SortOrder = 1
+            };
+            _db.ServiceItems.Add(defaultItem);
+            await _db.SaveChangesAsync();
+        }
 
         // Kaydedilen veriyi ilişkili tablolarla birlikte yeniden yükle
         var loaded = await _db.ServiceForms
@@ -153,7 +160,10 @@ public class ServiceFormService : IServiceFormService
         var form = await _db.ServiceForms.FindAsync(formId)
             ?? throw new InvalidOperationException($"Form bulunamadı: {formId}");
 
-        var store = await _db.Stores.FirstOrDefaultAsync(s => s.Code == storeCode.Trim().ToUpper())
+        // Mağaza, hakedişin KENDİ disiplininde aranır — aynı kod Yangın'da da Soğutma'da da bulunabilir.
+        var claimDiscipline = await _db.ProgressClaims.Where(c => c.Id == form.ProgressClaimId)
+            .Select(c => c.Discipline).FirstAsync();
+        var store = await _db.Stores.FirstOrDefaultAsync(s => s.Code == storeCode.Trim().ToUpper() && s.Discipline == claimDiscipline)
             ?? throw new InvalidOperationException($"Mağaza kodu bulunamadı: {storeCode}");
 
         form.StoreId = store.Id;
@@ -208,6 +218,7 @@ public class ServiceFormService : IServiceFormService
                 ExchangeRateActualDate = dto.ExchangeRateActualDate,
                 ExchangeRateSource = dto.ExchangeRateSource,
                 ForeignPrice = dto.ForeignPrice,
+                ItemCode = dto.ItemCode,
                 SortOrder = order++
             });
         }
@@ -221,6 +232,142 @@ public class ServiceFormService : IServiceFormService
         }
 
         await _db.SaveChangesAsync();
+    }
+
+    // ------------------------------------------------------------------ //
+    //  SOĞUTMA — GLİKOL KULLANIM HAKEDİŞİ
+    // ------------------------------------------------------------------ //
+    private async Task<(ProgressClaim Claim, PriceItem Price)> LoadGlycolContextAsync(int claimId)
+    {
+        var claim = await _db.ProgressClaims.FindAsync(claimId)
+            ?? throw new InvalidOperationException($"Hakediş bulunamadı: {claimId}");
+        if (!GlycolClaim.IsGlycol(claim.Discipline, claim.CoolingCategory))
+            throw new InvalidOperationException("Bu hakediş Glikol Kullanım türünde değil.");
+
+        var price = await FindGlycolPriceItemAsync()
+            ?? throw new InvalidOperationException(
+                $"Soğutma fiyat listesinde glikol kalemi (\"{GlycolClaim.PriceItemNamePrefix}\") bulunamadı. Önce Fiyat Listesi'ni kontrol edin.");
+        if (price.ForeignPrice is > 0m && !EurPricing.IsValidRate(claim.EurRate))
+            throw new InvalidOperationException("Glikol hakedişi için EUR kuru girilmemiş. Hakediş Bilgileri adımından EUR kurunu girin.");
+        return (claim, price);
+    }
+
+    private async Task<PriceItem?> FindGlycolPriceItemAsync()
+    {
+        var candidates = await _db.PriceItems
+            .Where(p => p.Discipline == MechanicalDiscipline.Cooling && p.IsActive
+                     && (p.PozNo == GlycolClaim.FallbackItemCode || p.Description.Contains("MONOPROP")))
+            .ToListAsync();
+        return candidates.FirstOrDefault(p => GlycolClaim.IsGlycolPriceName(p.Description))
+            ?? candidates.FirstOrDefault(p => p.PozNo == GlycolClaim.FallbackItemCode);
+    }
+
+    /// <summary>Glikol kalemine fiyat listesindeki güncel bilgiyi uygular (miktar korunur).</summary>
+    private static void ApplyGlycolPricing(ServiceItem item, PriceItem price, ProgressClaim claim)
+    {
+        item.ItemCode = price.PozNo ?? GlycolClaim.FallbackItemCode;
+        item.Description = GlycolClaim.CleanItemName(price.Description);
+        item.Unit = string.IsNullOrWhiteSpace(price.Unit) ? "Ad" : price.Unit;
+        item.LaborPrice = 0m; // Soğutma'da işçilik yok — tek "Birim Fiyat"
+
+        if (price.ForeignPrice is { } eur && EurPricing.IsEur(price.CurrencyCode))
+        {
+            var rate = claim.EurRate!.Value;
+            item.CurrencyCode = EurPricing.CurrencyCode;
+            item.ForeignPrice = eur;
+            item.ExchangeRate = rate;
+            item.ExchangeRateDate = claim.EurRateDate;
+            item.ExchangeRateActualDate = claim.EurRateDate;
+            item.ExchangeRateSource = claim.EurRateSource ?? "Manuel";
+            item.MaterialPrice = EurPricing.ToTl(eur, rate);
+            item.UnitPrice = item.MaterialPrice;
+            item.TotalPrice = EurPricing.TotalTl(item.Quantity, eur, rate);
+        }
+        else
+        {
+            item.CurrencyCode = null;
+            item.ForeignPrice = null;
+            item.ExchangeRate = null;
+            item.ExchangeRateDate = null;
+            item.ExchangeRateActualDate = null;
+            item.ExchangeRateSource = null;
+            item.MaterialPrice = price.MaterialPrice + price.LaborPrice;
+            item.UnitPrice = item.MaterialPrice;
+            item.TotalPrice = Math.Round(item.UnitPrice * item.Quantity, 2, MidpointRounding.AwayFromZero);
+        }
+    }
+
+    public async Task EnsureGlycolItemsAsync(int claimId)
+    {
+        var (claim, price) = await LoadGlycolContextAsync(claimId);
+        var code = price.PozNo ?? GlycolClaim.FallbackItemCode;
+
+        var forms = await _db.ServiceForms
+            .Include(f => f.ServiceItems)
+            .Where(f => f.ProgressClaimId == claimId && !f.IsArchived)
+            .ToListAsync();
+
+        foreach (var form in forms)
+        {
+            // Glikol hakedişinde servis ücreti yoktur: otomatik eklenmiş servis ücreti satırları kaldırılır.
+            var serviceFees = form.ServiceItems
+                .Where(i => i.Description == "Servis Ücreti" && i.ItemCode == null && !i.IsManualEntry)
+                .ToList();
+            if (serviceFees.Count > 0) _db.ServiceItems.RemoveRange(serviceFees);
+
+            var glycol = form.ServiceItems.FirstOrDefault(i => i.ItemCode == code);
+            if (glycol is null)
+            {
+                glycol = new ServiceItem
+                {
+                    ServiceFormId = form.Id,
+                    Quantity = 0m,               // kullanıcı yalnızca miktarı girer
+                    SortOrder = 1,
+                    ItemKey = Guid.NewGuid().ToString(),
+                };
+                ApplyGlycolPricing(glycol, price, claim);
+                _db.ServiceItems.Add(glycol);
+            }
+            else
+            {
+                ApplyGlycolPricing(glycol, price, claim);
+            }
+        }
+        await _db.SaveChangesAsync();
+    }
+
+    public async Task<ServiceFormDto> SaveGlycolRowAsync(int formId, int? storeId, DateTime? formDate, string? formNumber, decimal quantity)
+    {
+        var form = await _db.ServiceForms.Include(f => f.ServiceItems).FirstOrDefaultAsync(f => f.Id == formId)
+            ?? throw new InvalidOperationException($"Form bulunamadı: {formId}");
+        var (claim, price) = await LoadGlycolContextAsync(form.ProgressClaimId);
+        var code = price.PozNo ?? GlycolClaim.FallbackItemCode;
+
+        if (storeId.HasValue)
+        {
+            // Yalnızca hakedişin kendi disiplinindeki (Soğutma) mağazalar seçilebilir
+            var exists = await _db.Stores.AnyAsync(s => s.Id == storeId.Value && s.Discipline == claim.Discipline);
+            if (!exists) throw new InvalidOperationException("Seçilen mağaza bu hakedişin disiplininde bulunamadı.");
+        }
+        form.StoreId = storeId;
+        form.FormDate = formDate?.Date;
+        form.FormNumber = string.IsNullOrWhiteSpace(formNumber) ? null : formNumber.Trim();
+
+        var glycol = form.ServiceItems.FirstOrDefault(i => i.ItemCode == code);
+        if (glycol is null)
+        {
+            glycol = new ServiceItem { ServiceFormId = form.Id, SortOrder = 1, ItemKey = Guid.NewGuid().ToString() };
+            _db.ServiceItems.Add(glycol);
+        }
+        glycol.Quantity = Math.Max(0m, quantity);
+        ApplyGlycolPricing(glycol, price, claim);
+
+        bool complete = form.StoreId.HasValue && form.FormDate.HasValue
+                        && !string.IsNullOrWhiteSpace(form.FormNumber) && glycol.Quantity > 0m;
+        form.Status = complete ? ServiceFormStatus.Tamamlandi : ServiceFormStatus.EksikBilgi;
+
+        await _db.SaveChangesAsync();
+        return (await GetByIdAsync(formId))!;
     }
 
     public async Task DeleteAsync(int id)
@@ -254,6 +401,10 @@ public class ServiceFormService : IServiceFormService
             StoreId = f.StoreId,
             StoreCode = f.Store?.Code ?? string.Empty,
             StoreName = f.Store?.Name ?? string.Empty,
+            StoreFormat = f.Store?.Format,
+            StoreRegion = f.Store?.Region,
+            FormNumber = f.FormNumber,
+            FormDate = f.FormDate,
             OriginalFileName = f.OriginalFileName,
             FilePath = f.FilePath,
             FileUrl = _fileStorage.GetFileUrl(f.FilePath),
@@ -283,7 +434,8 @@ public class ServiceFormService : IServiceFormService
                 ExchangeRateDate = i.ExchangeRateDate,
                 ExchangeRateActualDate = i.ExchangeRateActualDate,
                 ExchangeRateSource = i.ExchangeRateSource,
-                ForeignPrice = i.ForeignPrice
+                ForeignPrice = i.ForeignPrice,
+                ItemCode = i.ItemCode
             }).ToList(),
             Invoices = f.Invoices.Select(inv => new InvoiceDto
             {

@@ -14,4 +14,16 @@ public interface IServiceFormService
     Task SaveItemsAsync(int formId, List<ServiceItemDto> items);
     Task DeleteAsync(int id);
     Task<List<ServiceFormDto>> GetIncompleteFormsAsync(int claimId);
+
+    /// <summary>
+    /// Soğutma Glikol hakedişi: her forma glikol kalemini OTOMATİK ekler (servis ücreti yoktur), mevcut glikol
+    /// kalemlerini güncel fiyat/EUR kuruyla yeniler. Miktarlara dokunmaz.
+    /// </summary>
+    Task EnsureGlycolItemsAsync(int claimId);
+
+    /// <summary>
+    /// Soğutma Glikol hakedişi: bir form satırının kullanıcı girişlerini kaydeder — mağaza, form tarihi, form no
+    /// ve glikol miktarı (kullanıcının düzenleyebildiği tek kalem alanı). Eksiksizse form "Tamamlandı" olur.
+    /// </summary>
+    Task<ServiceFormDto> SaveGlycolRowAsync(int formId, int? storeId, DateTime? formDate, string? formNumber, decimal quantity);
 }

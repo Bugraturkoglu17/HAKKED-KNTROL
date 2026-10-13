@@ -105,4 +105,22 @@ public class CoolingClaimCategoryTests
         Assert.Null(read!.CoolingCategory);
         Assert.Equal(string.Empty, read.CoolingCategoryLabel);
     }
+
+    /// <summary>Hakediş oluşturulunca sayfa elindeki DTO'yu kullanır; disiplin/tür bilgisi DTO'da da dolu olmalı
+    /// (aksi halde yeni Soğutma hakedişi sayfada "Yangın" sanılır ve kur/tür alanları kaybolurdu).</summary>
+    [Fact]
+    public async Task CreateAsync_DonenDtoDisiplinVeTuruIcerir()
+    {
+        using var db = CreateDb();
+        var svc = Service(db, MechanicalDiscipline.Cooling);
+
+        var returned = await svc.CreateAsync(new ProgressClaimDto
+        {
+            Name = "A", CompanyName = "X", CoolingCategory = CoolingClaimCategory.GlycolUsage,
+        });
+
+        Assert.Equal(MechanicalDiscipline.Cooling, returned.Discipline);
+        Assert.Equal(CoolingClaimCategory.GlycolUsage, returned.CoolingCategory);
+        Assert.True(HakedisOtomasyon.Application.GlycolClaim.IsGlycol(returned.Discipline, returned.CoolingCategory));
+    }
 }

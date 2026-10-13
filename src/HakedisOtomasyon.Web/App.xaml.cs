@@ -151,6 +151,7 @@ public partial class WpfApp : System.Windows.Application
             MigrateDisciplineSchema(db);
             MigrateStoreDisciplineIndexSchema(db);
             MigratePriceItemNotesSchema(db);
+            MigrateGlycolClaimSchema(db);
 
             // ─── Soğutma Hakediş Kontrolü modülü — ayrı veritabanı ─────────────
             try
@@ -1057,6 +1058,46 @@ public partial class WpfApp : System.Windows.Application
                     using var alterEur = conn.CreateCommand();
                     alterEur.CommandText = $"ALTER TABLE ProgressClaims ADD COLUMN \"{col}\" {def}";
                     alterEur.ExecuteNonQuery();
+                }
+            }
+            finally { conn.Close(); }
+        }
+        catch { /* Migration hatası uygulamayı durdurmasın */ }
+    }
+
+    /// <summary>
+    /// Soğutma Glikol hakedişi: Stores.Format/Region, ServiceForms.FormNumber/FormDate, ServiceItems.ItemCode sütunları.
+    /// </summary>
+    private static void MigrateGlycolClaimSchema(AppDbContext db)
+    {
+        try
+        {
+            var conn = db.Database.GetDbConnection();
+            conn.Open();
+            try
+            {
+                var wanted = new Dictionary<string, string[]>
+                {
+                    ["Stores"] = new[] { "Format", "Region" },
+                    ["ServiceForms"] = new[] { "FormNumber", "FormDate" },
+                    ["ServiceItems"] = new[] { "ItemCode" },
+                };
+                foreach (var (table, columns) in wanted)
+                {
+                    var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    using (var pragma = conn.CreateCommand())
+                    {
+                        pragma.CommandText = $"PRAGMA table_info({table})";
+                        using var rdr = pragma.ExecuteReader();
+                        while (rdr.Read()) existing.Add(rdr.GetString(1));
+                    }
+                    foreach (var col in columns)
+                    {
+                        if (existing.Contains(col)) continue;
+                        using var alter = conn.CreateCommand();
+                        alter.CommandText = $"ALTER TABLE {table} ADD COLUMN \"{col}\" TEXT";
+                        alter.ExecuteNonQuery();
+                    }
                 }
             }
             finally { conn.Close(); }

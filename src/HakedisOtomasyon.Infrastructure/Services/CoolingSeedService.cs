@@ -14,6 +14,8 @@ namespace HakedisOtomasyon.Infrastructure.Services;
 /// Kurallar (kullanıcının mevcut verisini asla bozmaz):
 ///  • Mağazalar: kurulum başına YALNIZCA BİR KEZ (CoolingSeedV1); kod bazında eklenir, zaten kayıtlı
 ///    kod atlanır (adı/durumu değiştirilmez). Kullanıcı sonradan silerse yeniden eklenmez.
+///  • Mağaza formatı/bölgesi (MMM, M-JET ... / İÇ ANADOLU ...): Glikol hakediş çıktısında gösterilir. Daha önce yüklenmiş
+///    mağazaların boş Format/Bölge alanları bir kez doldurulur (CoolingStoreInfoV2); dolu alanlar ve adlar değiştirilmez.
 ///  • Fiyat listesi: yayımlanan liste güncellendikçe sürüm bayrağı artar (şu an CoolingPricesV2).
 ///      – Soğutma'da hiç kalem yoksa tüm liste eklenir.
 ///      – Önceden seed'den gelmiş (SourceSheetName etiketli, elle eklenmemiş) kalemler varsa listedeki
@@ -29,12 +31,13 @@ public static class CoolingSeedService
 {
     public const string SeedFlagKey = "CoolingSeedV1";          // mağazalar + ilk fiyat yüklemesi
     public const string PriceRefreshFlagKey = "CoolingPricesV2"; // 2026 Yayım listesi (Marka sütunsuz, tek Birim Fiyat)
+    public const string StoreInfoFlagKey = "CoolingStoreInfoV2"; // mağaza Format + Bölge bilgisi
     public const string PriceFileName = "cooling_price_items.json";
     public const string StoreFileName = "cooling_stores.json";
     public const string SourceSheetLabel = "2026 Soğutma Malzeme Birim Fiyatlar (Yayım)";
 
     public record SeedResult(bool Applied, int PriceItemsAdded, int StoresAdded, string? SkippedReason,
-        int PriceItemsUpdated = 0, int PriceItemsRemoved = 0);
+        int PriceItemsUpdated = 0, int PriceItemsRemoved = 0, int StoresInfoFilled = 0);
 
     private class SeedPrice
     {
@@ -51,6 +54,8 @@ public static class CoolingSeedService
         public string Code { get; set; } = string.Empty;
         public string Name { get; set; } = string.Empty;
         public bool Active { get; set; } = true;
+        public string? Format { get; set; }
+        public string? Region { get; set; }
     }
 
     private static readonly JsonSerializerOptions Json = new() { PropertyNameCaseInsensitive = true };
@@ -62,7 +67,8 @@ public static class CoolingSeedService
     {
         var storesDone = await db.AppSettings.AnyAsync(s => s.Key == SeedFlagKey);
         var pricesDone = await db.AppSettings.AnyAsync(s => s.Key == PriceRefreshFlagKey);
-        if (storesDone && pricesDone)
+        var storeInfoDone = await db.AppSettings.AnyAsync(s => s.Key == StoreInfoFlagKey);
+        if (storesDone && pricesDone && storeInfoDone)
             return new SeedResult(false, 0, 0, "Bu kurulumda daha önce uygulandı.");
 
         var pricePath = Path.Combine(seedDirectory, PriceFileName);
@@ -70,7 +76,7 @@ public static class CoolingSeedService
         if (!File.Exists(pricePath) && !File.Exists(storePath))
             return new SeedResult(false, 0, 0, "Seed dosyaları bulunamadı."); // bayrak konmaz — dosyalar gelince tekrar denenir
 
-        int added = 0, updated = 0, removed = 0, storesAdded = 0;
+        int added = 0, updated = 0, removed = 0, storesAdded = 0, infoFilled = 0;
 
         // ── Fiyat listesi ───────────────────────────────────────────────────
         if (!pricesDone && File.Exists(pricePath))
@@ -114,9 +120,12 @@ public static class CoolingSeedService
         }
 
         // ── Mağazalar (kurulum başına bir kez) ──────────────────────────────
-        if (!storesDone && File.Exists(storePath))
+        List<SeedStore>? stores = null;
+        if ((!storesDone || !storeInfoDone) && File.Exists(storePath))
+            stores = JsonSerializer.Deserialize<List<SeedStore>>(await File.ReadAllTextAsync(storePath), Json) ?? new();
+
+        if (!storesDone && stores is not null)
         {
-            var stores = JsonSerializer.Deserialize<List<SeedStore>>(await File.ReadAllTextAsync(storePath), Json) ?? new();
             var existingCodes = (await db.Stores
                     .Where(s => s.Discipline == MechanicalDiscipline.Cooling)
                     .Select(s => s.Code)
@@ -134,8 +143,28 @@ public static class CoolingSeedService
                     Name = ss.Name.Trim(),
                     IsActive = ss.Active,
                     Discipline = MechanicalDiscipline.Cooling,
+                    Format = ss.Format,
+                    Region = ss.Region,
                 });
                 storesAdded++;
+            }
+        }
+
+        // ── Daha önce yüklenmiş mağazalara Format/Bölge doldur (adı/durumu değiştirmez) ──
+        if (!storeInfoDone && stores is not null)
+        {
+            var byCode = stores.Where(x => !string.IsNullOrWhiteSpace(x.Code))
+                .GroupBy(x => x.Code.Trim().ToUpperInvariant()).ToDictionary(g => g.Key, g => g.First());
+            var missing = await db.Stores
+                .Where(s => s.Discipline == MechanicalDiscipline.Cooling && (s.Format == null || s.Region == null))
+                .ToListAsync();
+            foreach (var st in missing)
+            {
+                if (!byCode.TryGetValue(st.Code.ToUpperInvariant(), out var src)) continue;
+                var changed = false;
+                if (st.Format is null && src.Format is not null) { st.Format = src.Format; changed = true; }
+                if (st.Region is null && src.Region is not null) { st.Region = src.Region; changed = true; }
+                if (changed) infoFilled++;
             }
         }
 
@@ -144,8 +173,10 @@ public static class CoolingSeedService
             db.AppSettings.Add(new AppSetting { Key = SeedFlagKey, Value = now, Description = "Soğutma mağaza listesi + ilk fiyat listesi kurulumdan içeri alındı." });
         if (!pricesDone)
             db.AppSettings.Add(new AppSetting { Key = PriceRefreshFlagKey, Value = now, Description = "Soğutma birim fiyat listesi 2026 Yayım sürümüyle güncellendi." });
+        if (!storeInfoDone && File.Exists(storePath))
+            db.AppSettings.Add(new AppSetting { Key = StoreInfoFlagKey, Value = now, Description = "Soğutma mağazalarına Format/Bölge bilgisi işlendi." });
         await db.SaveChangesAsync();
-        return new SeedResult(true, added, storesAdded, null, updated, removed);
+        return new SeedResult(true, added, storesAdded, null, updated, removed, infoFilled);
     }
 
     private static PriceItem NewItem(SeedPrice sp)

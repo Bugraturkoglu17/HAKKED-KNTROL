@@ -59,6 +59,10 @@ public class ExcelExportService : IExcelExportService
             ? claim.CompanyName
             : await _settings.GetAsync(SettingKeys.CompanyName, "Şirket Adı");
 
+        // Soğutma "Glikol Kullanım" hakedişi: kendine özgü tek tablo düzeni (servis ücreti yok, mağaza bazlı toplamlar)
+        if (HakedisOtomasyon.Application.GlycolClaim.IsGlycol(claim.Discipline, claim.CoolingCategory))
+            return await ExportGlycolClaimAsync(claim, progress);
+
         // Görsel kalite ayarını oku
         var qualitySetting = await _settings.GetAsync(SettingKeys.ExcelImageQuality, "standard");
         var docQuality = ImageOptimizer.Preset.FromSettingValue(qualitySetting);
@@ -158,6 +162,41 @@ public class ExcelExportService : IExcelExportService
             _posMapping.WriteExportLog(posExportLog, claim.Name ?? "?");
 
         // Mutlak yol döndür — çağıran taraf File.Exists / Process.Start için kullanır
+        return _fileStorage.GetAbsolutePath(filePath);
+    }
+
+    /// <summary>Soğutma Glikol Kullanım hakedişinin Excel'i (bkz. <see cref="GlycolClaimExcelBuilder"/>).</summary>
+    private async Task<string> ExportGlycolClaimAsync(ProgressClaim claim, IProgress<string>? progress)
+    {
+        progress?.Report("Glikol hakediş tablosu oluşturuluyor...");
+        using var wb = new XLWorkbook();
+        GlycolClaimExcelBuilder.Build(wb, claim, claim.ServiceForms);
+
+        progress?.Report("Excel dosyası kaydediliyor...");
+        var fileName = $"Glikol_Hakedis_{claim.Year}_{claim.Month:D2}_{SanitizeSheetName(claim.Name)}_{DateTime.Now:HHmmss}.xlsx";
+        using var ms = new MemoryStream();
+        wb.SaveAs(ms);
+        ms.Position = 0;
+
+        await _cleanup.MoveOldExportsToArchiveAsync(claim.Id, claim.Year, claim.Month);
+        var filePath = await _fileStorage.SaveExportAsync(ms, fileName, claim.Year, claim.Month);
+        var absoluteFilePath = _fileStorage.GetAbsolutePath(filePath);
+
+        MirrorExportToDisciplineFolder(absoluteFilePath, fileName);
+        WriteDisciplinePathLog(absoluteFilePath);
+
+        _db.ExportLogs.Add(new ExportLog
+        {
+            ProgressClaimId = claim.Id,
+            FilePath = filePath,
+            ExportType = ExportType.Excel,
+            ExportedAt = DateTime.Now,
+            IsActive = true
+        });
+        claim.Status = ProgressClaimStatus.DisaAktarildi;
+        await _db.SaveChangesAsync();
+
+        progress?.Report("Tamamlandı!");
         return _fileStorage.GetAbsolutePath(filePath);
     }
 

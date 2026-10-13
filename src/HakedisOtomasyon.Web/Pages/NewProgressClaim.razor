@@ -251,7 +251,16 @@
 
     <!-- ─── ADIM 3: Form İşleme ───────────────────────────────────── -->
     <MudStep Title="Form İşleme" Icon="@Icons.Material.Filled.DataObject">
-        @if (_currentForm is not null)
+        @if (IsGlycol)
+        {
+            <!-- Soğutma — Glikol Kullanım: tüm servis formları tek tabloda, servis ücreti yok -->
+            <GlycolFormsTable Forms="@_forms"
+                              Claim="@_claim"
+                              OnBack="@(() => _activeStep = 1)"
+                              OnExport="ExportExcelAsync"
+                              OnChanged="@StateHasChanged" />
+        }
+        else if (_currentForm is not null)
         {
             <!-- Normal form işleme (servis formu yüklü) -->
             <MudGrid Spacing="2">
@@ -548,6 +557,9 @@
         _ => Icons.Material.Filled.Category,
     };
 
+    /// <summary>Soğutma "Glikol Kullanım" hakedişi mi? (Form İşleme adımı ve Excel çıktısı farklıdır.)</summary>
+    private bool IsGlycol => _claim is not null && GlycolClaim.IsGlycol(_claim.Discipline, _claim.CoolingCategory);
+
     private string EurRateDisplay => EurPricing.IsValidRate(_dto.EurRate)
         ? $"{EurPricing.FormatRate(_dto.EurRate!.Value)} ₺"
           + (_dto.EurRateDate.HasValue ? $"  ({_dto.EurRateSource} {_dto.EurRateDate:dd.MM.yyyy})" : "")
@@ -717,6 +729,21 @@
         {
             Snackbar.Add("Bakım / Onarım türü için en az bir servis formu yükleyin.", Severity.Warning);
             return;
+        }
+
+        // Soğutma Glikol hakedişi: her forma glikol kalemi otomatik eklenir (servis ücreti yok), tablo gösterilir
+        if (IsGlycol && _claim is not null)
+        {
+            try
+            {
+                await FormService.EnsureGlycolItemsAsync(_claim.Id);
+                _forms = await FormService.GetByClaimIdAsync(_claim.Id);
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add(ex.Message, Severity.Error);
+                return;
+            }
         }
 
         if (_forms.Any())

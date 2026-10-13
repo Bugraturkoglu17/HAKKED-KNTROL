@@ -9,4 +9,6 @@ public class StoreDto
     public string Name { get; set; } = string.Empty;
     public bool IsActive { get; set; } = true;
     public MechanicalDiscipline Discipline { get; set; } = MechanicalDiscipline.Fire;
+    public string? Format { get; set; }
+    public string? Region { get; set; }
 }
