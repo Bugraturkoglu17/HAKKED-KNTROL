@@ -178,11 +178,10 @@ public class ExcelExportService : IExcelExportService
     /// <summary>Soğutma Bakım &amp; Onarım hakedişinin Excel'i (bkz. <see cref="MaintenanceClaimExcelBuilder"/>).</summary>
     private Task<string> ExportMaintenanceClaimAsync(ProgressClaim claim, IProgress<string>? progress)
     {
-        bool compressor = HakedisOtomasyon.Application.MaintenanceClaim.IsCompressor(claim.Discipline, claim.CoolingCategory);
         var forms = claim.ServiceForms.Where(f => !f.IsArchived).ToList();
         return ExportCoolingWorkbookAsync(claim, progress,
-            compressor ? "Kompresör Değişim hakediş tablosu oluşturuluyor..." : "Bakım & Onarım hakediş tablosu oluşturuluyor...",
-            compressor ? "KompresorDegisim_Hakedis" : "BakimOnarim_Hakedis",
+            "Hakediş tablosu oluşturuluyor...",
+            HakedisOtomasyon.Application.MaintenanceClaim.ExportFilePrefix(claim.CoolingCategory),
             wb => MaintenanceClaimExcelBuilder.Build(wb, claim, forms),
             async wb =>
             {

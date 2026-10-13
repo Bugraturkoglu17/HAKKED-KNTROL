@@ -435,7 +435,7 @@ public class ServiceFormService : IServiceFormService
         var claim = await _db.ProgressClaims.FirstOrDefaultAsync(c => c.Id == claimId)
             ?? throw new InvalidOperationException($"Hakediş bulunamadı: {claimId}");
         if (!MaintenanceClaim.UsesMaterialScreen(claim.Discipline, claim.CoolingCategory))
-            throw new InvalidOperationException("Bu hakediş Bakım & Onarım / Kompresör Değişim türünde değil.");
+            throw new InvalidOperationException("Bu hakediş Bakım & Onarım / Kompresör Değişim / Kısmi Tadilat türünde değil.");
         return claim;
     }
 
@@ -694,7 +694,8 @@ public class ServiceFormService : IServiceFormService
             Description = type.Length > 0 ? $"{name} {type}" : name,
             ExportDescription = name,
             ItemType = type.Length > 0 ? type : null,
-            ItemCode = codeLabel,                 // çıktıda MALZEME KODU: "FATURA +%10 M.K." / "LİSTE FİYATI" ...
+            // çıktıda MALZEME KODU: kullanıcı kod girdiyse o ("ELK.MLZ. 3.6"), yoksa fiyat türünün etiketi ("FATURA +%10 M.K." ...)
+            ItemCode = string.IsNullOrWhiteSpace(input.Code) ? codeLabel : input.Code.Trim(),
             Quantity = input.Quantity,
             Unit = unit,
             MaterialPrice = unitPrice,

@@ -20,6 +20,10 @@ public sealed class CustomClaimItemInput
     /// <summary>MALZEME ADI — örn. "BİTZER 4J-13-2Y-40P VE 4NCS-12.2Y-40P".</summary>
     public string Name { get; set; } = string.Empty;
 
+    /// <summary>MALZEME KODU — isteğe bağlı (örn. "ELK.MLZ. 3.6"). Boşsa fiyat türüne göre etiket yazılır
+    /// ("FATURA +%10 M.K.", "LİSTE FİYATI", "%10 İSKONTOLU LİSTE FİYATI").</summary>
+    public string? Code { get; set; }
+
     /// <summary>MALZEME TİPİ — örn. "SIFIR KOMPRESÖR", "2 ADET KOMPRESÖR REVİZYONU"; boş olabilir.</summary>
     public string? Type { get; set; }
 

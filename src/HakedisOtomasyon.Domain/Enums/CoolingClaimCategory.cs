@@ -43,6 +43,7 @@ public static class CoolingClaimCategoryExtensions
     {
         CoolingClaimCategory.GlycolUsage => true,
         CoolingClaimCategory.CompressorReplacement => true,
+        CoolingClaimCategory.PartialRenovation => true,
         CoolingClaimCategory.MaintenanceRepair => true,
         _ => false,
     };

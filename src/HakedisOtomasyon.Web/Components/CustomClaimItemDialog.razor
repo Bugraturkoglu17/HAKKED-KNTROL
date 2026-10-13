@@ -6,7 +6,7 @@
 @inject IFileStorageService FileStorage
 @inject ISnackbar Snackbar
 
-@* Soğutma Kompresör Değişim: hakedişe ÖZEL kalem (kompresör marka/modeli vb.). Genel fiyat listesine EKLENMEZ.
+@* Soğutma Kompresör Değişim / Kısmi Tadilat: hakedişe ÖZEL kalem (kompresör marka/modeli, tamir bedeli vb.). Genel fiyat listesine EKLENMEZ.
    Fiyat üç şekilde girilir: FATURA + % (fatura dosyası eklenir), liste fiyatı, iskontolu liste fiyatı. Yüzdeler elle girilir. *@
 
 <MudDialog Style="min-width:560px">
@@ -15,9 +15,14 @@
             Bu kalem yalnızca bu hakedişe eklenir; genel fiyat listesine kaydedilmez.
         </MudAlert>
         <MudGrid Spacing="2">
-            <MudItem xs="12">
+            <MudItem xs="12" sm="8">
                 <MudTextField T="string" @bind-Value="_name" Label="Malzeme adı *" Variant="Variant.Outlined" Margin="Margin.Dense"
                               MaxLength="300" Immediate Placeholder="Örn. BİTZER 4J-13-2Y-40P" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                @* İsteğe bağlı: boşsa fiyat türünün etiketi yazılır (FATURA +%10 M.K. / LİSTE FİYATI ...) *@
+                <MudTextField T="string" @bind-Value="_code" Label="Malzeme kodu" Variant="Variant.Outlined" Margin="Margin.Dense"
+                              MaxLength="50" Immediate Placeholder="Örn. ELK.MLZ. 3.6" />
             </MudItem>
             <MudItem xs="12" sm="6">
                 <MudTextField T="string" @bind-Value="_type" Label="Malzeme tipi" Variant="Variant.Outlined" Margin="Margin.Dense"
@@ -83,7 +88,7 @@
                     @if (Preview is { } p)
                     {
                         <MudText Typo="Typo.body2">
-                            Malzeme kodu: <b>@p.CodeLabel</b> &nbsp;·&nbsp; Birim fiyat: <b>@p.UnitPrice.ToString("N2", Tr) ₺</b>
+                            Malzeme kodu: <b>@(string.IsNullOrWhiteSpace(_code) ? p.CodeLabel : _code.Trim())</b> &nbsp;·&nbsp; Birim fiyat: <b>@p.UnitPrice.ToString("N2", Tr) ₺</b>
                             &nbsp;·&nbsp; Toplam: <b>@((p.UnitPrice * (_qty ?? 0m)).ToString("N2", Tr)) ₺</b>
                         </MudText>
                     }
@@ -111,6 +116,7 @@
     private static readonly CultureInfo Tr = CultureInfo.GetCultureInfo("tr-TR");
 
     private string _name = string.Empty;
+    private string? _code;
     private string? _type;
     private decimal? _qty = 1m;
     private string _unit = "ADET";
@@ -165,6 +171,7 @@
             var input = new CustomClaimItemInput
             {
                 Name = _name.Trim(),
+                Code = string.IsNullOrWhiteSpace(_code) ? null : _code.Trim(),
                 Type = string.IsNullOrWhiteSpace(_type) ? null : _type.Trim(),
                 Quantity = _qty!.Value,
                 Unit = _unit.Trim(),

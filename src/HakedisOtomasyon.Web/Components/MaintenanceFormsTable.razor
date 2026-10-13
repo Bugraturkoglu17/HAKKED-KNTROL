@@ -8,8 +8,8 @@
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
 
-@* Soğutma — Bakım & Onarım ve Kompresör Değişim hakedişleri, tek ekran (Glikol ekranının malzeme eklenebilir hâli).
-   Kompresör Değişim'de ayrıca "Özel kalem / Fatura": fiyat listesinde olmayan, YALNIZ bu hakedişe eklenen kalem
+@* Soğutma — Bakım & Onarım, Kompresör Değişim ve Kısmi Tadilat hakedişleri, tek ekran (Glikol ekranının malzeme eklenebilir hâli).
+   Kompresör Değişim ve Kısmi Tadilat'ta ayrıca "Özel kalem / Fatura": fiyat listesinde olmayan, YALNIZ bu hakedişe eklenen kalem
    (kompresör marka/modeli; FATURA + %, liste fiyatı ya da iskontolu liste fiyatı). Faturalı satırda ataç simgesi görünür.
    SOL : yüklenen servis formu (PDF/görsel) her zaman açık; birden çok dosya varsa dosyalar arasında gezinilir.
    SAĞ : üstte formun bilgisi (mağaza, tarih, bakım form no) — bir kez girilir; altında malzeme + miktar → "Ekle" ile tabloya satır
@@ -308,7 +308,7 @@
     [Parameter] public EventCallback OnExport { get; set; }
     [Parameter] public EventCallback OnChanged { get; set; }
 
-    /// <summary>Hakedişe özel kalem / FATURA + % girişi açık mı? (Kompresör Değişim'de açık.)</summary>
+    /// <summary>Hakedişe özel kalem / FATURA + % girişi açık mı? (Kompresör Değişim ve Kısmi Tadilat'ta açık.)</summary>
     [Parameter] public bool AllowCustomItems { get; set; }
 
     private static readonly CultureInfo Tr = CultureInfo.GetCultureInfo("tr-TR");

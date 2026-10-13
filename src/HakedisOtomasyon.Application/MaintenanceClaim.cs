@@ -45,14 +45,30 @@ public static class MaintenanceClaim
     public static bool IsCompressor(MechanicalDiscipline discipline, CoolingClaimCategory? category)
         => discipline == MechanicalDiscipline.Cooling && category == CoolingClaimCategory.CompressorReplacement;
 
-    /// <summary>Hakediş, "form bilgisi + alt alta kalem" tek ekranını (MaintenanceFormsTable) kullanan türlerden mi?</summary>
+    /// <summary>Soğutma "Kısmi Tadilat" hakedişi mi? Bakım &amp; Onarım ile aynıdır; yalnız çıktı başlığı farklıdır.</summary>
+    public static bool IsPartialRenovation(MechanicalDiscipline discipline, CoolingClaimCategory? category)
+        => discipline == MechanicalDiscipline.Cooling && category == CoolingClaimCategory.PartialRenovation;
+
+    /// <summary>Hakediş, "form bilgisi + alt alta kalem" tek ekranını (MaintenanceFormsTable) kullanan türlerden mi?
+    /// (Bakım &amp; Onarım, Kompresör Değişim, Kısmi Tadilat — üçü de aynı kurallarla çalışır.)</summary>
     public static bool UsesMaterialScreen(MechanicalDiscipline discipline, CoolingClaimCategory? category)
-        => IsMaintenance(discipline, category) || IsCompressor(discipline, category);
+        => IsMaintenance(discipline, category) || IsCompressor(discipline, category) || IsPartialRenovation(discipline, category);
 
     /// <summary>Çıktı başlığının bölgeden sonraki kısmı ("İÇ ANADOLU " + bu + " HAKEDİŞİ" / " İCMALİ").</summary>
-    public static string TitleCore(CoolingClaimCategory? category) => category == CoolingClaimCategory.CompressorReplacement
-        ? "MİGROS SOĞUTMA KOMPRESÖR TEMİN VE DEĞİŞİM"
-        : "MİGROS SATIŞ MAĞAZALARI SOĞUTMA SERVİS VE BAKIM MALZEMELERİ";
+    public static string TitleCore(CoolingClaimCategory? category) => category switch
+    {
+        CoolingClaimCategory.CompressorReplacement => "MİGROS SOĞUTMA KOMPRESÖR TEMİN VE DEĞİŞİM",
+        CoolingClaimCategory.PartialRenovation => "MİGROS SATIŞ MAĞAZALARI SOĞUTMA KISMİ TADİLAT",
+        _ => "MİGROS SATIŞ MAĞAZALARI SOĞUTMA SERVİS VE BAKIM MALZEMELERİ",
+    };
+
+    /// <summary>Dışa aktarılan Excel dosyasının ad öneki (türe göre).</summary>
+    public static string ExportFilePrefix(CoolingClaimCategory? category) => category switch
+    {
+        CoolingClaimCategory.CompressorReplacement => "KompresorDegisim_Hakedis",
+        CoolingClaimCategory.PartialRenovation => "KismiTadilat_Hakedis",
+        _ => "BakimOnarim_Hakedis",
+    };
 
     /// <summary>
     /// Hakedişe özel kalemin birim fiyatı ve çıktıdaki MALZEME KODU etiketi:
