@@ -574,8 +574,8 @@ public class ServiceFormService : IServiceFormService
             .ToListAsync();
         var target = siblings.FirstOrDefault(f => f.StoreId == store.Id && f.FormDate == date
                          && string.Equals(f.FormNumber?.Trim(), number, StringComparison.OrdinalIgnoreCase))
-                     // henüz hiçbir şey girilmemiş yer tutucu (yüklenen dosyanın ilk kaydı)
-                     ?? siblings.FirstOrDefault(f => f.StoreId == null && f.ServiceItems.Count == 0);
+                     // henüz kalem girilmemiş yer tutucu (yüklenen dosyanın ilk kaydı; mağazası seçilmiş ama kalemsiz kalmış kayıt da sayılır)
+                     ?? siblings.FirstOrDefault(f => f.ServiceItems.Count == 0);
         if (target is null)
         {
             target = new ServiceForm
