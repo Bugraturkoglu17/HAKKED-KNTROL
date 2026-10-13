@@ -4,19 +4,23 @@
 @using HakedisOtomasyon.Domain.Enums
 @inject IServiceFormService FormService
 @inject IStoreService StoreService
-@inject IDialogService DialogService
 @inject ISnackbar Snackbar
 
 @* Soğutma — Glikol Kullanım hakedişi, tek ekran:
    SOL : yüklenen servis formu (PDF/görsel) her zaman açık; birden çok dosya varsa dosyalar arasında gezinilir.
    SAĞ : tek giriş alanı (mağaza, tarih, form no, miktar) → "Ekle" ile alt tabloya satır eklenir ve giriş alanı TEMİZLENİR;
          aynı dosyadan (örn. çok sayfalı PDF) istenen sayıda kayıt girilebilir. Glikol kalemi otomatik, servis ücreti yok.
-   Satır silinebilir; mağaza özetinden mağazanın tüm satırları silinebilir; "Mağaza koduna göre diz": önce mağaza kodu, aynı mağazada tarih. *@
+   Satır silinebilir; "Mağaza koduna göre diz": önce mağaza kodu, aynı mağazada tarih. *@
 
 <style>
-    .glycol-compact { font-size: 12.5px; }
-    .glycol-compact table th { font-size: 11px; padding: 4px 6px; white-space: nowrap; }
-    .glycol-compact table td { font-size: 12px; padding: 3px 6px; }
+    .glycol-compact { font-size: 12px; }
+    .glycol-compact .glycol-table table { table-layout: auto; width: 100%; }
+    .glycol-compact .glycol-table th,
+    .glycol-compact .glycol-table td { font-size: 12px !important; padding: 2px 8px !important; white-space: nowrap; line-height: 1.35; height: 28px; }
+    .glycol-compact .glycol-table th { font-size: 10.5px !important; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: #546e7a; background: #f5f7f8; }
+    .glycol-compact .glycol-table td.num, .glycol-compact .glycol-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
+    .glycol-compact .glycol-table td.store { max-width: 230px; overflow: hidden; text-overflow: ellipsis; }
+    .glycol-compact .glycol-table tfoot td { font-weight: 700; background: #f1f8e9; border-top: 2px solid #c5e1a5; }
     .glycol-compact tr.glycol-row { cursor: pointer; }
     .glycol-compact tr.glycol-row-current td { background: #e3f2fd; }
 </style>
@@ -145,23 +149,23 @@
                 </MudButton>
             </MudStack>
             <MudPaper Elevation="1" Style="overflow-x:auto">
-                <MudSimpleTable Dense Hover Bordered Style="min-width:560px">
+                <MudSimpleTable Dense Hover Class="glycol-table" Style="min-width:520px">
                     <thead>
                         <tr>
-                            <th style="width:28px">#</th>
+                            <th style="width:26px">#</th>
                             <th>Mağaza</th>
-                            <th>Format</th>
+                            <th>Fmt</th>
                             <th>Tarih</th>
                             <th>Form No</th>
-                            <th style="text-align:right">Miktar</th>
-                            <th style="text-align:right">Toplam</th>
-                            <th style="width:36px"></th>
+                            <th class="num">Miktar</th>
+                            <th class="num">Toplam</th>
+                            <th style="width:30px"></th>
                         </tr>
                     </thead>
                     <tbody>
                         @if (AddedForms.Count == 0)
                         {
-                            <tr><td colspan="8"><MudText Typo="Typo.caption" Color="Color.Secondary" Class="pa-2">Henüz satır eklenmedi. Formu inceleyip yukarıdan bilgileri girin ve "Ekle"ye basın.</MudText></td></tr>
+                            <tr><td colspan="8" style="white-space:normal"><MudText Typo="Typo.caption" Color="Color.Secondary" Class="pa-2">Henüz satır eklenmedi. Formu inceleyip yukarıdan bilgileri girin ve "Ekle"ye basın.</MudText></td></tr>
                         }
                         @{ int n = 0; }
                         @foreach (var f in AddedForms)
@@ -169,8 +173,8 @@
                             n++;
                             var item = GlycolItem(f);
                             <tr @key="f.Id" class="glycol-row @(_editingId == f.Id ? "glycol-row-current" : "")" @onclick="@(() => EditEntryAsync(f.Id))">
-                                <td>@n</td>
-                                <td><b>@f.StoreCode</b> — @f.StoreName</td>
+                                <td style="color:#90a4ae">@n</td>
+                                <td class="store" title="@f.StoreCode — @f.StoreName"><b>@f.StoreCode</b>&nbsp;<span style="color:#455a64">@f.StoreName</span></td>
                                 <td><span style="color:#d32f2f;font-weight:700">@f.StoreFormat</span></td>
                                 <td>@(f.FormDate?.ToString("dd.MM.yyyy"))</td>
                                 <td>
@@ -178,17 +182,17 @@
                                     @if (IsDuplicateFormNo(f))
                                     {
                                         <MudTooltip Text="Bu form numarası başka bir satırda da var">
-                                            <MudIcon Icon="@Icons.Material.Filled.ContentCopy" Color="Color.Error" Size="Size.Small" />
+                                            <MudIcon Icon="@Icons.Material.Filled.ContentCopy" Color="Color.Error" Style="font-size:13px;vertical-align:middle" />
                                         </MudTooltip>
                                     }
                                 </td>
-                                <td style="text-align:right">@((item?.Quantity ?? 0m).ToString("0.##", Tr))</td>
-                                <td style="text-align:right;font-weight:600">@RowTotal(f).ToString("N2", Tr) ₺</td>
-                                <td>
+                                <td class="num">@((item?.Quantity ?? 0m).ToString("0.##", Tr))</td>
+                                <td class="num" style="font-weight:600">@RowTotal(f).ToString("N2", Tr)&nbsp;₺</td>
+                                <td style="padding:0 !important">
                                     <span @onclick:stopPropagation>
                                         <MudTooltip Text="Satırı sil">
-                                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
-                                                           OnClick="@(() => RemoveEntryAsync(f.Id))" />
+                                            <MudIconButton Icon="@Icons.Material.Filled.DeleteOutline" Size="Size.Small" Color="Color.Error"
+                                                           Style="padding:2px" OnClick="@(() => RemoveEntryAsync(f.Id))" />
                                         </MudTooltip>
                                     </span>
                                 </td>
@@ -196,59 +200,15 @@
                         }
                     </tbody>
                     <tfoot>
-                        <tr style="font-weight:700; background:#f1f8e9">
-                            <td colspan="5" style="text-align:right">TOPLAM</td>
-                            <td style="text-align:right">@AddedForms.Sum(f => GlycolItem(f)?.Quantity ?? 0m).ToString("0.##", Tr)</td>
-                            <td style="text-align:right">@GrandTotal.ToString("N2", Tr) ₺</td>
+                        <tr>
+                            <td colspan="5" class="num">TOPLAM</td>
+                            <td class="num">@AddedForms.Sum(f => GlycolItem(f)?.Quantity ?? 0m).ToString("0.##", Tr)</td>
+                            <td class="num">@GrandTotal.ToString("N2", Tr)&nbsp;₺</td>
                             <td></td>
                         </tr>
                     </tfoot>
                 </MudSimpleTable>
             </MudPaper>
-
-            @* Mağaza özeti (Excel'deki GENEL TOPLAM) — üstteki tabloyla aynı biçimde; mağazanın tüm satırlarını silebilir *@
-            @if (StoreSummaries.Count > 0)
-            {
-                <MudText Typo="Typo.subtitle2">Mağaza bazında özet <span style="font-weight:400;color:#757575">(Excel'deki GENEL TOPLAM)</span></MudText>
-                <MudPaper Elevation="1" Style="overflow-x:auto">
-                    <MudSimpleTable Dense Hover Bordered Style="min-width:560px">
-                        <thead>
-                            <tr>
-                                <th>Kod</th><th>Mağaza Adı</th><th>Format</th>
-                                <th style="text-align:right">Form</th><th style="text-align:right">Miktar</th>
-                                <th style="text-align:right">Genel Toplam</th><th style="width:36px"></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var s in StoreSummaries)
-                            {
-                                <tr>
-                                    <td><b>@s.Code</b></td><td>@s.Name</td>
-                                    <td><span style="color:#d32f2f;font-weight:700">@s.Format</span></td>
-                                    <td style="text-align:right">@s.FormCount</td>
-                                    <td style="text-align:right">@s.Qty.ToString("0.##", Tr)</td>
-                                    <td style="text-align:right;font-weight:600">@s.Total.ToString("N2", Tr) ₺</td>
-                                    <td>
-                                        <MudTooltip Text="Bu mağazanın tüm satırlarını sil">
-                                            <MudIconButton Icon="@Icons.Material.Filled.DeleteSweep" Size="Size.Small" Color="Color.Error"
-                                                           OnClick="@(() => RemoveStoreAsync(s))" />
-                                        </MudTooltip>
-                                    </td>
-                                </tr>
-                            }
-                        </tbody>
-                        <tfoot>
-                            <tr style="font-weight:700; background:#f1f8e9">
-                                <td colspan="3" style="text-align:right">TOPLAM</td>
-                                <td style="text-align:right">@StoreSummaries.Sum(x => x.FormCount)</td>
-                                <td style="text-align:right">@StoreSummaries.Sum(x => x.Qty).ToString("0.##", Tr)</td>
-                                <td style="text-align:right">@GrandTotal.ToString("N2", Tr) ₺</td>
-                                <td></td>
-                            </tr>
-                        </tfoot>
-                    </MudSimpleTable>
-                </MudPaper>
-            }
 
             <MudStack Row Justify="Justify.SpaceBetween">
                 <MudButton Variant="Variant.Text" Size="Size.Small" StartIcon="@Icons.Material.Filled.ArrowBack" OnClick="@(() => OnBack.InvokeAsync())">
@@ -274,7 +234,6 @@
     private static readonly CultureInfo Tr = CultureInfo.GetCultureInfo("tr-TR");
 
     private sealed record FileRef(string FilePath, string FileName, string FileUrl, int FirstFormId);
-    private sealed record StoreSummary(string Code, string Name, string? Format, int FormCount, decimal Qty, decimal Total, List<int> FormIds);
 
     private List<StoreDto> _stores = new();
     private int _fileIndex;
@@ -406,13 +365,6 @@
 
     private decimal GrandTotal => AddedForms.Sum(RowTotal);
 
-    private List<StoreSummary> StoreSummaries => AddedForms
-        .GroupBy(f => f.StoreCode)
-        .Select(g => new StoreSummary(g.Key, g.First().StoreName, g.First().StoreFormat, g.Count(),
-            g.Sum(x => GlycolItem(x)?.Quantity ?? 0m), g.Sum(RowTotal), g.Select(x => x.Id).ToList()))
-        .OrderBy(s => s.Code, Comparer<string>.Create((a, b) => GlycolClaim.CompareStoreCodes(a, b)))
-        .ToList();
-
     private bool IsDuplicateFormNo(ServiceFormDto f)
         => !string.IsNullOrWhiteSpace(f.FormNumber)
            && AddedForms.Count(x => x.Id != f.Id && string.Equals(x.FormNumber?.Trim(), f.FormNumber.Trim(), StringComparison.OrdinalIgnoreCase)) > 0;
@@ -495,16 +447,6 @@
         }
         catch (Exception ex) { Snackbar.Add($"Silinemedi: {ex.Message}", Severity.Error); }
         await OnChanged.InvokeAsync();
-    }
-
-    private async Task RemoveStoreAsync(StoreSummary summary)
-    {
-        var confirm = await DialogService.ShowMessageBox(
-            "Mağaza satırlarını sil",
-            $"{summary.Code} — {summary.Name} mağazasının {summary.FormCount} satırı tablodan silinsin mi?\n(Servis formu dosyaları silinmez.)",
-            yesText: "Evet, sil", cancelText: "İptal");
-        if (confirm != true) return;
-        foreach (var id in summary.FormIds) await RemoveEntryAsync(id);
     }
 
     // ── Sıralama: önce mağaza kodu, aynı mağazada tarih ────────────────────
