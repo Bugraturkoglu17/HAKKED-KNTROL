@@ -154,14 +154,17 @@ public class GlycolClaimTests
             Assert.Equal(4588.90, Disp(ws.Cell(5, 13)));
             Assert.Equal(9177.79, Disp(ws.Cell(6, 13)));
             Assert.Equal(18355.58, Disp(ws.Cell(7, 13)));
-            // ONAYLANAN: kesilen boş olduğundan genel toplamla aynı
-            Assert.Equal(22944.48, Disp(ws.Cell(2, 14)));
-            Assert.Equal(18355.58, Disp(ws.Cell(7, 14)));
+            // ONAYLANAN: kesilen boşken hiçbir şey yazmaz (formül var, görünen değer boş)
+            wb.RecalculateAllFormulas();
+            foreach (var r in new[] { 2, 4, 5, 6, 7, 8 })
+            {
+                Assert.True(ws.Cell(r, 14).HasFormula);
+                Assert.Equal(string.Empty, ws.Cell(r, 14).GetString());
+            }
 
             // Alt satır: 71.127,87 (satırlar yuvarlanmadan toplanır — yuvarlanıp toplansa 71.127,88 olurdu)
             Assert.Equal("İÇ ANADOLU MİGROS SATIŞ MAĞAZALARI SOĞUTMA GLİKOL KULLANIM HAKEDİŞİ", ws.Cell(8, 1).GetString());
             Assert.Equal(71127.87, Disp(ws.Cell(8, 13)));
-            Assert.Equal(71127.87, Disp(ws.Cell(8, 14)));
         }
     }
 
@@ -178,6 +181,8 @@ public class GlycolClaimTests
             var expected = 22944.475 - 5 * 458.8895;
             Assert.Equal(expected, ws.Cell(2, 14).GetDouble(), 3);
             Assert.Equal(22944.475, ws.Cell(2, 13).GetDouble(), 3);       // GENEL TOPLAM değişmez
+            Assert.Equal(string.Empty, ws.Cell(4, 14).GetString());       // kesilen girilmeyen mağaza boş kalır (#DEĞER! yok)
+            Assert.Equal(expected, ws.Cell(8, 14).GetDouble(), 3);        // alt toplam yalnız hesaplananları toplar
         }
     }
 

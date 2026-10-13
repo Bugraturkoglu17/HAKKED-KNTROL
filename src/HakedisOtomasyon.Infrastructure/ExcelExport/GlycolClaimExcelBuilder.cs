@@ -12,7 +12,8 @@ namespace HakedisOtomasyon.Infrastructure.ExcelExport;
 /// • Her servis formu bir satırdır; mağazalar alt alta, AYNI mağazanın formları yan yana (mağaza koduna göre sıralı).
 /// • GENEL TOPLAM ve ONAYLANAN değerleri mağaza bloğu boyunca birleştirilmiş hücrelerdedir.
 /// • Alt satır: tüm mağazaların toplamı. Servis ücreti yoktur.
-/// • KESİLEN MİKTAR boş bırakılır (onaylayan doldurur); ONAYLANAN = GENEL TOPLAM − kesilen miktar × fiyat.
+/// • KESİLEN MİKTAR boş bırakılır (onaylayan doldurur); ONAYLANAN formüllüdür: kesilen girilene kadar boş görünür,
+/// girilince GENEL TOPLAM − kesilen miktar × fiyat.
 /// • FİYAT, EUR fiyatı × kur'dur (yuvarlanmadan); TOPLAM = miktar × fiyat (yuvarlanmadan, hücre 2 hane gösterir) — örn.
 ///   30 × 458,8895 = 13.766,685 → "13.766,69". Genel toplamlar yuvarlanmamış satırların toplamıdır (onaylı örnek tabloda
 ///   71.127,87 — satırlar tek tek yuvarlanıp toplansaydı 71.127,88 olurdu).
@@ -91,8 +92,10 @@ public static class GlycolClaimExcelBuilder
             var approved = ws.Range(first, ColApproved, last, ColApproved);
             if (last > first) { grand.Merge(); approved.Merge(); }
             ws.Cell(first, ColGrand).FormulaA1 = $"SUM({Col(ColTotal)}{first}:{Col(ColTotal)}{last})";
+            // KESİLEN MİKTAR girilene kadar boş görünür; girilince GENEL TOPLAM − kesilen × fiyat hesaplanır
+            var cutRange = $"{Col(ColCut)}{first}:{Col(ColCut)}{last}";
             ws.Cell(first, ColApproved).FormulaA1 =
-                $"{Col(ColGrand)}{first}-SUMPRODUCT({Col(ColCut)}{first}:{Col(ColCut)}{last},{Col(ColPrice)}{first}:{Col(ColPrice)}{last})";
+                $"IF(COUNT({cutRange})=0,\"\",{Col(ColGrand)}{first}-SUMPRODUCT({cutRange},{Col(ColPrice)}{first}:{Col(ColPrice)}{last}))";
             foreach (var rng in new[] { grand, approved })
             {
                 rng.Style.NumberFormat.Format = CurrencyFormat;
@@ -228,7 +231,10 @@ public static class GlycolClaimExcelBuilder
 
         var firstData = 2;
         ws.Cell(r, ColGrand).FormulaA1 = lastDataRow >= firstData ? $"SUM({Col(ColGrand)}{firstData}:{Col(ColGrand)}{lastDataRow})" : "0";
-        ws.Cell(r, ColApproved).FormulaA1 = lastDataRow >= firstData ? $"SUM({Col(ColApproved)}{firstData}:{Col(ColApproved)}{lastDataRow})" : "0";
+        // ONAYLANAN toplamı da kesilen miktar girilene kadar boş görünür
+        ws.Cell(r, ColApproved).FormulaA1 = lastDataRow >= firstData
+            ? $"IF(COUNT({Col(ColApproved)}{firstData}:{Col(ColApproved)}{lastDataRow})=0,\"\",SUM({Col(ColApproved)}{firstData}:{Col(ColApproved)}{lastDataRow}))"
+            : "\"\"";
 
         var all = ws.Range(r, ColStoreCode, r, ColApproved);
         all.Style.Fill.BackgroundColor = XLColor.FromHtml("#CCFFCC");
