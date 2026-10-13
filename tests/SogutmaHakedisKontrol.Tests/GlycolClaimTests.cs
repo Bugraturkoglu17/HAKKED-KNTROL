@@ -483,6 +483,73 @@ public class GlycolClaimTests
         await Assert.ThrowsAsync<InvalidOperationException>(() => svc.EnsureGlycolItemsAsync(claim.Id));
     }
 
+    // ---------------------------------------------------------------- bir dosyadan çok kayıt
+    private static async Task<MainForm> UploadedFileAsync(MainDb db, ServiceFormService svc, MainClaim claim)
+    {
+        var form = new MainForm { ProgressClaimId = claim.Id, OriginalFileName = "coksayfa.pdf", FilePath = "forms/coksayfa.pdf" };
+        db.ServiceForms.Add(form);
+        await db.SaveChangesAsync();
+        await svc.EnsureGlycolItemsAsync(claim.Id);
+        return form;
+    }
+
+    [Fact]
+    public async Task AddGlycolEntry_IlkKayitBosYerTutucuyuKullanir_SonrakilerAyniDosyayaYeniSatirEkler()
+    {
+        using var db = CreateDb();
+        var (svc, claim, store) = await SeedAsync(db);
+        var form = await UploadedFileAsync(db, svc, claim);
+
+        var first = await svc.AddGlycolEntryAsync(form.Id, store.Id, new DateTime(2026, 6, 3), "5001", 10m);
+        var second = await svc.AddGlycolEntryAsync(form.Id, store.Id, new DateTime(2026, 6, 9), "5002", 20m);
+        var third = await svc.AddGlycolEntryAsync(form.Id, store.Id, new DateTime(2026, 6, 12), "5003", 5m);
+
+        Assert.Equal(form.Id, first.Id);                              // yer tutucu doldu, fazladan satır açılmadı
+        Assert.NotEqual(first.Id, second.Id);
+        var rows = await db.ServiceForms.Include(f => f.ServiceItems).Where(f => f.FilePath == "forms/coksayfa.pdf").ToListAsync();
+        Assert.Equal(3, rows.Count);                                  // 3 kayıt, tek dosya yolu
+        Assert.All(rows, r => Assert.Equal(ServiceFormStatus.Tamamlandi, r.Status));
+        Assert.All(rows, r => Assert.Single(r.ServiceItems));         // her satırda yalnız glikol kalemi
+        Assert.Equal(new[] { 5m, 10m, 20m }, rows.Select(r => r.ServiceItems.Single().Quantity).OrderBy(x => x).ToArray());
+        Assert.Contains("5003", rows.Select(r => r.FormNumber));
+        Assert.Equal(third.Id, rows.Single(r => r.FormNumber == "5003").Id);
+    }
+
+    [Fact]
+    public async Task RemoveGlycolRow_BaskaKayitVarsaSatiriKaldirir_SonKayitsaBosaltirVeDosyayiTutar()
+    {
+        using var db = CreateDb();
+        var (svc, claim, store) = await SeedAsync(db);
+        var form = await UploadedFileAsync(db, svc, claim);
+        var a = await svc.AddGlycolEntryAsync(form.Id, store.Id, new DateTime(2026, 6, 3), "5001", 10m);
+        var b = await svc.AddGlycolEntryAsync(form.Id, store.Id, new DateTime(2026, 6, 9), "5002", 20m);
+
+        Assert.Null(await svc.RemoveGlycolRowAsync(b.Id));            // sibling var → satır tamamen kalktı
+        Assert.False(await db.ServiceForms.AnyAsync(f => f.Id == b.Id));
+
+        var last = await svc.RemoveGlycolRowAsync(a.Id);              // dosyanın son kaydı → boşalır, dosya kalır
+        Assert.NotNull(last);
+        Assert.Equal(ServiceFormStatus.Bekliyor, last!.Status);
+        Assert.Null(last.FormNumber);
+        Assert.Equal("forms/coksayfa.pdf", (await db.ServiceForms.FindAsync(a.Id))!.FilePath);
+    }
+
+    [Fact]
+    public async Task DosyaSilinince_AyniDosyadanGirilenTumKayitlarKalkar()
+    {
+        using var db = CreateDb();
+        var (svc, claim, store) = await SeedAsync(db);
+        var form = await UploadedFileAsync(db, svc, claim);
+        await svc.AddGlycolEntryAsync(form.Id, store.Id, new DateTime(2026, 6, 3), "5001", 10m);
+        var other = await svc.AddGlycolEntryAsync(form.Id, store.Id, new DateTime(2026, 6, 9), "5002", 20m);
+
+        try { await svc.DeleteAsync(form.Id); }
+        catch (NullReferenceException) { /* test ortamında _cleanup yok; kardeş kayıtlar silme öncesinde kaldırılır */ }
+
+        Assert.False(await db.ServiceForms.AnyAsync(f => f.Id == other.Id));
+        Assert.False(await db.ServiceItems.AnyAsync(i => i.ServiceFormId == other.Id));
+    }
+
     // ---------------------------------------------------------------- mağaza Format/Bölge (seed)
     [Fact]
     public async Task SeedMagazaBilgisi_MevcutMagazalarinBosFormatBolgesiDolar_AdVeKullaniciDegeriDegismez()

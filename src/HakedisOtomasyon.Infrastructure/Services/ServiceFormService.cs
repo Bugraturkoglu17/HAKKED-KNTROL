@@ -370,6 +370,54 @@ public class ServiceFormService : IServiceFormService
         return (await GetByIdAsync(formId))!;
     }
 
+    public async Task<ServiceFormDto> AddGlycolEntryAsync(int sourceFormId, int? storeId, DateTime? formDate, string? formNumber, decimal quantity)
+    {
+        var source = await _db.ServiceForms.FirstOrDefaultAsync(f => f.Id == sourceFormId)
+            ?? throw new InvalidOperationException($"Form bulunamadı: {sourceFormId}");
+        await LoadGlycolContextAsync(source.ProgressClaimId); // glikol hakedişi + fiyat/kur doğrulaması
+
+        var siblings = await _db.ServiceForms.Include(f => f.ServiceItems)
+            .Where(f => f.ProgressClaimId == source.ProgressClaimId && f.FilePath == source.FilePath && !f.IsArchived)
+            .ToListAsync();
+
+        // Henüz hiçbir şey girilmemiş yer tutucu varsa onu kullan
+        var target = siblings.FirstOrDefault(f => f.StoreId == null && f.FormDate == null
+            && string.IsNullOrWhiteSpace(f.FormNumber) && !f.ServiceItems.Any(i => i.ItemCode != null && i.Quantity > 0m));
+
+        if (target is null)
+        {
+            target = new ServiceForm
+            {
+                ProgressClaimId = source.ProgressClaimId,
+                OriginalFileName = source.OriginalFileName,
+                FilePath = source.FilePath,   // aynı dosya — kopyalanmaz
+                FileSize = source.FileSize,
+                FileHash = null,              // tekrar (duplicate) denetimi yalnızca yükleme sırasında yapılır
+                UploadedAt = source.UploadedAt,
+                Status = ServiceFormStatus.Bekliyor,
+            };
+            _db.ServiceForms.Add(target);
+            await _db.SaveChangesAsync();
+        }
+        return await SaveGlycolRowAsync(target.Id, storeId, formDate, formNumber, quantity);
+    }
+
+    public async Task<ServiceFormDto?> RemoveGlycolRowAsync(int formId)
+    {
+        var form = await _db.ServiceForms.Include(f => f.ServiceItems).FirstOrDefaultAsync(f => f.Id == formId)
+            ?? throw new InvalidOperationException($"Form bulunamadı: {formId}");
+
+        var hasOtherEntries = await _db.ServiceForms.AnyAsync(f => f.Id != formId
+            && f.ProgressClaimId == form.ProgressClaimId && f.FilePath == form.FilePath && !f.IsArchived);
+        if (!hasOtherEntries)
+            return await ClearGlycolRowAsync(formId);   // dosyanın son kaydı: dosya hakedişte kalır, satır boşalır
+
+        _db.ServiceItems.RemoveRange(form.ServiceItems);
+        _db.ServiceForms.Remove(form);                  // yalnızca bu kayıt; dosya ve diğer kayıtlar dokunulmaz
+        await _db.SaveChangesAsync();
+        return null;
+    }
+
     public async Task<ServiceFormDto> ClearGlycolRowAsync(int formId)
     {
         var form = await _db.ServiceForms.Include(f => f.ServiceItems).FirstOrDefaultAsync(f => f.Id == formId)
@@ -396,6 +444,20 @@ public class ServiceFormService : IServiceFormService
     {
         var form = await _db.ServiceForms.FindAsync(id);
         if (form is null) return;
+
+        // Aynı dosyaya bağlı diğer kayıtlar (Soğutma Glikol: bir dosyadan çok kayıt) birlikte kaldırılır
+        if (!string.IsNullOrEmpty(form.FilePath))
+        {
+            var siblings = await _db.ServiceForms.Include(f => f.ServiceItems)
+                .Where(f => f.Id != id && f.ProgressClaimId == form.ProgressClaimId && f.FilePath == form.FilePath && !f.IsArchived)
+                .ToListAsync();
+            if (siblings.Count > 0)
+            {
+                _db.ServiceItems.RemoveRange(siblings.SelectMany(s => s.ServiceItems));
+                _db.ServiceForms.RemoveRange(siblings);
+                await _db.SaveChangesAsync();
+            }
+        }
         await _cleanup.ArchiveRemovedServiceFormAsync(id);
     }
 

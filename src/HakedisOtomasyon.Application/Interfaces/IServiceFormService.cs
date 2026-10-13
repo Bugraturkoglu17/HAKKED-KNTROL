@@ -32,4 +32,17 @@ public interface IServiceFormService
     /// form "Bekliyor" durumuna döner (yüklenen dosya ve glikol kalemi silinmez; form yeniden doldurulabilir).
     /// </summary>
     Task<ServiceFormDto> ClearGlycolRowAsync(int formId);
+
+    /// <summary>
+    /// Soğutma Glikol hakedişi: yüklenen bir dosyadan (örn. çok sayfalı bir PDF) YENİ bir kayıt ekler. Dosyanın henüz boş olan
+    /// yer tutucu satırı varsa onu kullanır, yoksa aynı dosyaya bağlı yeni bir satır oluşturur — bir dosyadan istenen sayıda
+    /// kayıt girilebilir. Dosyanın kendisi kopyalanmaz.
+    /// </summary>
+    Task<ServiceFormDto> AddGlycolEntryAsync(int sourceFormId, int? storeId, DateTime? formDate, string? formNumber, decimal quantity);
+
+    /// <summary>
+    /// Soğutma Glikol hakedişi: bir kaydı siler. Aynı dosyada başka kayıt varsa satır tamamen kaldırılır; dosyanın son kaydıysa
+    /// satır boşaltılıp "Bekliyor"a döner (dosya hakedişte kalır). Satır kaldırıldıysa null döner.
+    /// </summary>
+    Task<ServiceFormDto?> RemoveGlycolRowAsync(int formId);
 }

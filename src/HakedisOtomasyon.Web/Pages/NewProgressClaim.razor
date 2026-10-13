@@ -199,9 +199,9 @@
 
                 @if (_forms.Any())
                 {
-                    <MudText Typo="Typo.subtitle2" Class="mt-4 mb-2">Yüklenen Formlar (@_forms.Count)</MudText>
+                    <MudText Typo="Typo.subtitle2" Class="mt-4 mb-2">Yüklenen Formlar (@_forms.Where(f => !string.IsNullOrEmpty(f.FilePath)).Select(f => f.FilePath).Distinct().Count())</MudText>
                     <MudList T="string" Dense>
-                        @foreach (var form in _forms.Where(f => !string.IsNullOrEmpty(f.FilePath)))
+                        @foreach (var form in _forms.Where(f => !string.IsNullOrEmpty(f.FilePath)).GroupBy(f => f.FilePath).Select(g => g.First()))
                         {
                             <MudListItem Icon="@GetFormStatusIcon(form.Status)"
                                          IconColor="@GetFormStatusColor(form.Status)">
@@ -718,7 +718,8 @@
             "Evet, Sil", cancelText: "İptal");
         if (result != true) return;
         await FormService.DeleteAsync(form.Id);
-        _forms.Remove(form);
+        // Aynı dosyaya bağlı tüm kayıtlar (Glikol'da bir dosyadan çok kayıt girilebilir) listeden kalkar
+        _forms.RemoveAll(f => f.Id == form.Id || (!string.IsNullOrEmpty(form.FilePath) && f.FilePath == form.FilePath));
         Snackbar.Add("Form silindi.", Severity.Info);
     }
 
