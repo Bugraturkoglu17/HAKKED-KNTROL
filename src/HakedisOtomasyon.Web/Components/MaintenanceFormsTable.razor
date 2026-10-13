@@ -1,0 +1,636 @@
+@namespace HakedisOtomasyon.Web.Components
+@using System.Globalization
+@using HakedisOtomasyon.Application
+@using HakedisOtomasyon.Domain.Enums
+@inject IServiceFormService FormService
+@inject IStoreService StoreService
+@inject IPriceListService PriceListService
+@inject ISnackbar Snackbar
+
+@* Soğutma — Bakım & Onarım hakedişi, tek ekran (Glikol ekranının malzeme eklenebilir hâli):
+   SOL : yüklenen servis formu (PDF/görsel) her zaman açık; birden çok dosya varsa dosyalar arasında gezinilir.
+   SAĞ : üstte formun bilgisi (mağaza, tarih, bakım form no) — bir kez girilir; altında malzeme + miktar → "Ekle" ile tabloya satır
+         eklenir. Aynı forma alt alta malzeme eklenmeye devam edilir (yalnız malzeme/miktar temizlenir). İlk "Ekle"de mağazanın iline
+         göre şehir içi / şehir dışı servis bedeli OTOMATİK gelir.
+   Tablo: en son eklenen satır daima EN ÜSTTE. "Mağaza koduna göre sırala": mağaza kodu küçükten büyüğe, aynı mağazada tarihe göre. *@
+
+<style>
+    .maint-compact { font-size: 12.5px; }
+    .maint-compact .maint-table table { table-layout: auto; width: 100%; }
+    .maint-compact .maint-table th,
+    .maint-compact .maint-table td { font-size: 12px !important; padding: 2px 7px !important; white-space: nowrap; line-height: 1.35; height: 28px; }
+    .maint-compact .maint-table th { font-size: 10.5px !important; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: #546e7a; background: #f5f7f8; }
+    .maint-compact .maint-table td.num, .maint-compact .maint-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
+    .maint-compact .maint-table td.store { max-width: 190px; overflow: hidden; text-overflow: ellipsis; }
+    .maint-compact .maint-table td.item { max-width: 250px; overflow: hidden; text-overflow: ellipsis; }
+    .maint-compact .maint-table tfoot td { font-weight: 700; background: #f1f8e9; border-top: 2px solid #c5e1a5; }
+    .maint-compact tr.maint-row { cursor: pointer; }
+    .maint-compact tr.maint-row-current td { background: #e3f2fd; }
+    .maint-compact tr.maint-row-fee td { color: #37474f; }
+    .maint-compact tr.maint-row-new td { animation: maintFlash 1.6s ease-out 1; }
+    @@keyframes maintFlash { from { background: #fff59d; } to { background: transparent; } }
+</style>
+
+<div class="maint-compact">
+<MudGrid Spacing="2">
+
+    @* ───────── SOL: servis formu (daima açık) ───────── *@
+    <MudItem xs="12" md="5">
+        @if (CurrentFile is not null)
+        {
+            <PdfViewer @key="CurrentFile.FilePath" FileUrl="@CurrentFile.FileUrl" FileName="@CurrentFile.FileName" FilePath="@CurrentFile.FilePath" />
+            <MudPaper Elevation="1" Class="pa-1 mt-2">
+                <MudStack Row AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                    <MudIconButton Icon="@Icons.Material.Filled.NavigateBefore" Size="Size.Small" OnClick="PreviousFile" Disabled="@(_fileIndex <= 0)" />
+                    <MudStack Row AlignItems="AlignItems.Center" Spacing="1">
+                        <MudText Typo="Typo.body2">Dosya @(_fileIndex + 1) / @Files.Count</MudText>
+                        @{ var cnt = FormCount(CurrentFile); }
+                        <MudChip T="string" Size="Size.Small" Color="@(cnt > 0 ? Color.Success : Color.Warning)"
+                                 Icon="@(cnt > 0 ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.WarningAmber)">
+                            @(cnt > 0 ? $"{cnt} form girildi" : "kayıt yok")
+                        </MudChip>
+                    </MudStack>
+                    <MudIconButton Icon="@Icons.Material.Filled.NavigateNext" Size="Size.Small" OnClick="NextFile" Disabled="@(_fileIndex >= Files.Count - 1)" />
+                </MudStack>
+            </MudPaper>
+        }
+        else
+        {
+            <MudPaper Elevation="1" Class="pa-6 d-flex flex-column align-center justify-center" Style="min-height:240px">
+                <MudIcon Icon="@Icons.Material.Outlined.UploadFile" Size="Size.Large" Color="Color.Primary" />
+                <MudText Typo="Typo.body2" Class="mt-2" Align="Align.Center">Henüz servis formu yüklenmedi. Önceki adımdan formları yükleyin.</MudText>
+            </MudPaper>
+        }
+    </MudItem>
+
+    @* ───────── SAĞ: form bilgisi + malzeme ekleme + tablo ───────── *@
+    <MudItem xs="12" md="7">
+        <MudStack Spacing="2">
+
+            <MudStack Row Spacing="1" Style="flex-wrap:wrap">
+                <MudChip T="string" Size="Size.Small" Icon="@Icons.Material.Filled.CurrencyExchange"
+                         Color="@(EurPricing.IsValidRate(Claim?.EurRate) ? Color.Info : Color.Warning)">
+                    @(EurPricing.IsValidRate(Claim?.EurRate) ? $"EUR Kuru: {EurPricing.FormatRate(Claim!.EurRate!.Value)} ₺" : "EUR kuru girilmedi — EUR fiyatlı kalem eklenemez")
+                </MudChip>
+                @if (_store is not null)
+                {
+                    var inCity = MaintenanceClaim.IsInCity(_store.City);
+                    <MudChip T="string" Size="Size.Small" Color="@(inCity is null ? Color.Warning : Color.Default)"
+                             Icon="@(inCity is null ? Icons.Material.Filled.WarningAmber : Icons.Material.Filled.Place)">
+                        @(inCity is null ? "Mağazanın ili kayıtlı değil — servis bedeli otomatik eklenmez"
+                            : $"{_store.City} · {(inCity.Value ? "Şehir içi" : "Şehir dışı")} servis bedeli otomatik")
+                    </MudChip>
+                }
+            </MudStack>
+
+            @if (CurrentFile is not null)
+            {
+                <MudPaper Elevation="2" Class="pa-3">
+                    @* 1) Servis formunun bilgisi — bir kez girilir, malzeme eklerken yerinde kalır *@
+                    <MudStack Row AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-2">
+                        <MudText Typo="Typo.caption" Style="font-weight:600">
+                            @(_editingItemId.HasValue ? "Satırı düzenle" : "Servis formu") — @CurrentFile.FileName
+                        </MudText>
+                        @if (!_editingItemId.HasValue)
+                        {
+                            <MudButton Variant="Variant.Text" Size="Size.Small" StartIcon="@Icons.Material.Filled.NoteAdd"
+                                       OnClick="NewForm" Disabled="@(_store is null && !_date.HasValue && string.IsNullOrWhiteSpace(_formNo))">
+                                Yeni form
+                            </MudButton>
+                        }
+                    </MudStack>
+                    <div @key="_headerKey">
+                        <MudGrid Spacing="2">
+                            <MudItem xs="12" md="9">
+                                <MudAutocomplete T="StoreDto" Value="@_store" ValueChanged="@(s => _store = s)"
+                                                 SearchFunc="@SearchStoresAsync"
+                                                 ToStringFunc="@(s => s is null ? string.Empty : $"{s.Code} — {s.Name}")"
+                                                 Label="Mağaza *" Variant="Variant.Outlined" Margin="Margin.Dense" Clearable ResetValueOnEmptyText
+                                                 MinCharacters="1" MaxItems="30" Placeholder="Kod veya ad yazın" />
+                            </MudItem>
+                            <MudItem xs="12" md="3" Class="d-flex align-center">
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">Format:&nbsp;</MudText>
+                                @if (!string.IsNullOrWhiteSpace(_store?.Format))
+                                {
+                                    <span style="color:#d32f2f;font-weight:700">@_store!.Format</span>
+                                }
+                                else { <span style="color:#9e9e9e">—</span> }
+                            </MudItem>
+                            <MudItem xs="12" sm="6">
+                                <MudDatePicker Date="@_date" DateChanged="@(d => _date = d)" Label="Tarih *"
+                                               Variant="Variant.Outlined" Margin="Margin.Dense" Editable DateFormat="dd.MM.yyyy"
+                                               Culture="@Tr" Placeholder="gg.aa.yyyy" />
+                            </MudItem>
+                            <MudItem xs="12" sm="6">
+                                <MudTextField T="string" @bind-Value="_formNo" Label="Bakım Form No *" Variant="Variant.Outlined"
+                                              Margin="Margin.Dense" MaxLength="50" />
+                            </MudItem>
+                        </MudGrid>
+                    </div>
+
+                    <MudDivider Class="my-3" />
+
+                    @* 2) Malzeme / işçilik — her "Ekle"den sonra temizlenir, form bilgisi kalır *@
+                    <div @key="_itemKey">
+                        <MudGrid Spacing="2">
+                            <MudItem xs="12" md="9">
+                                @if (_editingItemId.HasValue)
+                                {
+                                    <MudTextField T="string" Value="@_editingItemText" Label="Malzeme" Variant="Variant.Outlined"
+                                                  Margin="Margin.Dense" ReadOnly />
+                                }
+                                else
+                                {
+                                    <MudAutocomplete T="PriceItemDto" Value="@_priceItem" ValueChanged="@(p => _priceItem = p)"
+                                                     SearchFunc="@SearchPriceItemsAsync"
+                                                     ToStringFunc="@(p => p is null ? string.Empty : PriceText(p))"
+                                                     Label="Malzeme / işçilik" Variant="Variant.Outlined" Margin="Margin.Dense" Clearable ResetValueOnEmptyText
+                                                     MinCharacters="1" MaxItems="40" DebounceInterval="200"
+                                                     Placeholder="Kod veya ad yazın (örn. S3, 35, solenoid)">
+                                        <ItemTemplate Context="p">
+                                            <div class="pa-1">
+                                                <MudText Typo="Typo.body2" Style="line-height:1.3"><b>@p.PozNo</b> — @MaintenanceClaim.ExportName(p.Description, p.ItemType)</MudText>
+                                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                                    @(string.IsNullOrWhiteSpace(p.ItemType) ? "" : p.ItemType + " · ")@PriceLabel(p) · @(string.IsNullOrWhiteSpace(p.Unit) ? "birim yok" : p.Unit)
+                                                </MudText>
+                                            </div>
+                                        </ItemTemplate>
+                                        <NoItemsTemplate>
+                                            <MudText Typo="Typo.body2" Class="px-4 py-2" Color="Color.Warning">Fiyat listesinde bulunamadı.</MudText>
+                                        </NoItemsTemplate>
+                                    </MudAutocomplete>
+                                }
+                            </MudItem>
+                            <MudItem xs="12" md="3">
+                                <MudNumericField T="decimal?" @bind-Value="_qty" Label="Miktar" Variant="Variant.Outlined"
+                                                 Margin="Margin.Dense" Min="0" Culture="@Tr" Format="0.##" HideSpinButtons />
+                            </MudItem>
+                        </MudGrid>
+                    </div>
+                    <MudStack Row AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mt-2">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            @if (_editingItemId.HasValue) { <span>Miktarı ve form bilgisini değiştirebilirsiniz.</span> }
+                            else if (_priceItem is null) { <span>Malzeme seçmeden <b>Ekle</b>: yalnız servis bedeli eklenir.</span> }
+                            else if (EntryTotal > 0m) { <span>Toplam: <b>@EntryTotal.ToString("N2", Tr) ₺</b></span> }
+                        </MudText>
+                        <MudStack Row Spacing="1">
+                            @if (_editingItemId.HasValue)
+                            {
+                                <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="CancelEdit">Vazgeç</MudButton>
+                            }
+                            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" Disabled="@_saving"
+                                       StartIcon="@(_editingItemId.HasValue ? Icons.Material.Filled.Save : Icons.Material.Filled.Add)"
+                                       OnClick="@(_editingItemId.HasValue ? UpdateAsync : AddAsync)">
+                                @(_editingItemId.HasValue ? "Güncelle" : "Ekle")
+                            </MudButton>
+                        </MudStack>
+                    </MudStack>
+                    @if (_error is not null)
+                    {
+                        <MudAlert Severity="Severity.Warning" Dense Class="mt-1" Style="padding:2px 10px">@_error</MudAlert>
+                    }
+                </MudPaper>
+            }
+
+            @* Eklenen kalemler — en son eklenen en üstte *@
+            <MudStack Row AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                <MudText Typo="Typo.subtitle2">
+                    Eklenen Kalemler (@Rows.Count) <span style="font-weight:400;color:#757575">· @Rows.Select(r => r.Form.Id).Distinct().Count() form</span>
+                </MudText>
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small"
+                           StartIcon="@Icons.Material.Filled.SortByAlpha" OnClick="SortByStore" Disabled="@(Rows.Count < 2)">
+                    Mağaza koduna göre sırala
+                </MudButton>
+            </MudStack>
+            <MudPaper Elevation="1" Style="overflow-x:auto">
+                <MudSimpleTable Dense Hover Class="maint-table" Style="min-width:640px">
+                    <thead>
+                        <tr>
+                            <th style="width:26px">#</th>
+                            <th>Mağaza</th>
+                            <th>Tarih</th>
+                            <th>Form No</th>
+                            <th>Kod</th>
+                            <th>Malzeme</th>
+                            <th class="num">Miktar</th>
+                            <th>Birim</th>
+                            <th class="num">Fiyat</th>
+                            <th class="num">Toplam</th>
+                            <th style="width:30px"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (Rows.Count == 0)
+                        {
+                            <tr><td colspan="11" style="white-space:normal"><MudText Typo="Typo.caption" Color="Color.Secondary" Class="pa-2">Henüz kalem eklenmedi. Formdaki mağaza, tarih ve bakım form numarasını girin; malzemeyi seçip "Ekle"ye basın.</MudText></td></tr>
+                        }
+                        @{ int n = 0; }
+                        @foreach (var row in Rows)
+                        {
+                            n++;
+                            var f = row.Form; var it = row.Item;
+                            var (name, type) = NameAndType(it);
+                            var isFee = MaintenanceClaim.IsServiceFee(it.ItemCode, it.Description);
+                            <tr @key="it.Id" class="maint-row @(_editingItemId == it.Id ? "maint-row-current" : "") @(isFee ? "maint-row-fee" : "") @(_flashIds.Contains(it.Id) ? "maint-row-new" : "")"
+                                @onclick="@(() => EditRow(row))">
+                                <td style="color:#90a4ae">@n</td>
+                                <td class="store" title="@f.StoreCode — @f.StoreName · @f.StoreFormat"><b>@f.StoreCode</b>&nbsp;<span style="color:#455a64">@f.StoreName</span></td>
+                                <td>@(f.FormDate?.ToString("dd.MM.yyyy"))</td>
+                                <td>@f.FormNumber</td>
+                                <td><b>@it.ItemCode</b></td>
+                                <td class="item" title="@name @type">
+                                    @if (isFee) { <MudIcon Icon="@Icons.Material.Filled.AutoAwesome" Style="font-size:12px;vertical-align:middle;color:#1976d2" />@(" ") }
+                                    @name
+                                    @if (type.Length > 0) { <span style="color:#78909c">&nbsp;· @type</span> }
+                                </td>
+                                <td class="num">@it.Quantity.ToString("0.##", Tr)</td>
+                                <td>@it.Unit</td>
+                                <td class="num">@UnitPriceTl(it).ToString("N2", Tr)</td>
+                                <td class="num" style="font-weight:600">@RowTotal(it).ToString("N2", Tr)&nbsp;₺</td>
+                                <td style="padding:0 !important">
+                                    <span @onclick:stopPropagation>
+                                        <MudTooltip Text="Satırı sil">
+                                            <MudIconButton Icon="@Icons.Material.Filled.DeleteOutline" Size="Size.Small" Color="Color.Error"
+                                                           Style="padding:2px" OnClick="@(() => RemoveAsync(it.Id))" />
+                                        </MudTooltip>
+                                    </span>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <td colspan="9" class="num">TOPLAM</td>
+                            <td class="num">@GrandTotal.ToString("N2", Tr)&nbsp;₺</td>
+                            <td></td>
+                        </tr>
+                    </tfoot>
+                </MudSimpleTable>
+            </MudPaper>
+
+            <MudStack Row Justify="Justify.SpaceBetween">
+                <MudButton Variant="Variant.Text" Size="Size.Small" StartIcon="@Icons.Material.Filled.ArrowBack" OnClick="@(() => OnBack.InvokeAsync())">
+                    Form Yükleme
+                </MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Success" EndIcon="@Icons.Material.Filled.TableChart"
+                           OnClick="@(() => OnExport.InvokeAsync())" Disabled="@(Rows.Count == 0)">
+                    Excel Oluştur
+                </MudButton>
+            </MudStack>
+        </MudStack>
+    </MudItem>
+</MudGrid>
+</div>
+
+@code {
+    [Parameter] public List<ServiceFormDto> Forms { get; set; } = new();
+    [Parameter] public ProgressClaimDto? Claim { get; set; }
+    [Parameter] public EventCallback OnBack { get; set; }
+    [Parameter] public EventCallback OnExport { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private static readonly CultureInfo Tr = CultureInfo.GetCultureInfo("tr-TR");
+
+    private sealed record FileRef(string FilePath, string FileName, string FileUrl, int FirstFormId);
+    private sealed record Row(ServiceFormDto Form, ServiceItemDto Item);
+
+    private List<StoreDto> _stores = new();
+    private int _fileIndex;
+    /// <summary>Kalemlerin tabloda görünme sırası (kalem kimlikleri): yeni eklenen EN BAŞA gelir; "sırala" ile yeniden dizilir.</summary>
+    private readonly List<int> _order = new();
+    private readonly HashSet<int> _flashIds = new();
+
+    // form bilgisi (malzeme eklerken yerinde kalır)
+    private int _headerKey;
+    private StoreDto? _store;
+    private DateTime? _date;
+    private string? _formNo;
+    // malzeme (her Ekle'den sonra temizlenir)
+    private int _itemKey;
+    private PriceItemDto? _priceItem;
+    private decimal? _qty;
+    // düzenleme
+    private int? _editingItemId;
+    private int? _editingFormId;
+    private string _editingItemText = string.Empty;
+
+    private bool _saving;
+    private string? _error;
+
+    /// <summary>Yüklenen dosyalar (yüklenme sırasıyla). Bir dosyadan birden çok form girilebildiği için kayıtlar dosya yoluna göre gruplanır.</summary>
+    private List<FileRef> Files => Forms
+        .Where(f => !string.IsNullOrEmpty(f.FilePath))
+        .GroupBy(f => f.FilePath)
+        .Select(g => g.OrderBy(x => x.UploadedAt).ThenBy(x => x.Id).First())
+        .OrderBy(f => f.UploadedAt).ThenBy(f => f.Id)
+        .Select(f => new FileRef(f.FilePath, f.OriginalFileName, f.FileUrl, f.Id))
+        .ToList();
+
+    private FileRef? CurrentFile { get { var files = Files; return _fileIndex >= 0 && _fileIndex < files.Count ? files[_fileIndex] : null; } }
+
+    private static bool IsEntered(ServiceFormDto f) => f.Status == ServiceFormStatus.Tamamlandi && f.ServiceItems.Count > 0;
+
+    private int FormCount(FileRef file) => Forms.Count(f => f.FilePath == file.FilePath && IsEntered(f));
+
+    private List<Row> Rows
+    {
+        get
+        {
+            var byItem = Forms.Where(IsEntered).SelectMany(f => f.ServiceItems.Select(i => new Row(f, i))).ToDictionary(r => r.Item.Id);
+            return _order.Where(byItem.ContainsKey).Select(id => byItem[id]).ToList();
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _stores = await StoreService.GetAllAsync();
+        SyncOrder();
+        var files = Files;
+        var firstEmpty = files.FindIndex(f => FormCount(f) == 0);
+        _fileIndex = firstEmpty >= 0 ? firstEmpty : 0;
+    }
+
+    protected override void OnParametersSet()
+    {
+        SyncOrder();
+        var count = Files.Count;
+        if (_fileIndex >= count) _fileIndex = Math.Max(0, count - 1);
+    }
+
+    /// <summary>Sıra listesini güncel kalemlerle eşitler: silinenler çıkar; listede olmayanlar (ilk açılış) yeniden eskiye doğru sona eklenir.</summary>
+    private void SyncOrder()
+    {
+        var ids = Forms.Where(IsEntered).SelectMany(f => f.ServiceItems).Select(i => i.Id).ToHashSet();
+        _order.RemoveAll(id => !ids.Contains(id));
+        foreach (var id in ids.Where(id => !_order.Contains(id)).OrderByDescending(id => id))
+            _order.Add(id);
+    }
+
+    // ── Görüntüleme yardımcıları ─────────────────────────────────────────
+    private static (string Name, string Type) NameAndType(ServiceItemDto item)
+    {
+        if (string.IsNullOrWhiteSpace(item.ExportDescription)) return MaintenanceClaim.SplitName(item.Description, item.ItemType);
+        var name = item.ExportDescription.Trim();
+        var type = (item.ItemType ?? string.Empty).Trim();
+        return (name, string.Equals(type, name, StringComparison.OrdinalIgnoreCase) ? string.Empty : type);
+    }
+
+    /// <summary>TL birim fiyat: EUR kalemde EUR fiyatı × kur (yuvarlanmadan) — Excel'deki FİYAT ile aynı.</summary>
+    private static decimal UnitPriceTl(ServiceItemDto i)
+        => i.ForeignPrice.HasValue && i.ExchangeRate.HasValue ? i.ForeignPrice.Value * i.ExchangeRate.Value : i.UnitPrice;
+
+    private static decimal RowTotal(ServiceItemDto i) => i.Quantity * UnitPriceTl(i);
+
+    private decimal GrandTotal => Rows.Sum(r => RowTotal(r.Item));
+
+    private static string PriceText(PriceItemDto p) => $"{p.PozNo} — {MaintenanceClaim.ExportName(p.Description, p.ItemType)}".Trim(' ', '—');
+
+    private string PriceLabel(PriceItemDto p)
+    {
+        if (p.ForeignPrice is > 0m && EurPricing.IsEur(p.CurrencyCode))
+            return EurPricing.IsValidRate(Claim?.EurRate)
+                ? $"{p.ForeignPrice.Value.ToString("N2", Tr)} EUR ≈ {(p.ForeignPrice.Value * Claim!.EurRate!.Value).ToString("N2", Tr)} ₺"
+                : $"{p.ForeignPrice.Value.ToString("N2", Tr)} EUR";
+        return $"{p.UnitPrice.ToString("N2", Tr)} ₺";
+    }
+
+    private decimal EntryTotal
+    {
+        get
+        {
+            if (_priceItem is null || !(_qty > 0m)) return 0m;
+            if (_priceItem.ForeignPrice is > 0m && EurPricing.IsEur(_priceItem.CurrencyCode))
+                return EurPricing.IsValidRate(Claim?.EurRate) ? _qty.Value * _priceItem.ForeignPrice.Value * Claim!.EurRate!.Value : 0m;
+            return _qty.Value * _priceItem.UnitPrice;
+        }
+    }
+
+    // ── Aramalar ────────────────────────────────────────────────────────
+    private Task<IEnumerable<StoreDto>> SearchStoresAsync(string? text, CancellationToken ct)
+    {
+        var q = (text ?? string.Empty).Trim();
+        if (q.Length == 0) return Task.FromResult<IEnumerable<StoreDto>>(_stores.Take(30).ToList());
+        var found = _stores
+            .Where(s => s.Code.StartsWith(q, StringComparison.OrdinalIgnoreCase)
+                        || Tr.CompareInfo.IndexOf(s.Name, q, CompareOptions.IgnoreCase) >= 0)
+            .OrderBy(s => s.Code.Equals(q, StringComparison.OrdinalIgnoreCase) ? 0 : s.Code.StartsWith(q, StringComparison.OrdinalIgnoreCase) ? 1 : 2)
+            .ThenBy(s => s.Code, Comparer<string>.Create((a, b) => GlycolClaim.CompareStoreCodes(a, b)))
+            .Take(30)
+            .ToList();
+        return Task.FromResult<IEnumerable<StoreDto>>(found);
+    }
+
+    private List<PriceItemDto>? _priceItems;
+
+    private async Task<IEnumerable<PriceItemDto>> SearchPriceItemsAsync(string? text, CancellationToken ct)
+    {
+        try
+        {
+            _priceItems ??= await PriceListService.GetAllAsync();
+            var q = (text ?? string.Empty).Trim();
+            if (q.Length == 0) return _priceItems.Take(40).ToList();
+            // kod tam/önek eşleşmesi önce (S3, 35 ...), sonra ad/tip içinde geçenler
+            return _priceItems
+                .Select(p => (Item: p, Rank: Rank(p, q)))
+                .Where(x => x.Rank < 9)
+                .OrderBy(x => x.Rank)
+                .ThenBy(x => x.Item.PozNo, Comparer<string?>.Create((a, b) => GlycolClaim.CompareStoreCodes(a, b)))
+                .Select(x => x.Item)
+                .Take(40)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Fiyat listesi okunamadı: {ex.Message}", Severity.Error);
+            return Array.Empty<PriceItemDto>();
+        }
+    }
+
+    private static int Rank(PriceItemDto p, string q)
+    {
+        var code = p.PozNo ?? string.Empty;
+        if (code.Equals(q, StringComparison.OrdinalIgnoreCase)) return 0;
+        if (code.StartsWith(q, StringComparison.OrdinalIgnoreCase)) return 1;
+        // birden çok kelime: hepsi ad/tip içinde geçmeli
+        var hay = p.Description + " " + p.ItemType + " " + p.MainCategory;
+        var words = q.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (words.All(w => Tr.CompareInfo.IndexOf(hay, w, CompareOptions.IgnoreCase) >= 0))
+            return Tr.CompareInfo.IsPrefix(p.Description, words[0], CompareOptions.IgnoreCase) ? 2 : 3;
+        return 9;
+    }
+
+    // ── Dosya gezinmesi ─────────────────────────────────────────────────
+    private void PreviousFile() { if (_fileIndex > 0) { _fileIndex--; ResetAll(); } }
+    private void NextFile() { if (_fileIndex < Files.Count - 1) { _fileIndex++; ResetAll(); } }
+
+    // ── Giriş alanı ─────────────────────────────────────────────────────
+    private void ClearItem()
+    {
+        _priceItem = null; _qty = null;
+        _itemKey++;   // malzeme arama kutusunu baştan kur → görünen metin de temizlenir
+    }
+
+    private void ClearHeader()
+    {
+        _store = null; _date = null; _formNo = null;
+        _headerKey++;
+    }
+
+    private void ResetAll()
+    {
+        _editingItemId = null; _editingFormId = null; _editingItemText = string.Empty;
+        _error = null;
+        ClearHeader();
+        ClearItem();
+    }
+
+    /// <summary>Sıradaki servis formuna geç: form bilgisi (mağaza/tarih/form no) ve malzeme temizlenir.</summary>
+    private void NewForm() => ResetAll();
+
+    private void CancelEdit() => ResetAll();
+
+    private static StoreDto FromForm(ServiceFormDto f) => new()
+    { Id = f.StoreId ?? 0, Code = f.StoreCode, Name = f.StoreName, Format = f.StoreFormat, Region = f.StoreRegion, City = f.StoreCity };
+
+    private void EditRow(Row row)
+    {
+        var f = row.Form;
+        var idx = Files.FindIndex(x => x.FilePath == f.FilePath);
+        if (idx >= 0) _fileIndex = idx;               // formu sol panelde aç
+        _editingItemId = row.Item.Id;
+        _editingFormId = f.Id;
+        var (name, type) = NameAndType(row.Item);
+        _editingItemText = $"{row.Item.ItemCode} — {name}{(type.Length > 0 ? " · " + type : "")}".Trim(' ', '—');
+        _store = f.StoreId.HasValue ? (_stores.FirstOrDefault(s => s.Id == f.StoreId.Value) ?? FromForm(f)) : null;
+        _date = f.FormDate;
+        _formNo = f.FormNumber;
+        _priceItem = null;
+        _qty = row.Item.Quantity;
+        _error = null;
+        _headerKey++; _itemKey++;
+    }
+
+    private string MissingHeader()
+    {
+        var m = new List<string>();
+        if (_store is null) m.Add("mağaza");
+        if (!_date.HasValue) m.Add("tarih");
+        if (string.IsNullOrWhiteSpace(_formNo)) m.Add("bakım form no");
+        return string.Join(", ", m);
+    }
+
+    private void UpsertForm(ServiceFormDto saved)
+    {
+        var idx = Forms.FindIndex(f => f.Id == saved.Id);
+        if (idx >= 0) Forms[idx] = saved; else Forms.Add(saved);
+    }
+
+    // ── Ekle ────────────────────────────────────────────────────────────
+    private async Task AddAsync()
+    {
+        var file = CurrentFile;
+        if (file is null || _saving) return;
+        var missing = MissingHeader();
+        if (missing.Length > 0) { _error = $"Eksik alan: {missing}"; return; }
+        if (_priceItem is not null && !(_qty > 0m)) { _error = "Miktar girin."; return; }
+        _error = null;
+
+        _saving = true;
+        try
+        {
+            var before = Forms.FirstOrDefault(f => f.FilePath == file.FilePath && f.StoreId == _store!.Id && f.FormDate == _date!.Value.Date
+                                                   && string.Equals(f.FormNumber?.Trim(), _formNo!.Trim(), StringComparison.OrdinalIgnoreCase))
+                             ?.ServiceItems.Select(i => i.Id).ToHashSet() ?? new HashSet<int>();
+
+            var result = await FormService.AddMaintenanceItemAsync(file.FirstFormId, _store!.Id, _date!.Value, _formNo!, _priceItem?.Id, _qty ?? 0m);
+            UpsertForm(result.Form);
+
+            // Yeni satırlar EN ÜSTE: önce otomatik servis bedeli (varsa), en üstte az önce eklenen kalem
+            _flashIds.Clear();
+            var added = result.Form.ServiceItems.Where(i => !before.Contains(i.Id)).OrderBy(i => i.SortOrder).Select(i => i.Id).ToList();
+            foreach (var id in added) { _order.Remove(id); _order.Insert(0, id); _flashIds.Add(id); }
+            if (result.ItemId is { } itemId)   // miktarı artan mevcut kalem de en üste gelsin
+            {
+                _order.Remove(itemId); _order.Insert(0, itemId); _flashIds.Add(itemId);
+            }
+
+            if (result.Merged)
+                Snackbar.Add("Bu kalem formda zaten vardı — miktarı güncellendi.", Severity.Info);
+            switch (result.Fee)
+            {
+                case MaintenanceClaim.ServiceFeeResult.UnknownCity:
+                    Snackbar.Add("Mağazanın ili kayıtlı değil; servis bedeli eklenmedi. Gerekirse S1/S2 kalemini elle ekleyin.", Severity.Warning);
+                    break;
+                case MaintenanceClaim.ServiceFeeResult.MissingPriceItem:
+                    Snackbar.Add("Fiyat listesinde servis bedeli kalemi (1 EKIP ŞEHİR İÇİ / DIŞI SERVİS BEDELİ) bulunamadı.", Severity.Warning);
+                    break;
+            }
+
+            ClearItem();   // form bilgisi kalır — aynı forma alt alta malzeme eklenmeye devam edilir
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally { _saving = false; }
+        await OnChanged.InvokeAsync();
+    }
+
+    // ── Güncelle (satır düzenleme) ──────────────────────────────────────
+    private async Task UpdateAsync()
+    {
+        if (_editingItemId is null || _editingFormId is null || _saving) return;
+        var missing = MissingHeader();
+        if (missing.Length > 0) { _error = $"Eksik alan: {missing}"; return; }
+        if (!(_qty > 0m)) { _error = "Miktar girin."; return; }
+        _error = null;
+
+        _saving = true;
+        try
+        {
+            var saved = await FormService.UpdateMaintenanceEntryAsync(_editingFormId.Value, _store!.Id, _date!.Value, _formNo!, _editingItemId, _qty);
+            UpsertForm(saved);
+            SyncOrder();
+            ResetAll();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally { _saving = false; }
+        await OnChanged.InvokeAsync();
+    }
+
+    // ── Sil ─────────────────────────────────────────────────────────────
+    private async Task RemoveAsync(int itemId)
+    {
+        var form = Forms.FirstOrDefault(f => f.ServiceItems.Any(i => i.Id == itemId));
+        if (form is null) return;
+        try
+        {
+            var result = await FormService.RemoveMaintenanceItemAsync(itemId);
+            if (result is null) Forms.RemoveAll(f => f.Id == form.Id); else UpsertForm(result);
+            _order.Remove(itemId);
+            if (_editingItemId == itemId) ResetAll();
+        }
+        catch (Exception ex) { Snackbar.Add($"Silinemedi: {ex.Message}", Severity.Error); }
+        await OnChanged.InvokeAsync();
+    }
+
+    // ── Sıralama: mağaza kodu küçükten büyüğe, aynı mağazada tarihe göre (form içinde eklenme sırası) ──────────
+    private void SortByStore()
+    {
+        var sorted = Rows
+            .OrderBy(r => r.Form.StoreCode, Comparer<string>.Create((a, b) => GlycolClaim.CompareStoreCodes(a, b)))
+            .ThenBy(r => r.Form.FormDate ?? DateTime.MaxValue)
+            .ThenBy(r => r.Form.FormNumber, Comparer<string?>.Create((a, b) => GlycolClaim.CompareStoreCodes(a, b)))
+            .ThenBy(r => r.Form.Id)
+            .ThenBy(r => r.Item.SortOrder)
+            .ThenBy(r => r.Item.Id)
+            .Select(r => r.Item.Id)
+            .ToList();
+        _order.Clear();
+        _order.AddRange(sorted);
+        _flashIds.Clear();
+    }
+}

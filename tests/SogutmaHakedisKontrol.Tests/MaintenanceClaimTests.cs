@@ -16,7 +16,7 @@ namespace SogutmaHakedisKontrol.Tests;
 
 /// <summary>Soğutma "Bakım &amp; Onarım" hakedişi: her forma mağazanın iline göre otomatik şehir içi/dışı servis bedeli;
 /// Excel çıktısı onaylı örnek tabloyla (386 BAHÇELİEVLER bloğu → GENEL TOPLAM 33.496,69 TL) aynı olmalı.</summary>
-public class MaintenanceClaimTests
+public partial class MaintenanceClaimTests
 {
     private const decimal Rate = 53.29m;   // örnek tablodaki EUR kuru (59,5595 EUR → 3.173,93 TL)
 
@@ -185,7 +185,7 @@ public class MaintenanceClaimTests
     }
 
     [Fact]
-    public async Task UpdateFormInfo_TarihVeBakimFormNoKaydedilir_KalemKoduVeTipiSaklanir()
+    public async Task KalemKoduTipiVeMagazaIli_KaydedilipGeriOkunur()
     {
         using var db = CreateDb();
         var (svc, claim) = await SeedAsync(db);
@@ -194,15 +194,12 @@ public class MaintenanceClaimTests
         var form = await svc.AddFormAsync(claim.Id, "forms/x.pdf", "x.pdf");
 
         await svc.UpdateStoreAsync(form.Id, "386");
-        await svc.UpdateFormInfoAsync(form.Id, new DateTime(2026, 7, 24, 15, 30, 0), " 21179 ");
         await svc.SaveItemsAsync(form.Id, new List<ServiceItemDto>
         {
             new() { Description = "EXPANSİON VALVE DIŞ DENGELİ VE KAYNAKLI", ItemCode = "35", ItemType = "DIŞ DENGELİ VE KAYNAKLI", Unit = "ADET", Quantity = 2 },
         });
 
         var dto = (await svc.GetByIdAsync(form.Id))!;
-        Assert.Equal(new DateTime(2026, 7, 24), dto.FormDate);      // saat atılır
-        Assert.Equal("21179", dto.FormNumber);
         Assert.Equal("ANKARA", dto.StoreCity);
         var item = Assert.Single(dto.ServiceItems);
         Assert.Equal("35", item.ItemCode);

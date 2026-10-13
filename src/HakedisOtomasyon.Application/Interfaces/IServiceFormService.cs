@@ -11,9 +11,6 @@ public interface IServiceFormService
     Task<ServiceFormDto> AddBlankFormAsync(int claimId);
     Task UpdateStoreAsync(int formId, string storeCode);
 
-    /// <summary>Servis formunun tarihini ve (bakım) form numarasını kaydeder — Soğutma Bakım &amp; Onarım çıktısındaki
-    /// TARİH ve BAKIM FORM NO sütunları.</summary>
-    Task UpdateFormInfoAsync(int formId, DateTime? formDate, string? formNumber);
     Task UpdateStatusAsync(int formId, ServiceFormStatus status);
     Task SaveItemsAsync(int formId, List<ServiceItemDto> items);
     Task DeleteAsync(int id);
@@ -49,4 +46,25 @@ public interface IServiceFormService
     /// satır boşaltılıp "Bekliyor"a döner (dosya hakedişte kalır). Satır kaldırıldıysa null döner.
     /// </summary>
     Task<ServiceFormDto?> RemoveGlycolRowAsync(int formId);
+
+    /// <summary>
+    /// Soğutma Bakım &amp; Onarım: yüklenen bir dosyadaki servis formuna (mağaza + tarih + bakım form no) bir malzeme/işçilik
+    /// kalemi ekler. O form için kayıt yoksa oluşturur (dosyanın boş yer tutucusunu kullanır ya da aynı dosyaya bağlı yeni kayıt açar)
+    /// ve mağazanın iline göre şehir içi/dışı servis bedelini OTOMATİK ekler. Aynı kalem formda zaten varsa miktarı artırır.
+    /// <paramref name="priceItemId"/> boşsa yalnızca form kaydı + servis bedeli oluşturulur.
+    /// </summary>
+    Task<MaintenanceEntryResult> AddMaintenanceItemAsync(int sourceFormId, int storeId, DateTime formDate, string formNumber,
+        int? priceItemId, decimal quantity);
+
+    /// <summary>
+    /// Soğutma Bakım &amp; Onarım: bir form kaydının mağaza/tarih/bakım form no bilgisini ve (verilmişse) bir kaleminin miktarını
+    /// günceller. Mağazanın ili değiştiyse servis bedeli şehir içi ↔ dışı olarak değişir.
+    /// </summary>
+    Task<ServiceFormDto> UpdateMaintenanceEntryAsync(int formId, int storeId, DateTime formDate, string formNumber, int? itemId, decimal? quantity);
+
+    /// <summary>
+    /// Soğutma Bakım &amp; Onarım: bir kalemi siler. Formda başka kalem kalmadıysa form kaydı da kalkar (dosyanın son kaydıysa
+    /// boşaltılıp "Bekliyor"a döner — dosya hakedişte kalır). Form kaydı kaldırıldıysa null döner.
+    /// </summary>
+    Task<ServiceFormDto?> RemoveMaintenanceItemAsync(int itemId);
 }

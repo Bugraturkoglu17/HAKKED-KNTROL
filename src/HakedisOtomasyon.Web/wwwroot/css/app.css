@@ -109,8 +109,8 @@ html, body {
     width: 100%;
 }
 
-/* Başlık hücreleri */
-.service-items-table th {
+/* Başlık hücreleri (yalnız thead — MudTable "kayıt yok" satırını da <th> ile çizer; o satır maviye boyanmasın) */
+.service-items-table .mud-table-head th {
     background-color: var(--mud-palette-primary) !important;
     color: #ffffff !important;
     font-weight: 600 !important;

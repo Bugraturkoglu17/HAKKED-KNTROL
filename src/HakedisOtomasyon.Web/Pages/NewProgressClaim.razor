@@ -260,6 +260,15 @@
                               OnExport="ExportExcelAsync"
                               OnChanged="@StateHasChanged" />
         }
+        else if (IsMaintenance)
+        {
+            <!-- Soğutma — Bakım & Onarım: tek ekran, sol panelde form, sağda form bilgisi + alt alta malzeme ekleme -->
+            <MaintenanceFormsTable Forms="@_forms"
+                                   Claim="@_claim"
+                                   OnBack="@(() => _activeStep = 1)"
+                                   OnExport="ExportExcelAsync"
+                                   OnChanged="@StateHasChanged" />
+        }
         else if (_currentForm is not null)
         {
             <!-- Normal form işleme (servis formu yüklü) -->
@@ -344,31 +353,6 @@
                                         </MudAlert>
                                     </MudItem>
                                 }
-                                @if (IsMaintenance)
-                                {
-                                    <!-- Soğutma Bakım & Onarım: çıktıdaki TARİH ve BAKIM FORM NO sütunları + ile göre servis bedeli -->
-                                    <MudItem xs="12" sm="4">
-                                        <MudDatePicker Date="@_formDate" DateChanged="@(d => _formDate = d)" Label="Tarih *"
-                                                       Variant="Variant.Outlined" Editable DateFormat="dd.MM.yyyy"
-                                                       Culture="@TrCulture" Placeholder="gg.aa.yyyy" />
-                                    </MudItem>
-                                    <MudItem xs="12" sm="4">
-                                        <MudTextField T="string" @bind-Value="_formNo" Label="Bakım Form No *"
-                                                      Variant="Variant.Outlined" MaxLength="50" />
-                                    </MudItem>
-                                    <MudItem xs="12" sm="4" Class="d-flex align-center">
-                                        @if (!string.IsNullOrEmpty(_storeName))
-                                        {
-                                            var inCity = MaintenanceClaim.IsInCity(_storeCity);
-                                            <MudChip T="string" Size="Size.Small"
-                                                     Color="@(inCity is null ? Color.Warning : Color.Info)"
-                                                     Icon="@(inCity is null ? Icons.Material.Filled.WarningAmber : Icons.Material.Filled.Place)">
-                                                @(inCity is null ? "İl kayıtlı değil — servis bedeli eklenmedi"
-                                                    : $"{_storeCity} · {(inCity.Value ? "Şehir içi" : "Şehir dışı")} servis bedeli")
-                                            </MudChip>
-                                        }
-                                    </MudItem>
-                                }
                             </MudGrid>
                         </MudCardContent>
                     </MudCard>
@@ -398,9 +382,7 @@
                         </MudCardActions>
                     </MudCard>
 
-                    <!-- Fatura Paneli (Soğutma Bakım & Onarım'da yok: çıktı fiyat listesi kalemlerinden oluşur) -->
-                    @if (!IsMaintenance)
-                    {
+                    <!-- Fatura Paneli -->
                     <InvoicePanel @ref="_invoicePanel"
                                   Invoices="@_currentForm.Invoices"
                                   ServiceFormId="@_currentForm.Id"
@@ -410,7 +392,6 @@
                                   Settings="@Settings"
                                   OnChanged="@StateHasChanged"
                                   OnInvoiceDeleted="@HandleInvoiceDeleted" />
-                    }
 
                     <!-- Form Aksiyon Butonları -->
                     <MudCard Elevation="1" Class="mt-2">
@@ -562,12 +543,6 @@
 
     private string _storeCode = string.Empty;
     private string _storeName = string.Empty;
-    // Soğutma Bakım & Onarım: mağazanın ili (şehir içi/dışı servis bedeli), formun tarihi ve bakım form numarası
-    private string? _storeCity;
-    private DateTime? _formDate;
-    private string? _formNo;
-    private List<PriceItemDto>? _maintenancePriceItems;
-    private static readonly System.Globalization.CultureInfo TrCulture = System.Globalization.CultureInfo.GetCultureInfo("tr-TR");
     private bool _storeNotFound = false;
 
     private bool _exporting = false;
@@ -594,7 +569,7 @@
     /// <summary>Soğutma "Glikol Kullanım" hakedişi mi? (Form İşleme adımı ve Excel çıktısı farklıdır.)</summary>
     private bool IsGlycol => _claim is not null && GlycolClaim.IsGlycol(_claim.Discipline, _claim.CoolingCategory);
 
-    /// <summary>Soğutma "Bakım &amp; Onarım" hakedişi mi? (Her forma ile göre servis bedeli; tarih + bakım form no istenir.)</summary>
+    /// <summary>Soğutma "Bakım &amp; Onarım" hakedişi mi? (Form İşleme adımı tek ekrandır: <c>MaintenanceFormsTable</c>.)</summary>
     private bool IsMaintenance => _claim is not null && MaintenanceClaim.IsMaintenance(_claim.Discipline, _claim.CoolingCategory);
 
     private string EurRateDisplay => EurPricing.IsValidRate(_dto.EurRate)
@@ -844,11 +819,6 @@
                 _currentFormIndex = _forms.Count - 1;
                 _currentForm = refreshed;
                 _storeName = refreshed.StoreName;
-                _storeCity = refreshed.StoreCity;
-                _formDate = refreshed.FormDate;
-                _formNo = refreshed.FormNumber;
-                // Soğutma Bakım & Onarım: dosyasız (manuel) formda da ile göre servis bedeli eklenir
-                await ApplyMaintenanceServiceFeeAsync();
             }
 
             await ClaimService.SaveProgressAsync(_claim.Id, 2, _currentForm?.Id);
@@ -869,9 +839,6 @@
             _storeCode = _currentForm.StoreCode;
             _storeName = _currentForm.StoreName;
             _storeNotFound = false;
-            _storeCity = _currentForm.StoreCity;
-            _formDate = _currentForm.FormDate;
-            _formNo = _currentForm.FormNumber;
         }
     }
 
@@ -883,50 +850,11 @@
         {
             _storeName = store.Name;
             _storeNotFound = false;
-            _storeCity = store.City;
-            await ApplyMaintenanceServiceFeeAsync();
         }
         else
         {
             _storeName = "";
             _storeNotFound = true;
-            _storeCity = null;
-        }
-    }
-
-    /// <summary>
-    /// Soğutma Bakım &amp; Onarım: mağaza seçilince forma, mağazanın iline göre "1 EKIP ŞEHİR İÇİ SERVİS BEDELİ" (Ankara) ya da
-    /// "1 EKIP ŞEHİR DIŞI SERVİS BEDELİ" (diğer iller) otomatik eklenir; mağaza değişip il türü değişirse bedel de değişir.
-    /// </summary>
-    private async Task ApplyMaintenanceServiceFeeAsync()
-    {
-        if (!IsMaintenance || _currentForm is null) return;
-        try
-        {
-            _maintenancePriceItems ??= await PriceListService.GetAllAsync();
-            var result = MaintenanceClaim.ApplyServiceFee(_currentForm.ServiceItems, _storeCity,
-                MaintenanceClaim.FindFee(_maintenancePriceItems, inCity: true),
-                MaintenanceClaim.FindFee(_maintenancePriceItems, inCity: false));
-            switch (result)
-            {
-                case MaintenanceClaim.ServiceFeeResult.Added:
-                    Snackbar.Add($"{(MaintenanceClaim.IsInCity(_storeCity) == true ? "Şehir içi" : "Şehir dışı")} servis bedeli eklendi ({_storeCity}).", Severity.Info);
-                    break;
-                case MaintenanceClaim.ServiceFeeResult.Swapped:
-                    Snackbar.Add($"Servis bedeli mağazanın iline göre değiştirildi ({_storeCity}).", Severity.Info);
-                    break;
-                case MaintenanceClaim.ServiceFeeResult.UnknownCity:
-                    Snackbar.Add("Bu mağazanın ili kayıtlı değil; şehir içi/dışı belirlenemedi. Servis bedelini fiyat listesinden elle ekleyin.", Severity.Warning);
-                    break;
-                case MaintenanceClaim.ServiceFeeResult.MissingPriceItem:
-                    Snackbar.Add("Fiyat listesinde servis bedeli kalemi (1 EKIP ŞEHİR İÇİ / DIŞI SERVİS BEDELİ) bulunamadı.", Severity.Warning);
-                    break;
-            }
-            StateHasChanged();
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Add($"Servis bedeli eklenemedi: {ex.Message}", Severity.Error);
         }
     }
 
@@ -980,13 +908,6 @@
             // ── 1. Mağaza güncelle ────────────────────────────────────────
             await FormService.UpdateStoreAsync(_currentForm.Id, _storeCode);
 
-            // Soğutma Bakım & Onarım: tarih ve bakım form numarası (çıktıdaki TARİH / BAKIM FORM NO)
-            if (IsMaintenance)
-            {
-                await FormService.UpdateFormInfoAsync(_currentForm.Id, _formDate, _formNo);
-                if (!_formDate.HasValue || string.IsNullOrWhiteSpace(_formNo))
-                    Snackbar.Add("Tarih ve bakım form numarası eksik — Excel çıktısında bu alanlar boş kalır.", Severity.Warning);
-            }
 
             // ── 2. Fatura silme bilgilerini topla ─────────────────────────
             //    _invoicePanel null olabilir (render gecikmesi) — null'da
