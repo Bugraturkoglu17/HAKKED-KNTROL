@@ -387,7 +387,8 @@ public class ServiceFormService : IServiceFormService
         await _db.SaveChangesAsync();
     }
 
-    public async Task<ServiceFormDto> SaveGlycolRowAsync(int formId, int? storeId, DateTime? formDate, string? formNumber, decimal quantity, int? priceItemId = null)
+    public async Task<ServiceFormDto> SaveGlycolRowAsync(int formId, int? storeId, DateTime? formDate, string? formNumber, decimal quantity, int? priceItemId = null,
+        int? pageNumber = null)
     {
         var form = await _db.ServiceForms.Include(f => f.ServiceItems).FirstOrDefaultAsync(f => f.Id == formId)
             ?? throw new InvalidOperationException($"Form bulunamadı: {formId}");
@@ -404,6 +405,7 @@ public class ServiceFormService : IServiceFormService
         form.StoreId = storeId;
         form.FormDate = formDate?.Date;
         form.FormNumber = string.IsNullOrWhiteSpace(formNumber) ? null : formNumber.Trim();
+        if (pageNumber is > 0) form.PageNumber = pageNumber;   // verilmezse (düzenleme) sayfa değişmez
 
         var glycol = current;
         if (glycol is null)
@@ -422,7 +424,8 @@ public class ServiceFormService : IServiceFormService
         return (await GetByIdAsync(formId))!;
     }
 
-    public async Task<ServiceFormDto> AddGlycolEntryAsync(int sourceFormId, int? storeId, DateTime? formDate, string? formNumber, decimal quantity, int? priceItemId = null)
+    public async Task<ServiceFormDto> AddGlycolEntryAsync(int sourceFormId, int? storeId, DateTime? formDate, string? formNumber, decimal quantity, int? priceItemId = null,
+        int? pageNumber = null)
     {
         var source = await _db.ServiceForms.FirstOrDefaultAsync(f => f.Id == sourceFormId)
             ?? throw new InvalidOperationException($"Form bulunamadı: {sourceFormId}");
@@ -451,7 +454,7 @@ public class ServiceFormService : IServiceFormService
             _db.ServiceForms.Add(target);
             await _db.SaveChangesAsync();
         }
-        return await SaveGlycolRowAsync(target.Id, storeId, formDate, formNumber, quantity, priceItemId);
+        return await SaveGlycolRowAsync(target.Id, storeId, formDate, formNumber, quantity, priceItemId, pageNumber);
     }
 
     public async Task<ServiceFormDto?> RemoveGlycolRowAsync(int formId)
@@ -597,7 +600,7 @@ public class ServiceFormService : IServiceFormService
     /// boş yer tutucusu; o da yoksa aynı dosyaya bağlı yeni kayıt), mağazanın iline göre servis bedelini ekler ve kaydeder.
     /// </summary>
     private async Task<(ProgressClaim Claim, ServiceForm Target, MaintenanceClaim.ServiceFeeResult Fee)> ResolveMaintenanceTargetAsync(
-        int sourceFormId, int storeId, DateTime formDate, string formNumber)
+        int sourceFormId, int storeId, DateTime formDate, string formNumber, int? pageNumber = null)
     {
         var source = await _db.ServiceForms.FirstOrDefaultAsync(f => f.Id == sourceFormId)
             ?? throw new InvalidOperationException($"Form bulunamadı: {sourceFormId}");
@@ -610,9 +613,17 @@ public class ServiceFormService : IServiceFormService
             .Where(f => f.ProgressClaimId == source.ProgressClaimId && f.FilePath == source.FilePath && !f.IsArchived)
             .ToListAsync();
         var target = siblings.FirstOrDefault(f => f.StoreId == store.Id && f.FormDate == date
-                         && string.Equals(f.FormNumber?.Trim(), number, StringComparison.OrdinalIgnoreCase))
-                     // henüz kalem girilmemiş yer tutucu (yüklenen dosyanın ilk kaydı; mağazası seçilmiş ama kalemsiz kalmış kayıt da sayılır)
-                     ?? siblings.FirstOrDefault(f => f.ServiceItems.Count == 0);
+                         && string.Equals(f.FormNumber?.Trim(), number, StringComparison.OrdinalIgnoreCase));
+        if (target is not null)
+        {
+            if (pageNumber is > 0) target.PageNumber ??= pageNumber;   // aynı form: bilinen sayfası korunur
+        }
+        else
+        {
+            // henüz kalem girilmemiş yer tutucu (yüklenen dosyanın ilk kaydı; mağazası seçilmiş ama kalemsiz kalmış kayıt da sayılır)
+            target = siblings.FirstOrDefault(f => f.ServiceItems.Count == 0);
+            if (target is not null && pageNumber is > 0) target.PageNumber = pageNumber;
+        }
         if (target is null)
         {
             target = new ServiceForm
@@ -623,6 +634,7 @@ public class ServiceFormService : IServiceFormService
                 FileSize = source.FileSize,
                 FileHash = null,              // tekrar (duplicate) denetimi yalnızca yükleme sırasında yapılır
                 UploadedAt = source.UploadedAt,
+                PageNumber = pageNumber is > 0 ? pageNumber : null,
             };
             _db.ServiceForms.Add(target);
         }
@@ -640,7 +652,7 @@ public class ServiceFormService : IServiceFormService
     private static int NextSortOrder(ServiceForm form) => form.ServiceItems.Count == 0 ? 2 : form.ServiceItems.Max(i => i.SortOrder) + 1;
 
     public async Task<MaintenanceEntryResult> AddMaintenanceItemAsync(int sourceFormId, int storeId, DateTime formDate, string formNumber,
-        int? priceItemId, decimal quantity)
+        int? priceItemId, decimal quantity, int? pageNumber = null)
     {
         // Girdi denetimi form kaydı oluşturulmadan ÖNCE yapılır (geçersiz istek boş form bırakmasın)
         NormalizeFormNumber(formNumber);
@@ -657,7 +669,7 @@ public class ServiceFormService : IServiceFormService
         if (price is { ForeignPrice: > 0m } && EurPricing.IsEur(price.CurrencyCode) && !EurPricing.IsValidRate(ownerClaim.EurRate))
             throw new InvalidOperationException("EUR fiyatlı kalem için EUR kuru girilmemiş. Hakediş Bilgileri adımından EUR kurunu girin.");
 
-        var (claim, target, fee) = await ResolveMaintenanceTargetAsync(sourceFormId, storeId, formDate, formNumber);
+        var (claim, target, fee) = await ResolveMaintenanceTargetAsync(sourceFormId, storeId, formDate, formNumber, pageNumber);
 
         ServiceItem? item = null;
         bool merged = false;
@@ -697,7 +709,7 @@ public class ServiceFormService : IServiceFormService
     }
 
     public async Task<MaintenanceEntryResult> AddCustomMaintenanceItemAsync(int sourceFormId, int storeId, DateTime formDate, string formNumber,
-        CustomClaimItemInput input)
+        CustomClaimItemInput input, int? pageNumber = null)
     {
         // Girdi denetimi form kaydı oluşturulmadan ÖNCE
         NormalizeFormNumber(formNumber);
@@ -708,7 +720,7 @@ public class ServiceFormService : IServiceFormService
         var type = string.Join(' ', (input.Type ?? string.Empty).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
         var unit = string.IsNullOrWhiteSpace(input.Unit) ? "ADET" : input.Unit.Trim();
 
-        var (_, target, fee) = await ResolveMaintenanceTargetAsync(sourceFormId, storeId, formDate, formNumber);
+        var (_, target, fee) = await ResolveMaintenanceTargetAsync(sourceFormId, storeId, formDate, formNumber, pageNumber);
 
         // Fatura bazlı kalem: fatura kaydı (dosyasıyla) forma bağlanır. Tutar KALEMDE tutulur; fatura kaydının CalculatedTotal'ı 0'dır —
         // aksi halde hakediş toplamı hesaplanırken (kalemler + faturalar) aynı tutar iki kez sayılırdı.
@@ -927,6 +939,7 @@ public class ServiceFormService : IServiceFormService
             StoreCity = f.Store?.City,
             FormNumber = f.FormNumber,
             FormDate = f.FormDate,
+            PageNumber = f.PageNumber,
             OriginalFileName = f.OriginalFileName,
             FilePath = f.FilePath,
             FileUrl = _fileStorage.GetFileUrl(f.FilePath),

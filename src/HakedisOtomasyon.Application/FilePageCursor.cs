@@ -29,6 +29,13 @@ public sealed class FilePageCursor
         PageIndex = 0;
     }
 
+    /// <summary>Dosyayı verilen sayfasından açar (sayfa dosyanın sayfa sayısına göre sınırlanır).</summary>
+    public void GoTo(int fileIndex, int pageIndex, IReadOnlyList<string> files)
+    {
+        FileIndex = Math.Clamp(fileIndex, 0, Math.Max(0, files.Count - 1));
+        PageIndex = files.Count == 0 ? 0 : Math.Clamp(pageIndex, 0, PagesOf(files[FileIndex]) - 1);
+    }
+
     /// <summary>Dosya listesi değişince (silme vb.) konumu geçerli aralığa çeker.</summary>
     public void Clamp(IReadOnlyList<string> files)
     {

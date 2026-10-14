@@ -27,6 +27,8 @@ public class ServiceFormDto
     public string? Notes { get; set; }
     public string? FormNumber { get; set; }
     public DateTime? FormDate { get; set; }
+    /// <summary>Çok sayfalı PDF'de formun sayfası (1 tabanlı; bilinmiyorsa null).</summary>
+    public int? PageNumber { get; set; }
     public string? StoreFormat { get; set; }
     public string? StoreRegion { get; set; }
     public string? StoreCity { get; set; }

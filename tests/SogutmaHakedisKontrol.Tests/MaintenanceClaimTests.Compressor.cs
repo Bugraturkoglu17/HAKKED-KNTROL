@@ -74,6 +74,24 @@ public partial class MaintenanceClaimTests
         Assert.Equal(new[] { "S2", "S3" }, r.Form.ServiceItems.OrderBy(i => i.SortOrder).Select(i => i.ItemCode).ToArray());
     }
 
+    /// <summary>Çok sayfalı PDF: her sayfadaki form kendi sayfasını tutar; aynı forma sonradan eklenen kalem sayfayı değiştirmez.</summary>
+    [Fact]
+    public async Task CokSayfaliPdf_FormlarSayfalariylaSaklanir()
+    {
+        using var db = CreateDb();
+        var c = await CompressorScreenAsync(db);
+        var d = new DateTime(2026, 7, 8);
+
+        var p2 = await c.Svc.AddMaintenanceItemAsync(c.File.Id, c.Eskisehir.Id, d, "20334", c.S3, 1m, pageNumber: 2);
+        var p5 = await c.Svc.AddMaintenanceItemAsync(c.File.Id, c.Eskisehir.Id, d, "20429", c.S3, 1m, pageNumber: 5);
+        var again = await c.Svc.AddMaintenanceItemAsync(c.File.Id, c.Eskisehir.Id, d, "20334", c.S3, 1m, pageNumber: 9);
+
+        Assert.Equal(2, p2.Form.PageNumber);
+        Assert.Equal(5, p5.Form.PageNumber);
+        Assert.Equal(p2.Form.Id, again.Form.Id);       // aynı form (mağaza + tarih + no)
+        Assert.Equal(2, again.Form.PageNumber);        // ilk girildiği sayfa korunur
+    }
+
     [Fact]
     public async Task FaturaliOzelKalem_HakediseEklenir_FaturaKaydiBaglanir_FiyatListesineEklenmez()
     {

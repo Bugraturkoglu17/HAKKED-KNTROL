@@ -393,6 +393,17 @@
 
     private List<string> FilePaths => Files.Select(f => f.FilePath).ToList();
 
+    /// <summary>Açık sayfa (1 tabanlı) — kayda yazılır; tek sayfalık dosyada null.</summary>
+    private int? CurrentPageNumber => CurrentFile is not null && _cursor.PagesOf(CurrentFile.FilePath) > 1 ? _cursor.PageIndex + 1 : null;
+
+    /// <summary>Kaydın dosyasını kayıtlı sayfasında açar. Sayfası bilinmeyen (eski) kayıtta: aynı dosyadaysa açık sayfa korunur,
+    /// başka dosyaysa ilk sayfa açılır.</summary>
+    private void OpenFormPage(int fileIndex, ServiceFormDto f)
+    {
+        if (f.PageNumber is > 0) _cursor.GoTo(fileIndex, f.PageNumber.Value - 1, FilePaths);
+        else if (fileIndex != _cursor.FileIndex) _cursor.GoToFile(fileIndex);
+    }
+
     /// <summary>Yeni yüklenen dosyaların sayfa sayıları (oklar çok sayfalı PDF'de sayfa sayfa gezer).</summary>
     private async Task LoadPageCountsAsync()
     {
@@ -429,7 +440,7 @@
         var f = Forms.FirstOrDefault(x => x.Id == formId);
         if (f is null) return Task.CompletedTask;
         var idx = Files.FindIndex(x => x.FilePath == f.FilePath);
-        if (idx >= 0 && idx != _cursor.FileIndex) _cursor.GoToFile(idx);   // formu sol panelde aç (aynı dosyadaysa sayfa korunur)
+        if (idx >= 0) OpenFormPage(idx, f);   // formu sol panelde, kayıtlı sayfasında aç
         _editingId = f.Id;
         _store = f.StoreId.HasValue ? (_stores.FirstOrDefault(s => s.Id == f.StoreId.Value) ?? FromForm(f)) : null;
         _date = f.FormDate;
@@ -531,7 +542,7 @@
             int? gasId = IsGas ? _gas!.Id : null;   // Glikol'de kalem otomatik; Gaz'da satırın gaz türü
             var saved = _editingId.HasValue
                 ? await FormService.SaveGlycolRowAsync(_editingId.Value, _store!.Id, _date, no, _qty!.Value, gasId)
-                : await FormService.AddGlycolEntryAsync(file.FirstFormId, _store!.Id, _date, no, _qty!.Value, gasId);
+                : await FormService.AddGlycolEntryAsync(file.FirstFormId, _store!.Id, _date, no, _qty!.Value, gasId, CurrentPageNumber);
             UpsertForm(saved);
             if (!_order.Contains(saved.Id)) _order.Add(saved.Id);
             if (duplicate) Snackbar.Add($"Dikkat: \"{no}\" form numarası başka bir satırda da var.", Severity.Warning);

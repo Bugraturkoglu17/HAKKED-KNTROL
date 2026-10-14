@@ -41,6 +41,18 @@ public class FilePageCursorTests
     }
 
     [Fact]
+    public void KaydinSayfasinaGit_SayfaSayisiylaSinirlanir()
+    {
+        var c = Cursor();
+        c.GoTo(1, 2, Files);
+        Assert.Equal((1, 2), (c.FileIndex, c.PageIndex));
+        c.GoTo(1, 9, Files);                     // dosyada 3 sayfa var
+        Assert.Equal((1, 2), (c.FileIndex, c.PageIndex));
+        c.GoTo(0, 4, Files);                     // tek sayfalık dosya
+        Assert.Equal((0, 0), (c.FileIndex, c.PageIndex));
+    }
+
+    [Fact]
     public void SayfaSayisiBilinmeyenDosya_TekSayfaSayilir_SilinenDosyadaKonumDuzelir()
     {
         var c = new FilePageCursor();

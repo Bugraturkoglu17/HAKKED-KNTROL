@@ -19,6 +19,10 @@ public class ServiceForm
     /// <summary>Servis formunun tarihi (Soğutma Glikol hakedişinde kullanıcı seçer).</summary>
     public DateTime? FormDate { get; set; }
 
+    /// <summary>Çok sayfalı PDF'de bu servis formunun bulunduğu sayfa (1 tabanlı; tek sayfalık dosyada / eski kayıtlarda null).
+    /// Tablodaki satıra tıklanınca PDF bu sayfadan açılır.</summary>
+    public int? PageNumber { get; set; }
+
     // ── Arşiv / Hash alanı (yeni) ──
     public string? FileHash { get; set; }          // SHA256 hex
     public long FileSize { get; set; }              // bayt

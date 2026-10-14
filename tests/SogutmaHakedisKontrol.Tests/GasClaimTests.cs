@@ -120,6 +120,22 @@ public class GasClaimTests
         Assert.Equal(10335m, item.TotalPrice);                              // 15 × 689
     }
 
+    /// <summary>Çok sayfalı PDF: kayıt eklendiği sayfayı tutar; düzenlemede (sayfa verilmeden) sayfa değişmez.</summary>
+    [Fact]
+    public async Task CokSayfaliPdf_KaydinSayfasiSaklanir_DuzenlemedeDegismez()
+    {
+        using var db = CreateDb();
+        var c = await SeedAsync(db);
+
+        var p3 = await c.Svc.AddGlycolEntryAsync(c.File.Id, c.Store.Id, new DateTime(2026, 7, 20), "21156", 15m, c.R404, pageNumber: 3);
+        var p7 = await c.Svc.AddGlycolEntryAsync(c.File.Id, c.Other.Id, new DateTime(2026, 7, 22), "21200", 10m, c.R404, pageNumber: 7);
+        Assert.Equal(3, p3.PageNumber);
+        Assert.Equal(7, p7.PageNumber);
+
+        var edited = await c.Svc.SaveGlycolRowAsync(p3.Id, c.Store.Id, new DateTime(2026, 7, 21), "21157", 16m, c.R404);
+        Assert.Equal(3, edited.PageNumber);
+    }
+
     [Fact]
     public async Task AyniDosyadanFarkliGazlarVeMagazalar_AyriSatirlarOlur()
     {

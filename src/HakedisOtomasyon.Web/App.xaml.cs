@@ -1104,6 +1104,21 @@ public partial class WpfApp : System.Windows.Application
                         alter.ExecuteNonQuery();
                     }
                 }
+
+                // Çok sayfalı PDF'de servis formunun sayfası (satıra tıklanınca PDF o sayfadan açılır)
+                var formCols = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                using (var pragma = conn.CreateCommand())
+                {
+                    pragma.CommandText = "PRAGMA table_info(ServiceForms)";
+                    using var rdr = pragma.ExecuteReader();
+                    while (rdr.Read()) formCols.Add(rdr.GetString(1));
+                }
+                if (!formCols.Contains("PageNumber"))
+                {
+                    using var alter = conn.CreateCommand();
+                    alter.CommandText = "ALTER TABLE ServiceForms ADD COLUMN \"PageNumber\" INTEGER";
+                    alter.ExecuteNonQuery();
+                }
             }
             finally { conn.Close(); }
         }

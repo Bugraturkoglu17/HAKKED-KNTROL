@@ -405,6 +405,17 @@
 
     private List<string> FilePaths => Files.Select(f => f.FilePath).ToList();
 
+    /// <summary>Açık sayfa (1 tabanlı) — kayda yazılır; tek sayfalık dosyada null.</summary>
+    private int? CurrentPageNumber => CurrentFile is not null && _cursor.PagesOf(CurrentFile.FilePath) > 1 ? _cursor.PageIndex + 1 : null;
+
+    /// <summary>Kaydın dosyasını kayıtlı sayfasında açar. Sayfası bilinmeyen (eski) kayıtta: aynı dosyadaysa açık sayfa korunur,
+    /// başka dosyaysa ilk sayfa açılır.</summary>
+    private void OpenFormPage(int fileIndex, ServiceFormDto f)
+    {
+        if (f.PageNumber is > 0) _cursor.GoTo(fileIndex, f.PageNumber.Value - 1, FilePaths);
+        else if (fileIndex != _cursor.FileIndex) _cursor.GoToFile(fileIndex);
+    }
+
     /// <summary>Yeni yüklenen dosyaların sayfa sayıları (oklar çok sayfalı PDF'de sayfa sayfa gezer).</summary>
     private async Task LoadPageCountsAsync()
     {
@@ -565,7 +576,7 @@
     {
         var f = row.Form;
         var idx = Files.FindIndex(x => x.FilePath == f.FilePath);
-        if (idx >= 0 && idx != _cursor.FileIndex) _cursor.GoToFile(idx);   // formu sol panelde aç (aynı dosyadaysa sayfa korunur)
+        if (idx >= 0) OpenFormPage(idx, f);   // formu sol panelde, kayıtlı sayfasında aç
         _editingItemId = row.Item.Id;
         _editingFormId = f.Id;
         var (name, type) = NameAndType(row.Item);
@@ -653,7 +664,7 @@
         try
         {
             var before = ItemIdsOfCurrentEntry(file);
-            var result = await FormService.AddCustomMaintenanceItemAsync(file.FirstFormId, _store!.Id, _date!.Value, _formNo!, input);
+            var result = await FormService.AddCustomMaintenanceItemAsync(file.FirstFormId, _store!.Id, _date!.Value, _formNo!, input, CurrentPageNumber);
             ApplyAdded(result, before);
         }
         catch (Exception ex)
@@ -679,7 +690,7 @@
         try
         {
             var before = ItemIdsOfCurrentEntry(file);
-            var result = await FormService.AddMaintenanceItemAsync(file.FirstFormId, _store!.Id, _date!.Value, _formNo!, _priceItem?.Id, _qty ?? 0m);
+            var result = await FormService.AddMaintenanceItemAsync(file.FirstFormId, _store!.Id, _date!.Value, _formNo!, _priceItem?.Id, _qty ?? 0m, CurrentPageNumber);
             ApplyAdded(result, before);
             ClearItem();   // form bilgisi kalır — aynı forma alt alta malzeme eklenmeye devam edilir
         }
