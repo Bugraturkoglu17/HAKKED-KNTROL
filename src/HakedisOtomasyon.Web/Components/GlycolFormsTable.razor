@@ -94,19 +94,6 @@
                     <MudText Typo="Typo.caption" Style="font-weight:600" Class="mb-2 d-block">
                         @(_editingId.HasValue ? "Kaydı güncelle" : "Yeni kayıt") — @CurrentFile.FileName
                     </MudText>
-                    @if (IsGas)
-                    {
-                        @* Gaz türü: satırın kalemi. Ekle'den sonra TEMİZLENMEZ (art arda aynı gaz girilir); değiştirilebilir. *@
-                        <MudSelect T="PriceItemDto" Value="@_gas" ValueChanged="@(g => _gas = g)" Label="Gaz türü *"
-                                   Variant="Variant.Outlined" Margin="Margin.Dense" Dense Class="mb-2"
-                                   ToStringFunc="@(g => g is null ? string.Empty : GasText(g))"
-                                   Placeholder="@(_gasItems.Count == 0 ? "Fiyat listesinde soğutucu gaz kalemi yok" : "Seçin")">
-                            @foreach (var g in _gasItems)
-                            {
-                                <MudSelectItem T="PriceItemDto" Value="@g">@GasText(g) · @GasUnitPriceTl(g).ToString("N2", Tr) ₺/@(string.IsNullOrWhiteSpace(g.Unit) ? "kg" : g.Unit)</MudSelectItem>
-                            }
-                        </MudSelect>
-                    }
                     <div @key="@($"kayit-{_entryKey}")">
                         <MudGrid Spacing="2">
                             <MudItem xs="12" md="9">
@@ -139,6 +126,20 @@
                             </MudItem>
                         </MudGrid>
                     </div>
+                    @if (IsGas)
+                    {
+                        @* Gaz türü: mağaza/tarih/form no/miktar'ın ALTINDA. Açılışta R404 seçili gelir; kullanıcı değiştirirse
+                           seçtiği gaz Ekle'den sonra da yerinde kalır (temizlenmez). Listede fiyat gösterilmez. *@
+                        <MudSelect T="PriceItemDto" Value="@_gas" ValueChanged="@(g => _gas = g)" Label="Gaz türü *"
+                                   Variant="Variant.Outlined" Margin="Margin.Dense" Dense Class="mt-2"
+                                   ToStringFunc="@(g => g is null ? string.Empty : GasText(g))"
+                                   Placeholder="@(_gasItems.Count == 0 ? "Fiyat listesinde soğutucu gaz kalemi yok" : "Seçin")">
+                            @foreach (var g in _gasItems)
+                            {
+                                <MudSelectItem T="PriceItemDto" Value="@g">@GasText(g)</MudSelectItem>
+                            }
+                        </MudSelect>
+                    }
                     <MudStack Row AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mt-2">
                         <MudText Typo="Typo.caption" Color="Color.Secondary">
                             @if (EntryTotal > 0m) { <span>Toplam: <b>@EntryTotal.ToString("N2", Tr) ₺</b></span> }
@@ -282,8 +283,9 @@
     // ── Gaz Kullanım: satırın gaz türü (fiyat listesindeki "SOĞUTUCU GAZ" kalemleri) ──────────────
     private bool IsGas => Claim is not null && GlycolClaim.IsGas(Claim.Discipline, Claim.CoolingCategory);
     private List<PriceItemDto> _gasItems = new();
-    /// <summary>Seçili gaz türü. Ekle'den sonra temizlenmez — art arda aynı gaz girilebilsin.</summary>
+    /// <summary>Seçili gaz türü. Açılışta <see cref="DefaultGas"/>; Ekle'den sonra temizlenmez — art arda aynı gaz girilebilsin.</summary>
     private PriceItemDto? _gas;
+    private const string DefaultGas = "R404";
 
     private static string GasShortName(string? description)
     {
@@ -338,6 +340,9 @@
                 .Where(p => GlycolClaim.IsGasPriceName(p.Description))
                 .OrderBy(p => p.PozNo, Comparer<string?>.Create((a, b) => GlycolClaim.CompareStoreCodes(a, b)))
                 .ToList();
+            // Açılışta varsayılan gaz R404 (en çok kullanılan); listede yoksa ilk gaz
+            _gas = _gasItems.FirstOrDefault(g => string.Equals(GasShortName(g.Description), DefaultGas, StringComparison.OrdinalIgnoreCase))
+                   ?? _gasItems.FirstOrDefault();
         }
         SyncOrder();
         var files = Files;
