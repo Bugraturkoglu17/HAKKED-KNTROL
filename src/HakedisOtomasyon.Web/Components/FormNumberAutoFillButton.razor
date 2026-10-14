@@ -10,7 +10,7 @@
      • sağ üstteki form numarasını Windows OCR ile (yapay zekâ yok) okuyup Bakım Form No'ya yazar,
      • elle yazılmış mağaza kodunu/adını yapay zekâ (Gemini) ile okuyup mağaza listesiyle eşler (tarih okunmaz).
    Mağaza kodla bulunduysa seçilir; yalnız adla bulunduysa seçilir ama "kontrol edin" uyarısı verilir; emin olunamazsa
-   en yakın mağazalar öneri olarak gösterilir. Yalnız TEK sayfalı dosyada çalışır. *@
+   en yakın mağazalar öneri olarak gösterilir. Çok sayfalı PDF'de yalnız AÇIK sayfa okunur (her sayfa ayrı servis formu). *@
 
 <MudStack Row AlignItems="AlignItems.Center" Spacing="1" Style="flex-wrap:wrap;justify-content:flex-end">
     @if (_suggestions.Count > 0)
@@ -28,7 +28,7 @@
     <MudTooltip Text="@TooltipText">
         <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small"
                    StartIcon="@Icons.Material.Filled.AutoFixHigh"
-                   Disabled="@(_busy || _pageCount != 1)" OnClick="ReadAsync">
+                   Disabled="@(_busy || _pageCount < 1 || PageIndex >= _pageCount)" OnClick="ReadAsync">
             @(_busy ? "Okunuyor..." : "Otomatik doldur")
         </MudButton>
     </MudTooltip>
@@ -37,6 +37,9 @@
 @code {
     /// <summary>Açık servis formunun saklanan (göreli) dosya yolu.</summary>
     [Parameter] public string? FilePath { get; set; }
+
+    /// <summary>Okunacak sayfa (0 tabanlı) — çok sayfalı PDF'de sol panelde açık olan sayfa.</summary>
+    [Parameter] public int PageIndex { get; set; }
 
     /// <summary>Okunan form numarası.</summary>
     [Parameter] public EventCallback<string> OnRead { get; set; }
@@ -54,6 +57,7 @@
     [Parameter] public EventCallback<StoreDto> OnStore { get; set; }
 
     private string? _countedPath;
+    private string? _suggestFor;      // önerilerin ait olduğu dosya + sayfa
     private int _pageCount = -1;     // -1: henüz bilinmiyor
     private bool _busy;
     private List<StoreDto> _suggestions = new();
@@ -61,19 +65,20 @@
 
     private bool ReadsStore => Stores is { Count: > 0 } && StoreReader.IsConfigured;
 
+    private string PageKey => $"{FilePath}#{PageIndex}";
+
     private string TooltipText => _pageCount switch
     {
-        1 => ReadsStore
-            ? "Form numarasını (sağ üst) ve elle yazılmış mağazayı okuyup doldurur"
-            : "Formun sağ üstündeki numarayı okuyup Bakım Form No alanına yazar",
-        > 1 => $"Dosya {_pageCount} sayfalı — otomatik doldurma yalnız tek sayfalık servis formunda çalışır",
+        > 0 => (_pageCount > 1 ? $"Sayfa {PageIndex + 1} / {_pageCount}: " : string.Empty)
+            + (ReadsStore ? "form numarasını (sağ üst) ve elle yazılmış mağazayı okuyup doldurur"
+                          : "formun sağ üstündeki numarayı okuyup Form No alanına yazar"),
         0 => "Dosya okunamadı",
         _ => "Dosya kontrol ediliyor...",
     };
 
     protected override async Task OnParametersSetAsync()
     {
-        if (_suggestions.Count > 0 && CurrentStore?.Id != _storeIdAtSuggest) _suggestions = new();
+        if (_suggestions.Count > 0 && (CurrentStore?.Id != _storeIdAtSuggest || _suggestFor != PageKey)) _suggestions = new();
 
         if (string.Equals(_countedPath, FilePath, StringComparison.Ordinal)) return;
         _countedPath = FilePath;
@@ -91,14 +96,16 @@
         _busy = true;
         _suggestions = new();
         var path = FilePath;
+        var page = PageIndex;
+        var key = PageKey;
         try
         {
             var absolute = FileStorage.GetAbsolutePath(path);
-            var numberTask = Reader.ReadAsync(absolute);
-            var storeTask = ReadsStore ? ReadStoreAsync(absolute) : Task.FromResult<HandwrittenStoreResult?>(null);   // OCR ile aynı anda
+            var numberTask = Reader.ReadAsync(absolute, page);
+            var storeTask = ReadsStore ? ReadStoreAsync(absolute, page) : Task.FromResult<HandwrittenStoreResult?>(null);   // OCR ile aynı anda
 
             var result = await numberTask;
-            if (!string.Equals(FilePath, path, StringComparison.Ordinal)) return;   // okurken başka dosyaya geçildi
+            if (PageKey != key) return;   // okurken başka dosyaya/sayfaya geçildi
             if (result.Number is not null)
             {
                 await OnRead.InvokeAsync(result.Number);
@@ -110,7 +117,7 @@
             }
 
             var store = await storeTask;
-            if (store is null || !string.Equals(FilePath, path, StringComparison.Ordinal)) return;
+            if (store is null || PageKey != key) return;
             await ApplyStoreAsync(store);
         }
         catch (Exception ex)
@@ -120,7 +127,7 @@
         finally { _busy = false; }
     }
 
-    private async Task<HandwrittenStoreResult?> ReadStoreAsync(string absolutePath) => await StoreReader.ReadAsync(absolutePath);
+    private async Task<HandwrittenStoreResult?> ReadStoreAsync(string absolutePath, int page) => await StoreReader.ReadAsync(absolutePath, page);
 
     private async Task ApplyStoreAsync(HandwrittenStoreResult read)
     {
@@ -152,6 +159,7 @@
         {
             _suggestions = match.Suggestions.ToList();
             _storeIdAtSuggest = CurrentStore?.Id;
+            _suggestFor = PageKey;
             Snackbar.Add($"Formda \"{written}\" yazıyor; mağaza kesin bulunamadı. Önerilerden seçin ya da elle girin.{keep}", Severity.Warning);
             return;
         }

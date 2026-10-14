@@ -10,7 +10,7 @@ namespace HakedisOtomasyon.Web;
 /// <summary>
 /// Servis formuna elle yazılmış mağaza kodunu/adını Google Gemini (Flash Lite) ile okur. Tarih okunmaz.
 /// Form numarası bu sınıfın işi değildir (Windows OCR — <see cref="WindowsFormNumberReader"/>).
-///   • Sayfa 150 DPI çizilir, üst %55'i kesilir (mağaza bilgisi formun başında) ve en fazla 1400 px genişliğe
+///   • Yalnız istenen sayfa (çok sayfalı PDF'de o sayfa; maliyet tek sayfalık formla aynı) 150 DPI çizilir, üst %55'i kesilir (mağaza bilgisi formun başında) ve en fazla 1400 px genişliğe
 ///     küçültülüp JPEG olarak gönderilir — büyük görsellerde yaşanan zaman aşımları önlenir.
 ///   • API anahtarı GEMINI_API_KEY ortam değişkeninden (.env) okunur; hiçbir yere yazılmaz/loglanmaz.
 /// </summary>
@@ -38,13 +38,13 @@ public sealed class GeminiHandwrittenStoreReader : IHandwrittenStoreReader
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_apiKey);
 
-    public async Task<HandwrittenStoreResult> ReadAsync(string absoluteFilePath, CancellationToken ct = default)
+    public async Task<HandwrittenStoreResult> ReadAsync(string absoluteFilePath, int pageIndex = 0, CancellationToken ct = default)
     {
         if (!IsConfigured) return new(null, null, "Yapay zekâ anahtarı (GEMINI_API_KEY) tanımlı değil; mağaza elle seçilmeli.");
         if (!File.Exists(absoluteFilePath)) return new(null, null, "Servis formu dosyası bulunamadı.");
 
         byte[]? jpeg;
-        try { jpeg = await Task.Run(() => PrepareImage(absoluteFilePath), ct); }
+        try { jpeg = await Task.Run(() => PrepareImage(absoluteFilePath, pageIndex), ct); }
         catch (Exception ex) { return new(null, null, $"Sayfa görüntüye çevrilemedi: {ex.Message}"); }
         if (jpeg is null) return new(null, null, "Sayfa görüntüye çevrilemedi.");
 
@@ -110,11 +110,11 @@ public sealed class GeminiHandwrittenStoreReader : IHandwrittenStoreReader
     }
 
     /// <summary>Tek sayfayı çizer, üst %55'ini keser, en fazla 1400 px genişliğe küçültüp JPEG'e çevirir.</summary>
-    internal static byte[]? PrepareImage(string path)
+    internal static byte[]? PrepareImage(string path, int pageIndex = 0)
     {
         using var page = ImageExtensions.Contains(Path.GetExtension(path).ToLowerInvariant())
             ? SKBitmap.Decode(path)
-            : PDFtoImage.Conversion.ToImage(File.ReadAllBytes(path), page: 0, options: new PDFtoImage.RenderOptions(Dpi: 150));
+            : PDFtoImage.Conversion.ToImage(File.ReadAllBytes(path), page: pageIndex, options: new PDFtoImage.RenderOptions(Dpi: 150));
         if (page is null) return null;
 
         var rect = new SKRectI(0, 0, page.Width, (int)(page.Height * 0.55));

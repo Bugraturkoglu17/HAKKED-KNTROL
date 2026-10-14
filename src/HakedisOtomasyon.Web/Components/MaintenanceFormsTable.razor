@@ -6,6 +6,8 @@
 @inject IStoreService StoreService
 @inject IPriceListService PriceListService
 @inject ISnackbar Snackbar
+@inject IFormNumberReader PageCounter
+@inject IFileStorageService FileStorage
 @inject IDialogService DialogService
 
 @* Soğutma — Bakım & Onarım, Kompresör Değişim ve Kısmi Tadilat hakedişleri, tek ekran (Glikol ekranının malzeme eklenebilir hâli).
@@ -41,19 +43,28 @@
     <MudItem xs="12" md="5">
         @if (CurrentFile is not null)
         {
-            <PdfViewer @key="CurrentFile.FilePath" FileUrl="@CurrentFile.FileUrl" FileName="@CurrentFile.FileName" FilePath="@CurrentFile.FilePath" />
+            <PdfViewer @key="CurrentFile.FilePath" FileUrl="@CurrentFile.FileUrl" FileName="@CurrentFile.FileName" FilePath="@CurrentFile.FilePath"
+                       Page="@(_cursor.PageIndex + 1)" />
             <MudPaper Elevation="1" Class="pa-1 mt-2">
                 <MudStack Row AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
-                    <MudIconButton Icon="@Icons.Material.Filled.NavigateBefore" Size="Size.Small" OnClick="PreviousFile" Disabled="@(_fileIndex <= 0)" />
+                    <MudIconButton Icon="@Icons.Material.Filled.NavigateBefore" Size="Size.Small" OnClick="PreviousFile" Disabled="@(!_cursor.CanPrevious)" />
                     <MudStack Row AlignItems="AlignItems.Center" Spacing="1">
                         <MudText Typo="Typo.body2">Dosya @(_fileIndex + 1) / @Files.Count</MudText>
+                        @{ var pageCount = _cursor.PagesOf(CurrentFile.FilePath); }
+                        @if (pageCount > 1)
+                        {
+                            @* çok sayfalı PDF: her sayfa ayrı servis formu; oklar sayfa sayfa gezer, Otomatik doldur bu sayfayı okur *@
+                            <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Outlined" Icon="@Icons.Material.Filled.Description">
+                                Sayfa @(_cursor.PageIndex + 1) / @pageCount
+                            </MudChip>
+                        }
                         @{ var cnt = FormCount(CurrentFile); }
                         <MudChip T="string" Size="Size.Small" Color="@(cnt > 0 ? Color.Success : Color.Warning)"
                                  Icon="@(cnt > 0 ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.WarningAmber)">
                             @(cnt > 0 ? $"{cnt} form girildi" : "kayıt yok")
                         </MudChip>
                     </MudStack>
-                    <MudIconButton Icon="@Icons.Material.Filled.NavigateNext" Size="Size.Small" OnClick="NextFile" Disabled="@(_fileIndex >= Files.Count - 1)" />
+                    <MudIconButton Icon="@Icons.Material.Filled.NavigateNext" Size="Size.Small" OnClick="NextFile" Disabled="@(!_cursor.CanNext(FilePaths))" />
                 </MudStack>
             </MudPaper>
         }
@@ -95,7 +106,7 @@
                             @(_editingItemId.HasValue ? "Satırı düzenle" : "Servis formu") — @CurrentFile.FileName
                         </MudText>
                         @* Form no (sağ üst, OCR) + elle yazılmış mağaza (yapay zekâ) okunup doldurulur (tek sayfalık dosyada) *@
-                        <FormNumberAutoFillButton FilePath="@CurrentFile.FilePath" OnRead="@(n => _formNo = n)"
+                        <FormNumberAutoFillButton FilePath="@CurrentFile.FilePath" PageIndex="@_cursor.PageIndex" OnRead="@(n => _formNo = n)"
                                                   Stores="@_stores" PreferredRegion="@ClaimRegion" CurrentStore="@_store"
                                                   OnStore="@(s => _store = s)" />
                     </MudStack>
@@ -327,7 +338,9 @@
     /// <summary>Hakedişin bölgesi: girilmiş formların mağazalarında en sık geçen bölge (mağaza adı eşleşmesi önce burada aranır).</summary>
     private string? ClaimRegion => Forms.Where(f => !string.IsNullOrWhiteSpace(f.StoreRegion))
         .GroupBy(f => f.StoreRegion!.Trim()).OrderByDescending(g => g.Count()).Select(g => g.Key).FirstOrDefault();
-    private int _fileIndex;
+    /// <summary>Sol paneldeki konum: dosya + çok sayfalı PDF'de sayfa (her sayfa ayrı servis formu).</summary>
+    private readonly FilePageCursor _cursor = new();
+    private int _fileIndex => _cursor.FileIndex;
     /// <summary>Kalemlerin tabloda görünme sırası (kalem kimlikleri): yeni eklenen EN BAŞA gelir; "sırala" ile yeniden dizilir.</summary>
     private readonly List<int> _order = new();
     private readonly HashSet<int> _flashIds = new();
@@ -379,14 +392,25 @@
         SyncOrder();
         var files = Files;
         var firstEmpty = files.FindIndex(f => FormCount(f) == 0);
-        _fileIndex = firstEmpty >= 0 ? firstEmpty : 0;
+        _cursor.GoToFile(firstEmpty >= 0 ? firstEmpty : 0);
     }
 
     protected override void OnParametersSet()
     {
         SyncOrder();
-        var count = Files.Count;
-        if (_fileIndex >= count) _fileIndex = Math.Max(0, count - 1);
+        _cursor.Clamp(FilePaths);
+    }
+
+    protected override async Task OnParametersSetAsync() => await LoadPageCountsAsync();
+
+    private List<string> FilePaths => Files.Select(f => f.FilePath).ToList();
+
+    /// <summary>Yeni yüklenen dosyaların sayfa sayıları (oklar çok sayfalı PDF'de sayfa sayfa gezer).</summary>
+    private async Task LoadPageCountsAsync()
+    {
+        foreach (var path in FilePaths.Where(p => !_cursor.HasPageCount(p)).ToList())
+            _cursor.SetPageCount(path, await PageCounter.GetPageCountAsync(FileStorage.GetAbsolutePath(path)));
+        _cursor.Clamp(FilePaths);
     }
 
     /// <summary>Sıra listesini güncel kalemlerle eşitler: silinenler çıkar; listede olmayanlar (ilk açılış) yeniden eskiye doğru sona eklenir.</summary>
@@ -494,8 +518,8 @@
     // ── Dosya gezinmesi ─────────────────────────────────────────────────
     // Soğutma genel kuralı: başka servis formuna geçince MAĞAZA KALIR (aynı mağazanın farklı güne ait formu gelebilir);
     // tarih, form no ve malzeme/miktar temizlenir. Her şeyi boşaltmak için "Temizle".
-    private void PreviousFile() { if (_fileIndex > 0) { _fileIndex--; ClearForNextForm(); } }
-    private void NextFile() { if (_fileIndex < Files.Count - 1) { _fileIndex++; ClearForNextForm(); } }
+    private void PreviousFile() { if (_cursor.Previous(FilePaths)) ClearForNextForm(); }
+    private void NextFile() { if (_cursor.Next(FilePaths)) ClearForNextForm(); }
 
     private void ClearForNextForm()
     {
@@ -541,7 +565,7 @@
     {
         var f = row.Form;
         var idx = Files.FindIndex(x => x.FilePath == f.FilePath);
-        if (idx >= 0) _fileIndex = idx;               // formu sol panelde aç
+        if (idx >= 0 && idx != _cursor.FileIndex) _cursor.GoToFile(idx);   // formu sol panelde aç (aynı dosyadaysa sayfa korunur)
         _editingItemId = row.Item.Id;
         _editingFormId = f.Id;
         var (name, type) = NameAndType(row.Item);

@@ -13,7 +13,7 @@
         <div class="fullscreen-preview-container">
             @if (IsPdf)
             {
-                <object data="@FileUrl" type="application/pdf" class="fullscreen-preview-pdf">
+                <object data="@($"{FileUrl}#page={Math.Max(1, Page)}")" type="application/pdf" class="fullscreen-preview-pdf">
                     <div style="padding:24px;color:white;text-align:center">
                         <p>Tarayıcı PDF görüntülemeyi desteklemiyor.</p>
                         <a href="@FileUrl" target="_blank" style="color:#90CAF9">Dosyayı İndir</a>
@@ -65,6 +65,7 @@
     [Parameter] public string FileUrl  { get; set; } = string.Empty;
     [Parameter] public string FileName { get; set; } = string.Empty;
     [Parameter] public string FilePath { get; set; } = string.Empty;
+    [Parameter] public int Page { get; set; } = 1;
 
     private double _zoom = 1.0;
 

@@ -5,19 +5,20 @@ namespace HakedisOtomasyon.Application;
 /// <summary>Servis formundan okunan form numarası (yapay zekâ kullanılmaz; Windows'un yerleşik OCR'ı).</summary>
 /// <param name="Number">Okunan numara; bulunamadıysa null.</param>
 /// <param name="PageCount">Dosyanın sayfa sayısı (görsel dosyada 1).</param>
-/// <param name="Message">Kullanıcıya gösterilecek açıklama (bulunamadı, çok sayfalı ...).</param>
+/// <param name="Message">Kullanıcıya gösterilecek açıklama (bulunamadı, sayfa yok ...).</param>
 public sealed record FormNumberReadResult(string? Number, int PageCount, string? Message);
 
 /// <summary>
 /// Servis formunun sağ üst köşesindeki form numarasını okur (örn. INTİKOŞ formlarında kırmızı "20750").
-/// Yalnız TEK sayfalı dosyalarda çalışır — çok sayfalı PDF'de hangi formun okunacağı belli olmadığından okuma yapılmaz.
+/// Çok sayfalı PDF'de her sayfa ayrı servis formudur; yalnız istenen sayfa okunur.
 /// </summary>
 public interface IFormNumberReader
 {
     /// <summary>Dosyanın sayfa sayısı (PDF) ya da 1 (görsel). Okunamazsa 0.</summary>
     Task<int> GetPageCountAsync(string absoluteFilePath);
 
-    Task<FormNumberReadResult> ReadAsync(string absoluteFilePath);
+    /// <param name="pageIndex">Okunacak sayfa (0 tabanlı; görselde 0).</param>
+    Task<FormNumberReadResult> ReadAsync(string absoluteFilePath, int pageIndex = 0);
 }
 
 /// <summary>OCR'dan gelen satırlar içinden form numarasını seçen saf kurallar (test edilebilir).</summary>

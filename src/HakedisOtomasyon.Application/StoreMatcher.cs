@@ -10,13 +10,14 @@ namespace HakedisOtomasyon.Application;
 /// <param name="Error">Okuma yapılamadıysa açıklama.</param>
 public sealed record HandwrittenStoreResult(string? StoreCode, string? StoreName, string? Error);
 
-/// <summary>Servis formundaki el yazısı mağaza bilgisini okur (Gemini; yalnız tek sayfalık dosya).</summary>
+/// <summary>Servis formundaki el yazısı mağaza bilgisini okur (Gemini). Çok sayfalı PDF'de yalnız istenen sayfa gönderilir.</summary>
 public interface IHandwrittenStoreReader
 {
     /// <summary>Yapay zekâ ayarlı mı (API anahtarı var mı)?</summary>
     bool IsConfigured { get; }
 
-    Task<HandwrittenStoreResult> ReadAsync(string absoluteFilePath, CancellationToken cancellationToken = default);
+    /// <param name="pageIndex">Okunacak sayfa (0 tabanlı; görselde 0).</param>
+    Task<HandwrittenStoreResult> ReadAsync(string absoluteFilePath, int pageIndex = 0, CancellationToken cancellationToken = default);
 }
 
 /// <summary>Okunan mağaza kodu/adının mağaza listesiyle eşleştirilmesi.</summary>

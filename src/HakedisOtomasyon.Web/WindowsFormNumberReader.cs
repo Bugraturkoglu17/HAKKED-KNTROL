@@ -10,7 +10,7 @@ namespace HakedisOtomasyon.Web;
 
 /// <summary>
 /// Servis formunun sağ üstündeki form numarasını Windows'un yerleşik OCR'ı ile okur (çevrimdışı, yapay zekâ yok).
-///   1) Sayfa 200 DPI çizilir; sağ yarının üst %35'i kesilir (taramada sayfa kaymış olsa da numara bu bölgede kalır).
+///   1) İstenen sayfa (çok sayfalı PDF'de yalnız o sayfa) 200 DPI çizilir; sağ yarının üst %35'i kesilir (taramada sayfa kaymış olsa da numara bu bölgede kalır).
 ///   2) Önce yalnız KIRMIZI mürekkep bırakılır (INTİKOŞ formlarında numara kırmızı damgadır) ve okunur.
 ///   3) Kırmızıda bulunamazsa normal görüntü okunur (siyah-beyaz tarama; OKUR formlarında pembe basılı "005027").
 /// Satırlardan numarayı <see cref="FormNumberParser"/> seçer (adres/telefon satırları elenir).
@@ -34,14 +34,14 @@ public sealed class WindowsFormNumberReader : IFormNumberReader
         catch { return 0; }
     });
 
-    public async Task<FormNumberReadResult> ReadAsync(string absoluteFilePath)
+    public async Task<FormNumberReadResult> ReadAsync(string absoluteFilePath, int pageIndex = 0)
     {
         if (!File.Exists(absoluteFilePath))
             return new(null, 0, "Servis formu dosyası bulunamadı.");
 
         var pages = await GetPageCountAsync(absoluteFilePath);
         if (pages == 0) return new(null, 0, "Dosya okunamadı (yalnız PDF ve görsel dosyalar desteklenir).");
-        if (pages > 1) return new(null, pages, $"Dosya {pages} sayfalı. Otomatik doldurma yalnızca tek sayfalık servis formunda çalışır.");
+        if (pageIndex < 0 || pageIndex >= pages) return new(null, pages, $"Dosyada {pageIndex + 1}. sayfa yok ({pages} sayfa).");
 
         var engine = OcrEngine.TryCreateFromLanguage(new Language("en-US")) ?? OcrEngine.TryCreateFromUserProfileLanguages();
         if (engine is null)
@@ -50,7 +50,7 @@ public sealed class WindowsFormNumberReader : IFormNumberReader
 
         try
         {
-            using var page = await Task.Run(() => Render(absoluteFilePath));
+            using var page = await Task.Run(() => Render(absoluteFilePath, pageIndex));
             if (page is null) return new(null, pages, "Sayfa görüntüye çevrilemedi.");
 
             var rect = new SKRectI((int)(page.Width * 0.50), 0, page.Width, (int)(page.Height * 0.35));
@@ -77,11 +77,11 @@ public sealed class WindowsFormNumberReader : IFormNumberReader
         }
     }
 
-    private static SKBitmap? Render(string path)
+    private static SKBitmap? Render(string path, int pageIndex)
     {
         if (IsImage(path)) return SKBitmap.Decode(path);
         var bytes = File.ReadAllBytes(path);
-        return PDFtoImage.Conversion.ToImage(bytes, page: 0, options: new PDFtoImage.RenderOptions(Dpi: 200));
+        return PDFtoImage.Conversion.ToImage(bytes, page: pageIndex, options: new PDFtoImage.RenderOptions(Dpi: 200));
     }
 
     /// <summary>Kırmızı mürekkebi siyah, geri kalan her şeyi beyaz yapar (siyah baskılı başlık yazıları ayıklanır).</summary>

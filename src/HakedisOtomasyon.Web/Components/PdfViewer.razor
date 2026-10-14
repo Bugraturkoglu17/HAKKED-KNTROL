@@ -24,7 +24,8 @@
     }
     else if (IsPdf)
     {
-        <object data="@FileUrl" type="application/pdf" class="pdf-viewer-frame">
+        @* sayfa değişince nesne yeniden kurulur ve PDF o sayfadan açılır (#page=N) *@
+        <object @key="@PdfSrc" data="@PdfSrc" type="application/pdf" class="pdf-viewer-frame">
             <div style="padding:24px;color:white;text-align:center">
                 <p>Tarayıcı PDF görüntülemeyi desteklemiyor.</p>
                 <a href="@FileUrl" target="_blank" style="color:#90CAF9">Dosyayı İndir</a>
@@ -45,6 +46,11 @@
     [Parameter] public string FileName { get; set; } = string.Empty;
     [Parameter] public string FilePath { get; set; } = string.Empty;
 
+    /// <summary>Çok sayfalı PDF'de gösterilecek sayfa (1 tabanlı).</summary>
+    [Parameter] public int Page { get; set; } = 1;
+
+    private string PdfSrc => $"{FileUrl}#page={Math.Max(1, Page)}";
+
     private bool IsPdf => !string.IsNullOrEmpty(FilePath) &&
         Path.GetExtension(FilePath).Equals(".pdf", StringComparison.OrdinalIgnoreCase);
 
@@ -55,6 +61,7 @@
             ["FileUrl"]  = FileUrl,
             ["FileName"] = FileName,
             ["FilePath"] = FilePath,
+            ["Page"]     = Page,
         };
 
         var options = new DialogOptions
