@@ -1,0 +1,71 @@
+@namespace HakedisOtomasyon.Web.Components
+@using HakedisOtomasyon.Application
+@inject IFormNumberReader Reader
+@inject IFileStorageService FileStorage
+@inject ISnackbar Snackbar
+
+@* Açık servis formunun sağ üstündeki form numarasını okuyup (Windows OCR, yapay zekâ yok) form no alanına yazar.
+   Yalnız TEK sayfalı dosyada çalışır; çok sayfalı PDF'de pasiftir (hangi sayfadaki formun okunacağı belli değil). *@
+
+<MudTooltip Text="@TooltipText">
+    <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small"
+               StartIcon="@Icons.Material.Filled.AutoFixHigh"
+               Disabled="@(_busy || _pageCount != 1)" OnClick="ReadAsync">
+        @(_busy ? "Okunuyor..." : "Otomatik doldur")
+    </MudButton>
+</MudTooltip>
+
+@code {
+    /// <summary>Açık servis formunun saklanan (göreli) dosya yolu.</summary>
+    [Parameter] public string? FilePath { get; set; }
+
+    /// <summary>Okunan form numarası.</summary>
+    [Parameter] public EventCallback<string> OnRead { get; set; }
+
+    private string? _countedPath;
+    private int _pageCount = -1;     // -1: henüz bilinmiyor
+    private bool _busy;
+
+    private string TooltipText => _pageCount switch
+    {
+        1 => "Formun sağ üstündeki numarayı okuyup Bakım Form No alanına yazar",
+        > 1 => $"Dosya {_pageCount} sayfalı — otomatik doldurma yalnız tek sayfalık servis formunda çalışır",
+        0 => "Dosya okunamadı",
+        _ => "Dosya kontrol ediliyor...",
+    };
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (string.Equals(_countedPath, FilePath, StringComparison.Ordinal)) return;
+        _countedPath = FilePath;
+        _pageCount = -1;
+        if (string.IsNullOrWhiteSpace(FilePath)) { _pageCount = 0; return; }
+        var path = FilePath;
+        var count = await Reader.GetPageCountAsync(FileStorage.GetAbsolutePath(path));
+        if (string.Equals(_countedPath, path, StringComparison.Ordinal)) _pageCount = count;   // bu arada dosya değiştiyse eski sonucu yazma
+    }
+
+    private async Task ReadAsync()
+    {
+        if (_busy || string.IsNullOrWhiteSpace(FilePath)) return;
+        _busy = true;
+        try
+        {
+            var result = await Reader.ReadAsync(FileStorage.GetAbsolutePath(FilePath));
+            if (result.Number is not null)
+            {
+                await OnRead.InvokeAsync(result.Number);
+                Snackbar.Add($"Form numarası okundu: {result.Number}. Kontrol edip Ekle'ye basın.", Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add(result.Message ?? "Form numarası okunamadı.", Severity.Warning);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Okuma hatası: {ex.Message}", Severity.Error);
+        }
+        finally { _busy = false; }
+    }
+}

@@ -90,9 +90,13 @@
             {
                 <MudPaper Elevation="2" Class="pa-3">
                     @* 1) Servis formunun bilgisi — bir kez girilir, malzeme eklerken yerinde kalır *@
-                    <MudText Typo="Typo.caption" Style="font-weight:600" Class="mb-2 d-block">
-                        @(_editingItemId.HasValue ? "Satırı düzenle" : "Servis formu") — @CurrentFile.FileName
-                    </MudText>
+                    <MudStack Row AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-2">
+                        <MudText Typo="Typo.caption" Style="font-weight:600">
+                            @(_editingItemId.HasValue ? "Satırı düzenle" : "Servis formu") — @CurrentFile.FileName
+                        </MudText>
+                        @* Formun sağ üstündeki numarayı okuyup Bakım Form No'ya yazar (tek sayfalık dosyada) *@
+                        <FormNumberAutoFillButton FilePath="@CurrentFile.FilePath" OnRead="@(n => _formNo = n)" />
+                    </MudStack>
                     <div @key="@($"form-{_headerKey}")">
                         <MudGrid Spacing="2">
                             <MudItem xs="12" md="9">

@@ -91,9 +91,13 @@
             @if (CurrentFile is not null)
             {
                 <MudPaper Elevation="2" Class="pa-3">
-                    <MudText Typo="Typo.caption" Style="font-weight:600" Class="mb-2 d-block">
-                        @(_editingId.HasValue ? "Kaydı güncelle" : "Yeni kayıt") — @CurrentFile.FileName
-                    </MudText>
+                    <MudStack Row AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-2">
+                        <MudText Typo="Typo.caption" Style="font-weight:600">
+                            @(_editingId.HasValue ? "Kaydı güncelle" : "Yeni kayıt") — @CurrentFile.FileName
+                        </MudText>
+                        @* Formun sağ üstündeki numarayı okuyup Form No'ya yazar (tek sayfalık dosyada) *@
+                        <FormNumberAutoFillButton FilePath="@CurrentFile.FilePath" OnRead="@(n => _formNo = n)" />
+                    </MudStack>
                     <div @key="@($"kayit-{_entryKey}")">
                         <MudGrid Spacing="2">
                             <MudItem xs="12" md="9">
