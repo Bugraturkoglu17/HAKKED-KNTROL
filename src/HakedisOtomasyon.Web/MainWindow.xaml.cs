@@ -48,6 +48,13 @@ public partial class MainWindow : Window
                 appPath.DataRootPath,
                 Microsoft.Web.WebView2.Core.CoreWebView2HostResourceAccessKind.Allow);
 
+            // Çok sayfalı PDF'lerin uygulama tarafından çizilen sayfa görselleri (PdfPagesViewer)
+            Directory.CreateDirectory(PdfPageImageService.CacheRoot);
+            e.WebView.CoreWebView2.SetVirtualHostNameToFolderMapping(
+                PdfPageImageService.VirtualHost,
+                PdfPageImageService.CacheRoot,
+                Microsoft.Web.WebView2.Core.CoreWebView2HostResourceAccessKind.Allow);
+
             // Soğutma Hakediş Kontrol modülünün veri kökü ayrı (bkz. SogutmaHakedisKontrol.Infrastructure
             // .FileStorage.AppPathService) — AI servis formu PDF'leri burada saklanıyor, "Formu Göster"
             // önizlemesi için ayrı bir sanal host gerekiyor.

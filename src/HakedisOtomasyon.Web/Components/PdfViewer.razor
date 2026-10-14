@@ -1,6 +1,13 @@
 @namespace HakedisOtomasyon.Web.Components
 @inject IDialogService DialogService
 
+@if (IsPdf && PageCount > 1 && !string.IsNullOrEmpty(FileUrl))
+{
+    @* çok sayfalı PDF: kaydırınca açık sayfayı bildiren görüntüleyici *@
+    <PdfPagesViewer FilePath="@FilePath" FileName="@FileName" FileUrl="@FileUrl" Page="@Page" PageChanged="@PageChanged" />
+}
+else
+{
 <div class="pdf-viewer-container">
     <div class="pdf-viewer-toolbar">
         <MudIcon Icon="@Icons.Material.Filled.InsertDriveFile" Size="Size.Small" Style="color:#90CAF9" />
@@ -40,6 +47,7 @@
         </div>
     }
 </div>
+}
 
 @code {
     [Parameter] public string FileUrl { get; set; } = string.Empty;
@@ -48,6 +56,13 @@
 
     /// <summary>Çok sayfalı PDF'de gösterilecek sayfa (1 tabanlı).</summary>
     [Parameter] public int Page { get; set; } = 1;
+
+    /// <summary>Dosyanın sayfa sayısı (biliniyorsa). 1'den fazlaysa sayfaları uygulama çizer ve kaydırınca açık sayfa
+    /// <see cref="PageChanged"/> ile bildirilir.</summary>
+    [Parameter] public int PageCount { get; set; }
+
+    /// <summary>Kullanıcı kaydırınca görünen sayfa (1 tabanlı) — yalnız çok sayfalı PDF'de.</summary>
+    [Parameter] public EventCallback<int> PageChanged { get; set; }
 
     private string PdfSrc => $"{FileUrl}#page={Math.Max(1, Page)}";
 

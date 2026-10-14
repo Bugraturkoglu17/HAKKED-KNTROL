@@ -265,3 +265,32 @@ html, body {
     min-width: 100%;
     padding-bottom: 16px;
 }
+
+/* Çok sayfalı PDF görüntüleyici (sayfalar uygulama tarafından çizilir) */
+.pdfpages-scroll {
+    position: relative;   /* sayfaların offsetTop'u bu kutuya göre hesaplanır */
+    height: 680px;
+    overflow: auto;
+    background: #525659;
+    padding: 6px 0;
+}
+.pdfpages-scroll .pdfpg {
+    position: relative;
+    margin: 0 auto 8px auto;
+    background: #fff;
+    box-shadow: 0 2px 8px rgba(0,0,0,.45);
+}
+.pdfpages-scroll .pdfpg img { display: block; width: 100%; height: 100%; }
+.pdfpages-scroll .pdfpg img:not([src]) { visibility: hidden; }
+.pdfpages-scroll .pdfpg-no {
+    position: absolute; top: 4px; right: 6px;
+    background: rgba(0,0,0,.55); color: #fff; font-size: 11px; padding: 1px 6px; border-radius: 8px;
+}
+.pdfpages-scroll .pdfpg-error::after {
+    content: 'Sayfa görüntülenemedi'; position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center; color: #9e9e9e; font-size: 13px;
+}
+.pdfpages-scroll .pdfpg.pdfpg-current { outline: 3px solid #29b6f6; }
+@media (max-width: 960px) {
+    .pdfpages-scroll { height: 400px; }
+}

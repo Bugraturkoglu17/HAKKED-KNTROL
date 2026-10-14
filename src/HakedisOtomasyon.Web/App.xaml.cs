@@ -107,6 +107,7 @@ public partial class WpfApp : System.Windows.Application
         // Servis formundan form numarası okuma (Windows OCR, çevrimdışı)
         services.AddSingleton<HakedisOtomasyon.Application.IFormNumberReader, WindowsFormNumberReader>();
         services.AddSingleton<HakedisOtomasyon.Application.IHandwrittenStoreReader, GeminiHandwrittenStoreReader>();
+        services.AddSingleton<PdfPageImageService>();
         services.AddSingleton<SogutmaHakedisKontrol.Application.Interfaces.IFilePickerService, SogutmaHakedisKontrol.Web.WpfFilePickerService>();
 
         Services = services.BuildServiceProvider();

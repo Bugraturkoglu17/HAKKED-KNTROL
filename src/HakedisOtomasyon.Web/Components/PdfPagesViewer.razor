@@ -1,0 +1,147 @@
+@namespace HakedisOtomasyon.Web.Components
+@using System.Globalization
+@implements IAsyncDisposable
+@inject PdfPageImageService Pages
+@inject IJSRuntime JS
+@inject IDialogService DialogService
+
+@* Çok sayfalı servis formu PDF'i: sayfalar uygulama tarafından çizilip alt alta gösterilir (ekrana yaklaştıkça yüklenir).
+   Kaydırınca en çok görünen sayfa PageChanged ile bildirilir — alttaki "Sayfa x / y" ve Otomatik doldur o sayfayı kullanır.
+   Page değişince (oklar, tablodaki satıra tıklama) o sayfaya gidilir. Tarayıcının yerleşik PDF görüntüleyicisi açık sayfayı
+   bildirmediği için çok sayfalı dosyada bu görüntüleyici kullanılır; tam ekran yine yerleşik görüntüleyicidir. *@
+
+<div class="pdf-viewer-container">
+    <div class="pdf-viewer-toolbar">
+        <MudIcon Icon="@Icons.Material.Filled.InsertDriveFile" Size="Size.Small" Style="color:#90CAF9" />
+        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@FileName</span>
+        <MudIconButton Icon="@Icons.Material.Filled.ZoomOut" Size="Size.Small" Style="color:#90CAF9"
+                       Disabled="@(_zoom <= MinZoom)" OnClick="@(() => ZoomAsync(-25))" />
+        <span style="min-width:38px;text-align:center">%@_zoom</span>
+        <MudIconButton Icon="@Icons.Material.Filled.ZoomIn" Size="Size.Small" Style="color:#90CAF9"
+                       Disabled="@(_zoom >= MaxZoom)" OnClick="@(() => ZoomAsync(25))" />
+        <MudTooltip Text="Tam ekran">
+            <MudIconButton Icon="@Icons.Material.Filled.Fullscreen" Size="Size.Small" Style="color:#90CAF9" OnClick="OpenFullScreenAsync" />
+        </MudTooltip>
+    </div>
+
+    <div class="pdfpages-scroll" @ref="_scroll">
+        @if (_info is null)
+        {
+            <div style="height:100%;display:flex;align-items:center;justify-content:center;color:#BDBDBD">
+                @(_error ?? "Sayfalar hazırlanıyor...")
+            </div>
+        }
+        else
+        {
+            @for (int i = 0; i < _info.PageCount; i++)
+            {
+                var index = i;
+                <div class="pdfpg @(index + 1 == Page ? "pdfpg-current" : "")" data-page="@index"
+                     style="width:calc(@(_zoom)% - 16px);aspect-ratio:1000 / @Ratio(index)">
+                    <img alt="Sayfa @(index + 1)" />
+                    <span class="pdfpg-no">@(index + 1)</span>
+                </div>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    private const int MinZoom = 50, MaxZoom = 250;
+
+    /// <summary>Saklanan (göreli) dosya yolu.</summary>
+    [Parameter] public string FilePath { get; set; } = string.Empty;
+    [Parameter] public string FileName { get; set; } = string.Empty;
+    /// <summary>Dosyanın adresi (tam ekranda yerleşik PDF görüntüleyiciyle açılır).</summary>
+    [Parameter] public string FileUrl { get; set; } = string.Empty;
+    /// <summary>Gösterilecek sayfa (1 tabanlı).</summary>
+    [Parameter] public int Page { get; set; } = 1;
+    /// <summary>Kullanıcı kaydırınca en çok görünen sayfa (1 tabanlı).</summary>
+    [Parameter] public EventCallback<int> PageChanged { get; set; }
+
+    private ElementReference _scroll;
+    private DotNetObjectReference<PdfPagesViewer>? _ref;
+    private PdfPagesInfo? _info;
+    private string? _error;
+    private string? _loadedPath;
+    private bool _jsReady;
+    private int _shownPage;           // ekranda gösterilen sayfa (kaydırmayla ya da programla)
+    private int _zoom = 100;
+    private int? _keepPageAfterRender;
+
+    private string Ratio(int index)
+        => (Math.Round(_info!.HeightRatios[index] * 1000, 1)).ToString(CultureInfo.InvariantCulture);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_loadedPath == FilePath) return;
+        _loadedPath = FilePath;
+        _info = null; _error = null; _jsReady = false; _shownPage = 0;
+        try { _info = await Pages.GetInfoAsync(FilePath); }
+        catch (Exception ex) { _error = $"PDF açılamadı: {ex.Message}"; }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_info is null) return;
+        if (!_jsReady)
+        {
+            _ref ??= DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("pdfPages.init", _scroll, _ref);
+            _jsReady = true;
+        }
+        if (_keepPageAfterRender is int keep)
+        {
+            _keepPageAfterRender = null;
+            await JS.InvokeVoidAsync("pdfPages.keepPage", _scroll, keep);
+            _shownPage = keep;
+        }
+        else if (Page != _shownPage)
+        {
+            _shownPage = Page;
+            await JS.InvokeVoidAsync("pdfPages.scrollToPage", _scroll, Page);
+        }
+    }
+
+    [JSInvokable]
+    public async Task<string?> GetPageUrl(int pageIndex)
+    {
+        try { return await Pages.GetPageUrlAsync(FilePath, pageIndex); }
+        catch { return null; }
+    }
+
+    [JSInvokable]
+    public async Task OnVisiblePage(int page)
+    {
+        if (page == _shownPage) return;
+        _shownPage = page;               // bu sayfa zaten ekranda — Page güncellenince yeniden kaydırılmaz
+        await PageChanged.InvokeAsync(page);
+    }
+
+    private Task ZoomAsync(int delta)
+    {
+        _zoom = Math.Clamp(_zoom + delta, MinZoom, MaxZoom);
+        _keepPageAfterRender = _shownPage > 0 ? _shownPage : Page;
+        return Task.CompletedTask;
+    }
+
+    private async Task OpenFullScreenAsync()
+    {
+        var parameters = new DialogParameters
+        {
+            ["FileUrl"] = FileUrl,
+            ["FileName"] = FileName,
+            ["FilePath"] = FilePath,
+            ["Page"] = _shownPage > 0 ? _shownPage : Page,
+        };
+        await DialogService.ShowAsync<ServiceFormPreviewDialog>(FileName, parameters,
+            new DialogOptions { FullScreen = true, CloseButton = true, MaxWidth = MaxWidth.False });
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try { if (_jsReady) await JS.InvokeVoidAsync("pdfPages.dispose", _scroll); }
+        catch { /* sayfa kapanırken JS bağlantısı gitmiş olabilir */ }
+        _ref?.Dispose();
+    }
+}

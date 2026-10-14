@@ -37,7 +37,8 @@
         @if (CurrentFile is not null)
         {
             <PdfViewer @key="CurrentFile.FilePath" FileUrl="@CurrentFile.FileUrl" FileName="@CurrentFile.FileName" FilePath="@CurrentFile.FilePath"
-                       Page="@(_cursor.PageIndex + 1)" />
+                       Page="@(_cursor.PageIndex + 1)" PageCount="@_cursor.PagesOf(CurrentFile.FilePath)"
+                       PageChanged="@OnViewerPageChanged" />
             <MudPaper Elevation="1" Class="pa-1 mt-2">
                 <MudStack Row AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
                     <MudIconButton Icon="@Icons.Material.Filled.NavigateBefore" Size="Size.Small" OnClick="PreviousFileAsync" Disabled="@(!_cursor.CanPrevious)" />
@@ -392,6 +393,14 @@
     protected override async Task OnParametersSetAsync() => await LoadPageCountsAsync();
 
     private List<string> FilePaths => Files.Select(f => f.FilePath).ToList();
+
+    /// <summary>Çok sayfalı PDF'de kullanıcı kaydırıp başka sayfaya geldi: o sayfa yeni servis formudur (oklarla geçmekle aynı).</summary>
+    private void OnViewerPageChanged(int page)
+    {
+        if (CurrentFile is null || page - 1 == _cursor.PageIndex) return;
+        _cursor.GoTo(_cursor.FileIndex, page - 1, FilePaths);
+        ClearForNextForm();
+    }
 
     /// <summary>Açık sayfa (1 tabanlı) — kayda yazılır; tek sayfalık dosyada null.</summary>
     private int? CurrentPageNumber => CurrentFile is not null && _cursor.PagesOf(CurrentFile.FilePath) > 1 ? _cursor.PageIndex + 1 : null;
