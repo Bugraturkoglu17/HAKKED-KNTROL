@@ -25,22 +25,26 @@ public static class FormNumberParser
 {
     // Adres, telefon, e-posta, web satırları elenir (form başlığında aynı bölgede bulunurlar)
     private static readonly Regex HeaderNoise = new("(?i)tel|fax|faks|sok|no:|@|www|\\.com|sanay|ankara|mah", RegexOptions.Compiled);
-    private static readonly Regex Number = new(@"^[1-9]\d{3,6}$", RegexOptions.Compiled);
+    // Sıfırla başlayan numara yalnız 6–7 haneliyse kabul edilir (OKUR: "005027"); kısa olanlar ("0100") sayfa/kod parçasıdır.
+    private static readonly Regex ZeroPadded = new(@"^0\d{5,6}$", RegexOptions.Compiled);
 
     /// <summary>
-    /// Yalnızca 4–7 haneli bir sayıdan oluşan satırı form numarası sayar. OCR'ın rakam sanılabilecek harf karışıklıkları
-    /// (O→0) düzeltilir, satır içi boşluklar atılır; sıfırla başlayan sayılar (sayfa/kod parçaları) alınmaz. Birden çok aday
-    /// varsa en uzunu (eşitse ilki) seçilir.
+    /// Yalnızca bir sayıdan oluşan satırı form numarası sayar: sıfırla başlamayan <paramref name="minDigits"/>–7 hane
+    /// (INTİKOŞ: "20750", "8273") ya da sıfırla başlayan 6–7 hane (OKUR: "005027"; baştaki sıfırlar korunur). OCR'ın rakam
+    /// sanılabilecek harf karışıklıkları (O→0) düzeltilir, satır içi boşluklar atılır. Birden çok aday varsa en uzunu seçilir.
     /// </summary>
-    public static string? Pick(IEnumerable<string> ocrLines)
+    /// <param name="minDigits">Sıfırla başlamayan numaranın en az hane sayısı. Kırmızı damga okumasında 4; kırmızı olmayan
+    /// (düz) okumada 5 kullanılır — kaşedeki vergi no parçası ("9513") ya da elle yazılmış 4 haneli mağaza kodu numara sanılmasın.</param>
+    public static string? Pick(IEnumerable<string> ocrLines, int minDigits = 4)
     {
+        var plain = new Regex($@"^[1-9]\d{{{minDigits - 1},6}}$");
         string? best = null;
         foreach (var raw in ocrLines)
         {
             var line = (raw ?? string.Empty).Trim();
             if (line.Length == 0 || HeaderNoise.IsMatch(line)) continue;
             var compact = line.Replace(" ", string.Empty).Replace('O', '0').Replace('o', '0');
-            if (!Number.IsMatch(compact)) continue;
+            if (!plain.IsMatch(compact) && !ZeroPadded.IsMatch(compact)) continue;
             if (best is null || compact.Length > best.Length) best = compact;
         }
         return best;
