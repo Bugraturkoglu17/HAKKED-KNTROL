@@ -486,8 +486,19 @@
     }
 
     // ── Dosya gezinmesi ─────────────────────────────────────────────────
-    private void PreviousFile() { if (_fileIndex > 0) { _fileIndex--; ResetAll(); } }
-    private void NextFile() { if (_fileIndex < Files.Count - 1) { _fileIndex++; ResetAll(); } }
+    // Soğutma genel kuralı: başka servis formuna geçince MAĞAZA KALIR (aynı mağazanın farklı güne ait formu gelebilir);
+    // tarih, form no ve malzeme/miktar temizlenir. Her şeyi boşaltmak için "Temizle".
+    private void PreviousFile() { if (_fileIndex > 0) { _fileIndex--; ClearForNextForm(); } }
+    private void NextFile() { if (_fileIndex < Files.Count - 1) { _fileIndex++; ClearForNextForm(); } }
+
+    private void ClearForNextForm()
+    {
+        _editingItemId = null; _editingFormId = null; _editingItemText = string.Empty;
+        _error = null;
+        _date = null; _formNo = null;   // mağaza (_store) bilerek korunur
+        _headerKey++;
+        ClearItem();
+    }
 
     // ── Giriş alanı ─────────────────────────────────────────────────────
     private void ClearItem()

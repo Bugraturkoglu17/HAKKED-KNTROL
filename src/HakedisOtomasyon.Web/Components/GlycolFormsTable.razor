@@ -413,8 +413,18 @@
     }
 
     // ── Dosya gezinmesi ─────────────────────────────────────────────────
-    private Task PreviousFileAsync() { if (_fileIndex > 0) { _fileIndex--; ClearEntry(); } return Task.CompletedTask; }
-    private Task NextFileAsync() { if (_fileIndex < Files.Count - 1) { _fileIndex++; ClearEntry(); } return Task.CompletedTask; }
+    // Soğutma genel kuralı: başka servis formuna geçince MAĞAZA KALIR (aynı mağazanın farklı güne ait formu gelebilir);
+    // tarih, form no ve miktar temizlenir. Sabit malzeme (glikol; gazda seçili gaz türü) değiştirilene kadar kalır.
+    private Task PreviousFileAsync() { if (_fileIndex > 0) { _fileIndex--; ClearForNextForm(); } return Task.CompletedTask; }
+    private Task NextFileAsync() { if (_fileIndex < Files.Count - 1) { _fileIndex++; ClearForNextForm(); } return Task.CompletedTask; }
+
+    private void ClearForNextForm()
+    {
+        _editingId = null;
+        _date = null; _formNo = null; _qty = null;   // mağaza (_store) ve gaz türü (_gas) bilerek korunur
+        _error = null;
+        _entryKey++;
+    }
 
     // ── Hesaplar ────────────────────────────────────────────────────────
     /// <summary>Satır toplamı: adet × EUR fiyatı × kur (yuvarlanmadan) — Excel'deki TOPLAM ile aynı.</summary>
