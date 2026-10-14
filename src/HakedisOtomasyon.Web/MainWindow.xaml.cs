@@ -14,9 +14,26 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         RegisterBlazorRoot();
+        ApplyStartPageArgument();
 
         // Yerel dosyalara guvenlı erisim icin sanal host kaydet
         blazorWebView.BlazorWebViewInitialized += OnBlazorWebViewInitialized;
+    }
+
+    /// <summary>
+    /// İsteğe bağlı başlangıç sayfası: <c>ServisHakedis.exe --sayfa=/discipline/sogutma/progress-claims/new/28</c>.
+    /// Uygulama güncellenip yeniden açıldığında kullanıcı kaldığı sayfadan devam edebilsin diye. Parametre yoksa her zamanki açılış.
+    /// </summary>
+    private void ApplyStartPageArgument()
+    {
+        const string prefix = "--sayfa=";
+        var arg = Environment.GetCommandLineArgs().FirstOrDefault(a => a.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
+        var path = arg?[prefix.Length..].Trim().Trim('"');
+        if (string.IsNullOrWhiteSpace(path)) return;
+        if (!path.StartsWith('/')) path = "/" + path;
+        // yalnız uygulama içi göreli yol kabul edilir (dış adres açılmasın)
+        if (path.Contains("://") || path.StartsWith("//")) return;
+        blazorWebView.StartPath = path;
     }
 
     private void OnBlazorWebViewInitialized(object? sender, BlazorWebViewInitializedEventArgs e)
