@@ -8,10 +8,11 @@ using SkiaSharp;
 namespace HakedisOtomasyon.Web;
 
 /// <summary>
-/// Servis formuna elle yazılmış mağaza kodunu/adını Google Gemini (Flash Lite) ile okur. Tarih okunmaz.
-/// Form numarası bu sınıfın işi değildir (Windows OCR — <see cref="WindowsFormNumberReader"/>).
-///   • Yalnız istenen sayfa (çok sayfalı PDF'de o sayfa; maliyet tek sayfalık formla aynı) 150 DPI çizilir, üst %55'i kesilir (mağaza bilgisi formun başında) ve en fazla 1400 px genişliğe
-///     küçültülüp JPEG olarak gönderilir — büyük görsellerde yaşanan zaman aşımları önlenir.
+/// Servis formuna elle yazılmış mağaza kodunu/adını ve servis tarihinin GÜN/AY'ını Google Gemini (Flash Lite) ile okur
+/// (yıl okunmaz; içinde bulunulan yıl alınır). Form numarası bu sınıfın işi değildir (Windows OCR — <see cref="WindowsFormNumberReader"/>).
+///   • Yalnız istenen sayfa (çok sayfalı PDF'de o sayfa; maliyet tek sayfalık formla aynı) 150 DPI çizilir; üst %60'ı (mağaza + personel tablosundaki tarih)
+///     ile en alt %22'si (TARİH satırı) alt alta birleştirilir, en fazla 1400 px genişliğe küçültülüp JPEG olarak gönderilir —
+///     büyük görsellerde yaşanan zaman aşımları önlenir.
 ///   • API anahtarı GEMINI_API_KEY ortam değişkeninden (.env) okunur; hiçbir yere yazılmaz/loglanmaz.
 /// </summary>
 public sealed class GeminiHandwrittenStoreReader : IHandwrittenStoreReader
@@ -24,13 +25,18 @@ public sealed class GeminiHandwrittenStoreReader : IHandwrittenStoreReader
     private static readonly string[] ImageExtensions = [".jpg", ".jpeg", ".png", ".bmp", ".gif", ".webp"];
 
     private const string Prompt = """
-        Bu görsel, Migros mağazalarına yapılan soğutma servisinin elle doldurulmuş servis formunun üst kısmıdır.
-        Formdaki EL YAZISI mağaza bilgisini oku:
+        Bu görsel, Migros mağazalarına yapılan soğutma servisinin elle doldurulmuş servis formudur: formun ÜST kısmı ile EN ALT
+        kısmı (gri çizgiyle ayrılmış) alt alta birleştirilmiştir. Formdaki EL YAZISI bilgileri oku:
         - store_code: Migros mağaza kodu (3-5 haneli sayı). Genelde mağaza adının yanında parantez içinde ("GOP MM MİGROS (383)")
           ya da formun üst köşesine elle yazılmış olur ("6671", "(5159)"). Basılı form/servis numarasını (ör. kırmızı "17793",
           "005027"), tarihleri ve telefon/vergi numaralarını mağaza kodu SANMA. Yoksa null.
         - store_name: elle yazılmış mağaza adı, yazıldığı gibi (ör. "GOP MM MİGROS", "Kastamall AVM Migros"). Yoksa null.
-        Emin olmadığın alanı null bırak. Yalnızca JSON döndür: {"store_code": ..., "store_name": ...}
+        - form_day, form_month: servisin yapıldığı tarihin GÜNÜ ve AYI (tam sayı). Tarih formun en altındaki "TARİH ....../....../202.."
+          satırına (SERVİS ELEMANI ile MAĞAZA ONAY arasında) elle yazılır; orası boşsa "Çalışan Personel" tablosundaki "Tarih"
+          sütunundan al. Biçim gün.ay'dır: "20.4.26" → form_day 20, form_month 4; "17/04/2026" → 17 ve 4. YILI OKUMA.
+          Emin değilsen null.
+        Emin olmadığın alanı null bırak. Yalnızca JSON döndür:
+        {"store_code": ..., "store_name": ..., "form_day": ..., "form_month": ...}
         """;
 
     private readonly string? _apiKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY");
@@ -82,7 +88,11 @@ public sealed class GeminiHandwrittenStoreReader : IHandwrittenStoreReader
             using var result = JsonDocument.Parse(output);
             var root = result.RootElement.ValueKind == JsonValueKind.Array && result.RootElement.GetArrayLength() > 0
                 ? result.RootElement[0] : result.RootElement;
-            return new(Clean(Get(root, "store_code")), Clean(Get(root, "store_name")), null);
+            return new(Clean(Get(root, "store_code")), Clean(Get(root, "store_name")), null)
+            {
+                Day = Int(Get(root, "form_day")),
+                Month = Int(Get(root, "form_month")),
+            };
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
@@ -103,13 +113,16 @@ public sealed class GeminiHandwrittenStoreReader : IHandwrittenStoreReader
             ? v.ValueKind switch { JsonValueKind.String => v.GetString(), JsonValueKind.Number => v.GetRawText(), _ => null }
             : null;
 
+    private static int? Int(string? s) => int.TryParse(Clean(s), out var n) ? n : null;
+
     private static string? Clean(string? s)
     {
         s = s?.Trim();
         return string.IsNullOrEmpty(s) || s.Equals("null", StringComparison.OrdinalIgnoreCase) ? null : s;
     }
 
-    /// <summary>Tek sayfayı çizer, üst %55'ini keser, en fazla 1400 px genişliğe küçültüp JPEG'e çevirir.</summary>
+    /// <summary>Tek sayfayı çizer; üst %60'ı (mağaza + personel tablosundaki tarih) ile alt %22'yi (TARİH satırı) gri bir çizgiyle alt alta birleştirir,
+    /// en fazla 1400 px genişliğe küçültüp JPEG'e çevirir.</summary>
     internal static byte[]? PrepareImage(string path, int pageIndex = 0)
     {
         using var page = ImageExtensions.Contains(Path.GetExtension(path).ToLowerInvariant())
@@ -117,9 +130,17 @@ public sealed class GeminiHandwrittenStoreReader : IHandwrittenStoreReader
             : PDFtoImage.Conversion.ToImage(File.ReadAllBytes(path), page: pageIndex, options: new PDFtoImage.RenderOptions(Dpi: 150));
         if (page is null) return null;
 
-        var rect = new SKRectI(0, 0, page.Width, (int)(page.Height * 0.55));
-        using var crop = new SKBitmap(rect.Width, rect.Height);
-        if (!page.ExtractSubset(crop, rect)) return null;
+        var topHeight = (int)(page.Height * 0.60);
+        var bottomTop = (int)(page.Height * 0.78);
+        const int gap = 12;
+        using var crop = new SKBitmap(page.Width, topHeight + gap + (page.Height - bottomTop));
+        using (var canvas = new SKCanvas(crop))
+        {
+            canvas.Clear(new SKColor(150, 150, 150));
+            canvas.DrawBitmap(page, new SKRectI(0, 0, page.Width, topHeight), new SKRect(0, 0, page.Width, topHeight));
+            canvas.DrawBitmap(page, new SKRectI(0, bottomTop, page.Width, page.Height),
+                new SKRect(0, topHeight + gap, page.Width, topHeight + gap + (page.Height - bottomTop)));
+        }
 
         var scale = Math.Min(1.0, 1400.0 / crop.Width);
         using var small = scale < 1

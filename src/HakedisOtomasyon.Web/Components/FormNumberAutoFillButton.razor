@@ -8,7 +8,9 @@
 
 @* Açık servis formundan:
      • sağ üstteki form numarasını Windows OCR ile (yapay zekâ yok) okuyup Bakım Form No'ya yazar,
-     • elle yazılmış mağaza kodunu/adını yapay zekâ (Gemini) ile okuyup mağaza listesiyle eşler (tarih okunmaz).
+     • elle yazılmış mağaza kodunu/adını yapay zekâ (Gemini) ile okuyup mağaza listesiyle eşler,
+     • aynı istekte formun altındaki TARİH'in gün/ayını okur; yıl okunmaz, içinde bulunulan yıl alınır. Ay hakediş ayından
+       farklıysa uyarı verilir (yanlış okuma ya da başka aya ait form olabilir).
    Mağaza kodla bulunduysa seçilir; yalnız adla bulunduysa seçilir ama "kontrol edin" uyarısı verilir; emin olunamazsa
    en yakın mağazalar öneri olarak gösterilir. Çok sayfalı PDF'de yalnız AÇIK sayfa okunur (her sayfa ayrı servis formu). *@
 
@@ -56,6 +58,12 @@
     /// <summary>Seçilen mağaza.</summary>
     [Parameter] public EventCallback<StoreDto> OnStore { get; set; }
 
+    /// <summary>Okunan servis tarihi (gün/ay formdan, yıl içinde bulunulan yıl).</summary>
+    [Parameter] public EventCallback<DateTime> OnDate { get; set; }
+
+    /// <summary>Hakedişin ayı (1–12) — okunan ay farklıysa uyarı verilir.</summary>
+    [Parameter] public int? ClaimMonth { get; set; }
+
     private string? _countedPath;
     private string? _suggestFor;      // önerilerin ait olduğu dosya + sayfa
     private int _pageCount = -1;     // -1: henüz bilinmiyor
@@ -70,7 +78,7 @@
     private string TooltipText => _pageCount switch
     {
         > 0 => (_pageCount > 1 ? $"Sayfa {PageIndex + 1} / {_pageCount}: " : string.Empty)
-            + (ReadsStore ? "form numarasını (sağ üst) ve elle yazılmış mağazayı okuyup doldurur"
+            + (ReadsStore ? "form numarasını (sağ üst), elle yazılmış mağazayı ve tarihi okuyup doldurur"
                           : "formun sağ üstündeki numarayı okuyup Form No alanına yazar"),
         0 => "Dosya okunamadı",
         _ => "Dosya kontrol ediliyor...",
@@ -118,6 +126,7 @@
 
             var store = await storeTask;
             if (store is null || PageKey != key) return;
+            await ApplyDateAsync(store);
             await ApplyStoreAsync(store);
         }
         catch (Exception ex)
@@ -128,6 +137,26 @@
     }
 
     private async Task<HandwrittenStoreResult?> ReadStoreAsync(string absolutePath, int page) => await StoreReader.ReadAsync(absolutePath, page);
+
+    private static readonly System.Globalization.CultureInfo Tr = System.Globalization.CultureInfo.GetCultureInfo("tr-TR");
+
+    /// <summary>Gün/ay formdan, yıl içinde bulunulan yıl (kullanıcı kuralı: yıl formdan okunmaz).</summary>
+    private async Task ApplyDateAsync(HandwrittenStoreResult read)
+    {
+        if (read.Error is not null) return;   // mağaza mesajında zaten bildirilir
+        var date = HandwrittenDate.Compose(read.Day, read.Month, DateTime.Today.Year);
+        if (date is null)
+        {
+            Snackbar.Add("Formdaki tarih okunamadı; tarihi elle girin.", Severity.Warning);
+            return;
+        }
+        await OnDate.InvokeAsync(date.Value);
+        if (ClaimMonth is int month and >= 1 and <= 12 && date.Value.Month != month)
+            Snackbar.Add($"Tarih {date.Value:dd.MM.yyyy} okundu ama hakediş ayı {Tr.DateTimeFormat.GetMonthName(month).ToUpper(Tr)} — "
+                         + "formdaki tarihi mutlaka kontrol edin.", Severity.Error, o => o.VisibleStateDuration = 10000);
+        else
+            Snackbar.Add($"Tarih okundu: {date.Value:dd.MM.yyyy} (yıl sabit {date.Value.Year}). Kontrol edin.", Severity.Info);
+    }
 
     private async Task ApplyStoreAsync(HandwrittenStoreResult read)
     {

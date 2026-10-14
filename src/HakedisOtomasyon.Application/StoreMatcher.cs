@@ -4,13 +4,31 @@ using HakedisOtomasyon.Application.DTOs;
 
 namespace HakedisOtomasyon.Application;
 
-/// <summary>Servis formundan (el yazısı, yapay zekâ ile) okunan mağaza kodu/adı.</summary>
+/// <summary>Servis formundan (el yazısı, yapay zekâ ile) okunan mağaza kodu/adı ve servis tarihinin günü/ayı.</summary>
 /// <param name="StoreCode">Okunan mağaza kodu (yoksa null).</param>
 /// <param name="StoreName">Okunan mağaza adı (yoksa null).</param>
 /// <param name="Error">Okuma yapılamadıysa açıklama.</param>
-public sealed record HandwrittenStoreResult(string? StoreCode, string? StoreName, string? Error);
+public sealed record HandwrittenStoreResult(string? StoreCode, string? StoreName, string? Error)
+{
+    /// <summary>Servis tarihinin günü (formun altındaki TARİH satırından; yıl okunmaz).</summary>
+    public int? Day { get; init; }
 
-/// <summary>Servis formundaki el yazısı mağaza bilgisini okur (Gemini). Çok sayfalı PDF'de yalnız istenen sayfa gönderilir.</summary>
+    /// <summary>Servis tarihinin ayı.</summary>
+    public int? Month { get; init; }
+}
+
+/// <summary>El yazısından okunan gün/aydan tarih: yıl formdan OKUNMAZ, içinde bulunulan yıl alınır (kullanıcı kuralı).</summary>
+public static class HandwrittenDate
+{
+    /// <summary>Geçerli bir gün/ay ise o yılın tarihi; değilse (31 Şubat, 13. ay ...) null.</summary>
+    public static DateTime? Compose(int? day, int? month, int year)
+    {
+        if (day is not (>= 1 and <= 31) || month is not (>= 1 and <= 12)) return null;
+        return day.Value <= DateTime.DaysInMonth(year, month.Value) ? new DateTime(year, month.Value, day.Value) : null;
+    }
+}
+
+/// <summary>Servis formundaki el yazısı mağaza bilgisini ve tarihin gün/ayını okur (Gemini). Çok sayfalı PDF'de yalnız istenen sayfa gönderilir.</summary>
 public interface IHandwrittenStoreReader
 {
     /// <summary>Yapay zekâ ayarlı mı (API anahtarı var mı)?</summary>

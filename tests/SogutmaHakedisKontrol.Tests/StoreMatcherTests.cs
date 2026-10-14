@@ -139,6 +139,19 @@ public class StoreMatcherTests
         Assert.Empty(r.Suggestions);
     }
 
+    /// <summary>El yazısı tarih: gün/ay formdan, yıl verilen (içinde bulunulan) yıl. "20.4.26" → 20 Nisan.</summary>
+    [Theory]
+    [InlineData(20, 4, 2026, "2026-04-20")]
+    [InlineData(29, 2, 2028, "2028-02-29")]     // artık yıl
+    [InlineData(29, 2, 2026, null)]             // 2026'da 29 Şubat yok
+    [InlineData(31, 4, 2026, null)]             // Nisan 30 çeker
+    [InlineData(17, 13, 2026, null)]
+    [InlineData(0, 4, 2026, null)]
+    [InlineData(null, 4, 2026, null)]
+    [InlineData(20, null, 2026, null)]
+    public void ElYazisiTarih_YilSabit_GecersizGunAyAlinmaz(int? day, int? month, int year, string? expected)
+        => Assert.Equal(expected is null ? null : DateTime.Parse(expected), HandwrittenDate.Compose(day, month, year));
+
     [Fact]
     public void Kelimeler_TurkceKarakterVeNoktaliKisaltmaSadelesir()
     {

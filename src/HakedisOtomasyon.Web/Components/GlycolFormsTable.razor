@@ -110,7 +110,7 @@
                         @* Form no (sağ üst, OCR) + elle yazılmış mağaza (yapay zekâ) okunup doldurulur (tek sayfalık dosyada) *@
                         <FormNumberAutoFillButton FilePath="@CurrentFile.FilePath" PageIndex="@_cursor.PageIndex" OnRead="@(n => _formNo = n)"
                                                   Stores="@_stores" PreferredRegion="@ClaimRegion" CurrentStore="@_store"
-                                                  OnStore="@(s => _store = s)" />
+                                                  OnStore="@(s => _store = s)" OnDate="@(d => _date = d)" ClaimMonth="@Claim?.Month" />
                     </MudStack>
                     <div @key="@($"kayit-{_entryKey}")">
                         <MudGrid Spacing="2">
