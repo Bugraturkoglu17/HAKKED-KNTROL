@@ -573,10 +573,8 @@
     /// <summary>Soğutma "Bakım &amp; Onarım" hakedişi mi? (Form İşleme adımı tek ekrandır: <c>MaintenanceFormsTable</c>; Kompresör Değişim de aynı ekranı kullanır.)</summary>
     private bool IsMaintenance => _claim is not null && MaintenanceClaim.UsesMaterialScreen(_claim.Discipline, _claim.CoolingCategory);
 
-    /// <summary>Hakedişe özel kalem / FATURA + % (fatura eki) girişi açık mı? Kompresör Değişim ve Kısmi Tadilat'ta açık.</summary>
-    private bool AllowsCustomItems => _claim is not null
-        && (MaintenanceClaim.IsCompressor(_claim.Discipline, _claim.CoolingCategory)
-            || MaintenanceClaim.IsPartialRenovation(_claim.Discipline, _claim.CoolingCategory));
+    /// <summary>Hakedişe özel kalem / FATURA + % (fatura eki) girişi açık mı? Kompresör Değişim, Evap Temin ve Değişim, Kısmi Tadilat.</summary>
+    private bool AllowsCustomItems => _claim is not null && MaintenanceClaim.AllowsCustomItems(_claim.Discipline, _claim.CoolingCategory);
 
     private string EurRateDisplay => EurPricing.IsValidRate(_dto.EurRate)
         ? $"{EurPricing.FormatRate(_dto.EurRate!.Value)} ₺"

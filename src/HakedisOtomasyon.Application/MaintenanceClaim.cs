@@ -45,19 +45,30 @@ public static class MaintenanceClaim
     public static bool IsCompressor(MechanicalDiscipline discipline, CoolingClaimCategory? category)
         => discipline == MechanicalDiscipline.Cooling && category == CoolingClaimCategory.CompressorReplacement;
 
+    /// <summary>Soğutma "Evap Temin ve Değişim" hakedişi mi? Kompresör Değişim ile BİREBİR aynıdır (tek ekran, otomatik servis
+    /// bedeli, hakedişe özel kalem / FATURA + %); yalnız çıktı başlığı farklıdır.</summary>
+    public static bool IsEvap(MechanicalDiscipline discipline, CoolingClaimCategory? category)
+        => discipline == MechanicalDiscipline.Cooling && category == CoolingClaimCategory.EvapReplacement;
+
+    /// <summary>Hakedişe özel kalem / FATURA + % (fatura eki) girişi açık mı? Kompresör Değişim, Evap Temin ve Değişim, Kısmi Tadilat.</summary>
+    public static bool AllowsCustomItems(MechanicalDiscipline discipline, CoolingClaimCategory? category)
+        => IsCompressor(discipline, category) || IsEvap(discipline, category) || IsPartialRenovation(discipline, category);
+
     /// <summary>Soğutma "Kısmi Tadilat" hakedişi mi? Bakım &amp; Onarım ile aynıdır; yalnız çıktı başlığı farklıdır.</summary>
     public static bool IsPartialRenovation(MechanicalDiscipline discipline, CoolingClaimCategory? category)
         => discipline == MechanicalDiscipline.Cooling && category == CoolingClaimCategory.PartialRenovation;
 
     /// <summary>Hakediş, "form bilgisi + alt alta kalem" tek ekranını (MaintenanceFormsTable) kullanan türlerden mi?
-    /// (Bakım &amp; Onarım, Kompresör Değişim, Kısmi Tadilat — üçü de aynı kurallarla çalışır.)</summary>
+    /// (Bakım &amp; Onarım, Kompresör Değişim, Evap Temin ve Değişim, Kısmi Tadilat — hepsi aynı kurallarla çalışır.)</summary>
     public static bool UsesMaterialScreen(MechanicalDiscipline discipline, CoolingClaimCategory? category)
-        => IsMaintenance(discipline, category) || IsCompressor(discipline, category) || IsPartialRenovation(discipline, category);
+        => IsMaintenance(discipline, category) || IsCompressor(discipline, category) || IsEvap(discipline, category)
+           || IsPartialRenovation(discipline, category);
 
     /// <summary>Çıktı başlığının bölgeden sonraki kısmı ("İÇ ANADOLU " + bu + " HAKEDİŞİ" / " İCMALİ").</summary>
     public static string TitleCore(CoolingClaimCategory? category) => category switch
     {
         CoolingClaimCategory.CompressorReplacement => "MİGROS SOĞUTMA KOMPRESÖR TEMİN VE DEĞİŞİM",
+        CoolingClaimCategory.EvapReplacement => "MİGROS SOĞUTMA EVAP TEMİN VE DEĞİŞİM",
         CoolingClaimCategory.PartialRenovation => "MİGROS SATIŞ MAĞAZALARI SOĞUTMA KISMİ TADİLAT",
         _ => "MİGROS SATIŞ MAĞAZALARI SOĞUTMA SERVİS VE BAKIM MALZEMELERİ",
     };
@@ -66,6 +77,7 @@ public static class MaintenanceClaim
     public static string ExportFilePrefix(CoolingClaimCategory? category) => category switch
     {
         CoolingClaimCategory.CompressorReplacement => "KompresorDegisim_Hakedis",
+        CoolingClaimCategory.EvapReplacement => "EvapDegisim_Hakedis",
         CoolingClaimCategory.PartialRenovation => "KismiTadilat_Hakedis",
         _ => "BakimOnarim_Hakedis",
     };

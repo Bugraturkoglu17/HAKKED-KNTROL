@@ -44,6 +44,7 @@ public static class CoolingClaimCategoryExtensions
         CoolingClaimCategory.GlycolUsage => true,
         CoolingClaimCategory.GasUsage => true,
         CoolingClaimCategory.CompressorReplacement => true,
+        CoolingClaimCategory.EvapReplacement => true,
         CoolingClaimCategory.PartialRenovation => true,
         CoolingClaimCategory.MaintenanceRepair => true,
         _ => false,

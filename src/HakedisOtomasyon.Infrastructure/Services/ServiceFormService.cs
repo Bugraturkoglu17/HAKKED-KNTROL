@@ -477,7 +477,7 @@ public class ServiceFormService : IServiceFormService
         var claim = await _db.ProgressClaims.FirstOrDefaultAsync(c => c.Id == claimId)
             ?? throw new InvalidOperationException($"Hakediş bulunamadı: {claimId}");
         if (!MaintenanceClaim.UsesMaterialScreen(claim.Discipline, claim.CoolingCategory))
-            throw new InvalidOperationException("Bu hakediş Bakım & Onarım / Kompresör Değişim / Kısmi Tadilat türünde değil.");
+            throw new InvalidOperationException("Bu hakediş Bakım & Onarım / Kompresör Değişim / Evap Temin ve Değişim / Kısmi Tadilat türünde değil.");
         return claim;
     }
 
