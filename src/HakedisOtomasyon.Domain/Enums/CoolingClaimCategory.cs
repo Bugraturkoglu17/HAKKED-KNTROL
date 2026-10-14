@@ -37,7 +37,7 @@ public static class CoolingClaimCategoryExtensions
 
     /// <summary>
     /// Bu tür için hakediş oluşturma altyapısı hazır mı? Yeni bir türün alt yapısı yazıldığında
-    /// yalnızca burası güncellenir; hazır olmayan türler seçim listesinde "yakında" olarak pasif görünür.
+    /// yalnızca burası güncellenir; hazır olmayan türler seçim listesinde pasif (seçilemez) görünür.
     /// </summary>
     public static bool IsAvailable(this CoolingClaimCategory category) => category switch
     {

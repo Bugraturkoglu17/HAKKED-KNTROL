@@ -99,7 +99,7 @@
                                     <MudSelectItem T="CoolingClaimCategory?" Value="@((CoolingClaimCategory?)c)" Disabled="@(!c.IsAvailable())">
                                         <MudStack Row AlignItems="AlignItems.Center" Spacing="2">
                                             <MudIcon Icon="@CoolingCategoryIcon(c)" Size="Size.Small" />
-                                            <span>@c.DisplayName()@(c.IsAvailable() ? string.Empty : " — yakında")</span>
+                                            <span>@c.DisplayName()</span>   @* hazır olmayan tür yalnız pasif (seçilemez) görünür; ek etiket yazılmaz *@
                                         </MudStack>
                                     </MudSelectItem>
                                 }
