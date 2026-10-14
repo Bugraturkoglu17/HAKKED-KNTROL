@@ -36,8 +36,13 @@ public class GeminiVisionClient : IAiVisionClient
     public GeminiVisionClient()
     {
         _apiKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY");
-        _model = Environment.GetEnvironmentVariable("GEMINI_MODEL") is { Length: > 0 } m ? m : "gemini-3.5-flash-lite";
+        _model = LiteOnly(Environment.GetEnvironmentVariable("GEMINI_MODEL"));
     }
+
+    /// <summary>Yalnız "flash-lite" modelleri kullanılır (kullanıcı kararı: daha pahalı modeller para harcamasın). .env'de başka bir
+    /// model yazıyorsa yok sayılır ve varsayılan Flash Lite kullanılır.</summary>
+    public static string LiteOnly(string? configured)
+        => configured is { Length: > 0 } m && m.Contains("flash-lite", StringComparison.OrdinalIgnoreCase) ? m.Trim() : "gemini-3.5-flash-lite";
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_apiKey);
     public string ProviderLabel => $"Google Gemini — Model: {_model}";

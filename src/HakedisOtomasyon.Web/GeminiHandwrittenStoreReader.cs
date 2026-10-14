@@ -40,7 +40,9 @@ public sealed class GeminiHandwrittenStoreReader : IHandwrittenStoreReader
         """;
 
     private readonly string? _apiKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY");
-    private readonly string _model = Environment.GetEnvironmentVariable("GEMINI_MODEL") is { Length: > 0 } m ? m : "gemini-3.5-flash-lite";
+    // yalnız Flash Lite (daha pahalı modeller kullanılmaz; .env'de başka model yazsa da)
+    private readonly string _model = SogutmaHakedisKontrol.Infrastructure.Services.GeminiVisionClient.LiteOnly(
+        Environment.GetEnvironmentVariable("GEMINI_MODEL"));
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_apiKey);
 
