@@ -94,8 +94,10 @@
                         <MudText Typo="Typo.caption" Style="font-weight:600">
                             @(_editingItemId.HasValue ? "Satırı düzenle" : "Servis formu") — @CurrentFile.FileName
                         </MudText>
-                        @* Formun sağ üstündeki numarayı okuyup Bakım Form No'ya yazar (tek sayfalık dosyada) *@
-                        <FormNumberAutoFillButton FilePath="@CurrentFile.FilePath" OnRead="@(n => _formNo = n)" />
+                        @* Form no (sağ üst, OCR) + elle yazılmış mağaza (yapay zekâ) okunup doldurulur (tek sayfalık dosyada) *@
+                        <FormNumberAutoFillButton FilePath="@CurrentFile.FilePath" OnRead="@(n => _formNo = n)"
+                                                  Stores="@_stores" PreferredRegion="@ClaimRegion" CurrentStore="@_store"
+                                                  OnStore="@(s => _store = s)" />
                     </MudStack>
                     <div @key="@($"form-{_headerKey}")">
                         <MudGrid Spacing="2">
@@ -321,6 +323,10 @@
     private sealed record Row(ServiceFormDto Form, ServiceItemDto Item);
 
     private List<StoreDto> _stores = new();
+
+    /// <summary>Hakedişin bölgesi: girilmiş formların mağazalarında en sık geçen bölge (mağaza adı eşleşmesi önce burada aranır).</summary>
+    private string? ClaimRegion => Forms.Where(f => !string.IsNullOrWhiteSpace(f.StoreRegion))
+        .GroupBy(f => f.StoreRegion!.Trim()).OrderByDescending(g => g.Count()).Select(g => g.Key).FirstOrDefault();
     private int _fileIndex;
     /// <summary>Kalemlerin tabloda görünme sırası (kalem kimlikleri): yeni eklenen EN BAŞA gelir; "sırala" ile yeniden dizilir.</summary>
     private readonly List<int> _order = new();
