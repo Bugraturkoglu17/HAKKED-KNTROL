@@ -294,3 +294,48 @@ html, body {
 @media (max-width: 960px) {
     .pdfpages-scroll { height: 400px; }
 }
+
+/* Hakediş giriş alanındaki işlem butonları (Temizle / Özel kalem / Ekle) — dar sütunda kompakt, tek satır */
+.entry-actions { flex-wrap: nowrap; flex-shrink: 0; }
+.entry-actions .mud-button-root {
+    white-space: nowrap;
+    min-width: 0;
+    padding: 2px 10px;
+    font-size: 12px;
+    line-height: 1.6;
+    letter-spacing: .2px;
+}
+.entry-actions .mud-button-root .mud-button-icon-start { margin-right: 4px; }
+.entry-actions .mud-button-root .mud-icon-root { font-size: 16px; }
+.entry-hint { flex: 1 1 auto; min-width: 0; }
+
+/* Daraltılmış menüde ikon ipucu — modern, yumuşak köşeli koyu etiket (ok rengi de aynı değişkenden) */
+.mud-tooltip.nav-tip {
+    --mud-palette-gray-darker: #263238;
+    --mud-palette-dark-text: #fff;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 6px 12px;
+    border-radius: 8px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, .18);
+    letter-spacing: .2px;
+}
+
+/* Otomatik doldur bildirimi — yalnız alan etiketleri (sarı: kontrol edin, kırmızı: hakediş ayı uyuşmuyor, yeşil: okundu) */
+.mud-snackbar:has(.af-chips) {
+    min-width: 0;
+    padding: 6px 10px;
+    background: var(--mud-palette-surface);
+    color: var(--mud-palette-text-primary);
+    border: 1px solid #ffcc80;
+    border-radius: 10px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, .12);
+}
+.mud-snackbar:has(.af-chips):not(:has(.af-warn, .af-err)) { border-color: #a5d6a7; }
+.mud-snackbar:has(.af-chips) .mud-snackbar-content-message { padding: 0; }
+.af-chips { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.af-icon { color: #ef6c00; font-size: 15px; line-height: 1; margin-right: 2px; }
+.af-chip { font-size: 12px; font-weight: 500; line-height: 1.4; padding: 2px 9px; border-radius: 10px; white-space: nowrap; }
+.af-warn { background: rgba(255, 152, 0, .16); color: #e65100; }
+.af-err  { background: rgba(244, 67, 54, .15); color: #c62828; }
+.af-ok   { background: rgba(76, 175, 80, .15); color: #2e7d32; }

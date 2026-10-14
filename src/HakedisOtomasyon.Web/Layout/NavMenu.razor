@@ -8,115 +8,146 @@
 <MudNavMenu>
     @if (IsInSogutmaKontrol)
     {
-        <MudNavLink Href="/"
-                    Icon="@Icons.Material.Filled.Apps"
-                    Match="NavLinkMatch.All"
-                    ActiveClass="nav-active">
-            Disiplin Seçimi
-        </MudNavLink>
+        <MudTooltip Text="Disiplin Seçimi" Placement="Placement.Right" Arrow Disabled="@(!Collapsed)" RootStyle="display:block" Class="nav-tip">
+            <MudNavLink Href="/"
+                        Icon="@Icons.Material.Filled.Apps"
+                        Match="NavLinkMatch.All"
+                        ActiveClass="nav-active">
+                Disiplin Seçimi
+            </MudNavLink>
+        </MudTooltip>
 
-        <MudNavLink Href="/discipline/sogutma"
-                    Icon="@Icons.Material.Filled.ArrowBack"
-                    ActiveClass="nav-active">
-            Soğutma Modülüne Dön
-        </MudNavLink>
+        <MudTooltip Text="Soğutma Modülüne Dön" Placement="Placement.Right" Arrow Disabled="@(!Collapsed)" RootStyle="display:block" Class="nav-tip">
+            <MudNavLink Href="/discipline/sogutma"
+                        Icon="@Icons.Material.Filled.ArrowBack"
+                        ActiveClass="nav-active">
+                Soğutma Modülüne Dön
+            </MudNavLink>
+        </MudTooltip>
 
         <MudDivider Class="my-1" />
 
-        <MudNavLink Href="/discipline/sogutma/kontrol"
-                    Icon="@Icons.Material.Filled.FactCheck"
-                    Match="NavLinkMatch.All"
-                    ActiveClass="nav-active">
-            Hakediş Kontrolü
-        </MudNavLink>
+        <MudTooltip Text="Hakediş Kontrolü" Placement="Placement.Right" Arrow Disabled="@(!Collapsed)" RootStyle="display:block" Class="nav-tip">
+            <MudNavLink Href="/discipline/sogutma/kontrol"
+                        Icon="@Icons.Material.Filled.FactCheck"
+                        Match="NavLinkMatch.All"
+                        ActiveClass="nav-active">
+                Hakediş Kontrolü
+            </MudNavLink>
+        </MudTooltip>
 
-        <MudNavLink Href="/discipline/sogutma/kontrol/fiyat-listesi"
-                    Icon="@Icons.Material.Outlined.PriceChange"
-                    ActiveClass="nav-active">
-            Kontrol Fiyat Listesi
-        </MudNavLink>
+        <MudTooltip Text="Kontrol Fiyat Listesi" Placement="Placement.Right" Arrow Disabled="@(!Collapsed)" RootStyle="display:block" Class="nav-tip">
+            <MudNavLink Href="/discipline/sogutma/kontrol/fiyat-listesi"
+                        Icon="@Icons.Material.Outlined.PriceChange"
+                        ActiveClass="nav-active">
+                Kontrol Fiyat Listesi
+            </MudNavLink>
+        </MudTooltip>
 
-        <MudNavLink Href="/discipline/sogutma/kontrol/gecmis-kontroller"
-                    Icon="@Icons.Material.Outlined.History"
-                    ActiveClass="nav-active">
-            Kontrol Geçmişi
-        </MudNavLink>
+        <MudTooltip Text="Kontrol Geçmişi" Placement="Placement.Right" Arrow Disabled="@(!Collapsed)" RootStyle="display:block" Class="nav-tip">
+            <MudNavLink Href="/discipline/sogutma/kontrol/gecmis-kontroller"
+                        Icon="@Icons.Material.Outlined.History"
+                        ActiveClass="nav-active">
+                Kontrol Geçmişi
+            </MudNavLink>
+        </MudTooltip>
     }
     else
     {
-        <MudNavLink Href="/"
-                    Icon="@Icons.Material.Filled.Apps"
-                    Match="NavLinkMatch.All"
-                    ActiveClass="nav-active">
-            Disiplin Seçimi
-        </MudNavLink>
+        <MudTooltip Text="Disiplin Seçimi" Placement="Placement.Right" Arrow Disabled="@(!Collapsed)" RootStyle="display:block" Class="nav-tip">
+            <MudNavLink Href="/"
+                        Icon="@Icons.Material.Filled.Apps"
+                        Match="NavLinkMatch.All"
+                        ActiveClass="nav-active">
+                Disiplin Seçimi
+            </MudNavLink>
+        </MudTooltip>
 
-        <MudNavLink Href="@R("dashboard")"
-                    Icon="@Icons.Material.Filled.Dashboard"
-                    ActiveClass="nav-active">
-            Panel
-        </MudNavLink>
-
-        <MudDivider Class="my-1" />
-
-        <MudNavLink Href="@R("progress-claims/new")"
-                    Icon="@Icons.Material.Filled.AddCircleOutline"
-                    ActiveClass="nav-active">
-            Yeni Hakediş
-        </MudNavLink>
-
-        <MudNavLink Href="/service-forms"
-                    Icon="@Icons.Material.Outlined.Description"
-                    ActiveClass="nav-active">
-            Servis Formları
-        </MudNavLink>
+        <MudTooltip Text="Panel" Placement="Placement.Right" Arrow Disabled="@(!Collapsed)" RootStyle="display:block" Class="nav-tip">
+            <MudNavLink Href="@R("dashboard")"
+                        Icon="@Icons.Material.Filled.Dashboard"
+                        ActiveClass="nav-active">
+                Panel
+            </MudNavLink>
+        </MudTooltip>
 
         <MudDivider Class="my-1" />
 
-        <MudNavLink Href="@R("stores")"
-                    Icon="@Icons.Material.Outlined.Store"
-                    ActiveClass="nav-active">
-            Mağazalar
-        </MudNavLink>
+        <MudTooltip Text="Yeni Hakediş" Placement="Placement.Right" Arrow Disabled="@(!Collapsed)" RootStyle="display:block" Class="nav-tip">
+            <MudNavLink Href="@R("progress-claims/new")"
+                        Icon="@Icons.Material.Filled.AddCircleOutline"
+                        ActiveClass="nav-active">
+                Yeni Hakediş
+            </MudNavLink>
+        </MudTooltip>
 
-        <MudNavLink Href="@R("price-list")"
-                    Icon="@Icons.Material.Outlined.PriceChange"
-                    ActiveClass="nav-active">
-            Fiyat Listesi
-        </MudNavLink>
+        <MudTooltip Text="Servis Formları" Placement="Placement.Right" Arrow Disabled="@(!Collapsed)" RootStyle="display:block" Class="nav-tip">
+            <MudNavLink Href="/service-forms"
+                        Icon="@Icons.Material.Outlined.Description"
+                        ActiveClass="nav-active">
+                Servis Formları
+            </MudNavLink>
+        </MudTooltip>
+
+        <MudDivider Class="my-1" />
+
+        <MudTooltip Text="Mağazalar" Placement="Placement.Right" Arrow Disabled="@(!Collapsed)" RootStyle="display:block" Class="nav-tip">
+            <MudNavLink Href="@R("stores")"
+                        Icon="@Icons.Material.Outlined.Store"
+                        ActiveClass="nav-active">
+                Mağazalar
+            </MudNavLink>
+        </MudTooltip>
+
+        <MudTooltip Text="Fiyat Listesi" Placement="Placement.Right" Arrow Disabled="@(!Collapsed)" RootStyle="display:block" Class="nav-tip">
+            <MudNavLink Href="@R("price-list")"
+                        Icon="@Icons.Material.Outlined.PriceChange"
+                        ActiveClass="nav-active">
+                Fiyat Listesi
+            </MudNavLink>
+        </MudTooltip>
 
         <MudDivider Class="my-1" />
 
         @* Match=All: "…/progress-claims/new" (Yeni Hakediş) adresinde bu bağlantı da seçili görünmesin *@
-        <MudNavLink Href="@R("progress-claims")"
-                    Icon="@Icons.Material.Outlined.History"
-                    Match="NavLinkMatch.All"
-                    ActiveClass="nav-active">
-            Hakediş Geçmişi
-        </MudNavLink>
+        <MudTooltip Text="Hakediş Geçmişi" Placement="Placement.Right" Arrow Disabled="@(!Collapsed)" RootStyle="display:block" Class="nav-tip">
+            <MudNavLink Href="@R("progress-claims")"
+                        Icon="@Icons.Material.Outlined.History"
+                        Match="NavLinkMatch.All"
+                        ActiveClass="nav-active">
+                Hakediş Geçmişi
+            </MudNavLink>
+        </MudTooltip>
 
         <MudDivider Class="my-1" />
 
-        <MudNavLink Href="@R("settings")"
-                    Icon="@Icons.Material.Outlined.Settings"
-                    ActiveClass="nav-active">
-            Ayarlar
-        </MudNavLink>
+        <MudTooltip Text="Ayarlar" Placement="Placement.Right" Arrow Disabled="@(!Collapsed)" RootStyle="display:block" Class="nav-tip">
+            <MudNavLink Href="@R("settings")"
+                        Icon="@Icons.Material.Outlined.Settings"
+                        ActiveClass="nav-active">
+                Ayarlar
+            </MudNavLink>
+        </MudTooltip>
 
         @if (CurrentDiscipline.CurrentDiscipline == MechanicalDiscipline.Cooling)
         {
             <MudDivider Class="my-1" />
 
-            <MudNavLink Href="/discipline/sogutma/kontrol"
-                        Icon="@Icons.Material.Filled.FactCheck"
-                        ActiveClass="nav-active">
-                Hakediş Kontrolü
-            </MudNavLink>
+            <MudTooltip Text="Hakediş Kontrolü" Placement="Placement.Right" Arrow Disabled="@(!Collapsed)" RootStyle="display:block" Class="nav-tip">
+                <MudNavLink Href="/discipline/sogutma/kontrol"
+                            Icon="@Icons.Material.Filled.FactCheck"
+                            ActiveClass="nav-active">
+                    Hakediş Kontrolü
+                </MudNavLink>
+            </MudTooltip>
         }
     }
 </MudNavMenu>
 
 @code {
+    /// <summary>Menü yalnız ikon (daraltılmış) hâldeyken menü adları ipucu olarak gösterilir.</summary>
+    [Parameter] public bool Collapsed { get; set; }
+
     private bool IsInSogutmaKontrol;
 
     protected override void OnInitialized()

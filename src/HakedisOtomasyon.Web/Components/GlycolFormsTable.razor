@@ -162,7 +162,7 @@
                         <MudText Typo="Typo.caption" Color="Color.Secondary">
                             @if (EntryTotal > 0m) { <span>Toplam: <b>@EntryTotal.ToString("N2", Tr) ₺</b></span> }
                         </MudText>
-                        <MudStack Row Spacing="1">
+                        <MudStack Row Spacing="1" Class="entry-actions">
                             @if (_editingId.HasValue)
                             {
                                 <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="ClearEntry">Yeni kayıt</MudButton>

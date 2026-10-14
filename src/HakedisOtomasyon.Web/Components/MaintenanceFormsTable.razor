@@ -180,12 +180,12 @@
                         </MudGrid>
                     </div>
                     <MudStack Row AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mt-2">
-                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="entry-hint">
                             @if (_editingItemId.HasValue) { <span>Miktarı ve form bilgisini değiştirebilirsiniz.</span> }
                             else if (_priceItem is null) { <span>Malzeme seçmeden <b>Ekle</b>: yalnız servis bedeli eklenir.</span> }
                             else if (EntryTotal > 0m) { <span>Toplam: <b>@EntryTotal.ToString("N2", Tr) ₺</b></span> }
                         </MudText>
-                        <MudStack Row Spacing="1">
+                        <MudStack Row Spacing="1" Class="entry-actions">
                             @if (_editingItemId.HasValue)
                             {
                                 <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="CancelEdit">Vazgeç</MudButton>

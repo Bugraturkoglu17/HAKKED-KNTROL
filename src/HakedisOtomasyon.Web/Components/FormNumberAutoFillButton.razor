@@ -17,15 +17,23 @@
 <MudStack Row AlignItems="AlignItems.Center" Spacing="1" Style="flex-wrap:wrap;justify-content:flex-end">
     @if (_suggestions.Count > 0)
     {
-        <MudText Typo="Typo.caption" Color="Color.Warning" Style="font-weight:600">Mağaza önerisi:</MudText>
-        @foreach (var s in _suggestions)
-        {
-            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Warning"
-                     OnClick="@(() => PickSuggestionAsync(s))">@s.Code — @s.Name</MudChip>
-        }
-        <MudTooltip Text="Önerileri kapat">
-            <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="@(() => _suggestions = new())" />
-        </MudTooltip>
+        @* Öneriler tek küçük açılır menüde — çip listesi kartın üstünü kaplıyordu *@
+        <MudMenu Dense AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
+            <ActivatorContent>
+                <MudButton Variant="Variant.Text" Color="Color.Warning" Size="Size.Small"
+                           EndIcon="@Icons.Material.Filled.ArrowDropDown" Style="font-size:12px;padding:2px 6px;text-transform:none">
+                    Mağaza önerisi (@_suggestions.Count)
+                </MudButton>
+            </ActivatorContent>
+            <ChildContent>
+                @foreach (var s in _suggestions)
+                {
+                    <MudMenuItem OnClick="@(() => PickSuggestionAsync(s))">@s.Code — @s.Name</MudMenuItem>
+                }
+                <MudDivider />
+                <MudMenuItem OnClick="@(() => _suggestions = new())">Önerileri kapat</MudMenuItem>
+            </ChildContent>
+        </MudMenu>
     }
     <MudTooltip Text="@TooltipText">
         <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small"
@@ -98,11 +106,46 @@
         if (string.Equals(_countedPath, path, StringComparison.Ordinal)) _pageCount = count;   // bu arada dosya değiştiyse eski sonucu yazma
     }
 
+    // Bir okumanın sonuçları tek, küçük bir bildirimde alan etiketleri olarak gösterilir:
+    // kontrol edilecek alan sarı (hakediş ayı uyuşmazlığında kırmızı), doğru okunan alan yeşil + ✓.
+    // Ayrıntı (Text) bilinçli olarak gösterilmez. Görünüm: app.css → .af-chips
+    private readonly List<(Severity Level, string Label, string Text)> _notes = new();
+
+    private void Note(Severity level, string label, string text) => _notes.Add((level, label, text));
+
+    private void FlushNotes()
+    {
+        if (_notes.Count == 0) return;
+        var fields = _notes.GroupBy(n => n.Label).Select(g => (Label: g.Key, Level: g.Max(n => n.Level))).ToList();
+        var needsCheck = fields.Any(f => f.Level >= Severity.Warning);
+        var chips = string.Join("", fields
+            .OrderByDescending(f => f.Level >= Severity.Warning)
+            .Select(f =>
+            {
+                var label = System.Net.WebUtility.HtmlEncode(f.Label);
+                return f.Level switch
+                {
+                    Severity.Error => $"<span class=\"af-chip af-err\">{label}</span>",
+                    Severity.Warning => $"<span class=\"af-chip af-warn\">{label}</span>",
+                    _ => $"<span class=\"af-chip af-ok\">{label} ✓</span>",
+                };
+            }));
+        var icon = needsCheck ? "<span class=\"af-icon\" title=\"Kontrol edin\">&#9888;</span>" : string.Empty;
+        Snackbar.Add(new MarkupString($"<div class=\"af-chips\">{icon}{chips}</div>"), Severity.Normal, o =>
+        {
+            o.VisibleStateDuration = needsCheck ? 6000 : 2500;
+            o.HideIcon = true;
+            o.ShowCloseIcon = false;
+        });
+        _notes.Clear();
+    }
+
     private async Task ReadAsync()
     {
         if (_busy || string.IsNullOrWhiteSpace(FilePath)) return;
         _busy = true;
         _suggestions = new();
+        _notes.Clear();
         var path = FilePath;
         var page = PageIndex;
         var key = PageKey;
@@ -117,11 +160,11 @@
             if (result.Number is not null)
             {
                 await OnRead.InvokeAsync(result.Number);
-                Snackbar.Add($"Form numarası okundu: {result.Number}.", Severity.Success);
+                Note(Severity.Success, "Form No", result.Number);
             }
             else
             {
-                Snackbar.Add(result.Message ?? "Form numarası okunamadı.", Severity.Warning);
+                Note(Severity.Warning, "Form No", "okunamadı, kontrol edin");
             }
 
             var store = await storeTask;
@@ -131,9 +174,14 @@
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Okuma hatası: {ex.Message}", Severity.Error);
+            HakedisOtomasyon.Web.WpfApp.LogError("Otomatik doldur", ex);   // ayrıntı log dosyasına; kullanıcıya yalnız kontrol uyarısı
+            Note(Severity.Warning, "Tüm alanlar", "okuma tamamlanamadı");
         }
-        finally { _busy = false; }
+        finally
+        {
+            _busy = false;
+            if (PageKey == key) FlushNotes(); else _notes.Clear();
+        }
     }
 
     private async Task<HandwrittenStoreResult?> ReadStoreAsync(string absolutePath, int page) => await StoreReader.ReadAsync(absolutePath, page);
@@ -147,28 +195,27 @@
         var date = HandwrittenDate.Compose(read.Day, read.Month, DateTime.Today.Year);
         if (date is null)
         {
-            Snackbar.Add("Formdaki tarih okunamadı; tarihi elle girin.", Severity.Warning);
+            Note(Severity.Warning, "Tarih", "okunamadı, elle girin");
             return;
         }
         await OnDate.InvokeAsync(date.Value);
         if (ClaimMonth is int month and >= 1 and <= 12 && date.Value.Month != month)
-            Snackbar.Add($"Tarih {date.Value:dd.MM.yyyy} okundu ama hakediş ayı {Tr.DateTimeFormat.GetMonthName(month).ToUpper(Tr)} — "
-                         + "formdaki tarihi mutlaka kontrol edin.", Severity.Error, o => o.VisibleStateDuration = 10000);
+            Note(Severity.Error, "Tarih", $"{date.Value:dd.MM.yyyy} — hakediş ayı {Tr.DateTimeFormat.GetMonthName(month).ToUpper(Tr)}, kontrol edin!");
         else
-            Snackbar.Add($"Tarih okundu: {date.Value:dd.MM.yyyy} (yıl sabit {date.Value.Year}). Kontrol edin.", Severity.Info);
+            Note(Severity.Info, "Tarih", $"{date.Value:dd.MM.yyyy}");
     }
 
     private async Task ApplyStoreAsync(HandwrittenStoreResult read)
     {
-        var keep = CurrentStore is null ? string.Empty : $" Ekrandaki mağaza ({CurrentStore.Code}) değiştirilmedi.";
+        var keep = CurrentStore is null ? string.Empty : $" ({CurrentStore.Code} korundu)";
         if (read.Error is not null)
         {
-            Snackbar.Add($"Mağaza okunamadı: {read.Error}{keep}", Severity.Warning);
+            Note(Severity.Warning, "Mağaza", $"okunamadı, kontrol edin{keep}");
             return;
         }
         if (read.StoreCode is null && read.StoreName is null)
         {
-            Snackbar.Add($"Formda mağaza bilgisi okunamadı; mağazayı elle seçin.{keep}", Severity.Warning);
+            Note(Severity.Warning, "Mağaza", $"formda bulunamadı, elle seçin{keep}");
             return;
         }
 
@@ -178,10 +225,9 @@
         {
             await OnStore.InvokeAsync(match.Selected);
             if (match.Method == "kod")
-                Snackbar.Add($"Mağaza seçildi: {match.Selected.Code} — {match.Selected.Name}", Severity.Success);
+                Note(Severity.Success, "Mağaza", $"{match.Selected.Code} — {match.Selected.Name}");
             else
-                Snackbar.Add($"Mağaza ADINA göre seçildi: {match.Selected.Code} — {match.Selected.Name} (formda: \"{written}\"). Kod yazılı değil, lütfen kontrol edin.",
-                    Severity.Warning, o => o.VisibleStateDuration = 8000);
+                Note(Severity.Warning, "Mağaza", $"{match.Selected.Code} — {match.Selected.Name} (adla eşlendi, formda \"{written}\"; kontrol edin)");
             return;
         }
         if (match.Suggestions.Count > 0)
@@ -189,10 +235,10 @@
             _suggestions = match.Suggestions.ToList();
             _storeIdAtSuggest = CurrentStore?.Id;
             _suggestFor = PageKey;
-            Snackbar.Add($"Formda \"{written}\" yazıyor; mağaza kesin bulunamadı. Önerilerden seçin ya da elle girin.{keep}", Severity.Warning);
+            Note(Severity.Warning, "Mağaza", $"\"{written}\" kesin bulunamadı, önerilerden seçin{keep}");
             return;
         }
-        Snackbar.Add($"Formda \"{written}\" yazıyor; listede eşleşen mağaza bulunamadı.{keep}", Severity.Warning);
+        Note(Severity.Warning, "Mağaza", $"\"{written}\" listede yok{keep}");
     }
 
     private async Task PickSuggestionAsync(StoreDto store)

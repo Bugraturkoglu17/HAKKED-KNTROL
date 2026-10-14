@@ -47,12 +47,10 @@
     <MudDrawer @bind-Open="_drawerOpen"
                Elevation="1"
                Variant="DrawerVariant.Mini"
-               OpenMiniOnHover="true"
+               OpenMiniOnHover="false"
                ClipMode="DrawerClipMode.Always">
-        <MudDrawerHeader>
-            <MudText Typo="Typo.subtitle2" Style="font-weight:600">Navigasyon</MudText>
-        </MudDrawerHeader>
-        <NavMenu />
+        @* Daraltılmış (yalnız ikon) hâlde menü adı, bağlantının title'ı ile fare üzerine gelince görünür *@
+        <NavMenu Collapsed="@(!_drawerOpen)" />
     </MudDrawer>
 
     <MudMainContent>
@@ -84,12 +82,22 @@
         // URL'deki /discipline/{route}/... segmentine göre her zaman senkron tutulur.
         // Bu, NavMenu linki, doğrudan URL, geri/ileri tuşu gibi her giriş yolunu kapsar.
         SyncDisciplineFromRoute(Nav.Uri);
+        if (IsClaimWorkScreen(Nav.Uri)) _drawerOpen = false;
         Nav.LocationChanged += OnLocationChanged;
         RefreshProfileAndTheme();
     }
 
+    /// <summary>Hakediş ekle/düzenle ekranı — PDF + form yan yana olduğundan menü yalnız ikonlara daraltılır.</summary>
+    private bool IsClaimWorkScreen(string uri)
+    {
+        var path = "/" + Nav.ToBaseRelativePath(uri).Split('?', '#')[0].TrimEnd('/');
+        return path.StartsWith("/new-claim", StringComparison.OrdinalIgnoreCase)
+            || path.Contains("/progress-claims/new", StringComparison.OrdinalIgnoreCase);
+    }
+
     private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
     {
+        _drawerOpen = !IsClaimWorkScreen(e.Location);   // diğer ekranlarda menü açık (eski hâli)
         SyncDisciplineFromRoute(e.Location);
         RefreshProfileAndTheme();
         InvokeAsync(StateHasChanged);
