@@ -149,6 +149,15 @@
                             {
                                 <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="ClearEntry">Yeni kayıt</MudButton>
                             }
+                            else if (IsGas)
+                            {
+                                @* Gaz: Ekle'den sonra alanlar kalır (aynı mağazaya yeni form no/tarihle tekrar giriş için).
+                                   Temizle: mağaza, tarih, form no, miktar boşalır — gaz türü değiştirilene kadar aynı kalır. *@
+                                <MudButton Variant="Variant.Outlined" Color="Color.Default" Size="Size.Small" Disabled="@(_saving || IsEntryEmpty)"
+                                           StartIcon="@Icons.Material.Filled.CleaningServices" OnClick="ClearEntry">
+                                    Temizle
+                                </MudButton>
+                            }
                             <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" Disabled="@_saving"
                                        StartIcon="@(_editingId.HasValue ? Icons.Material.Filled.Save : Icons.Material.Filled.Add)"
                                        OnClick="AddAsync">
@@ -376,7 +385,10 @@
         _store = null; _date = null; _formNo = null; _qty = null;
         _error = null;
         _entryKey++;   // alanları (özellikle mağaza arama kutusunu) baştan kur → görünen metin de temizlenir
+        // Gaz türü (_gas) bilerek temizlenmez: kullanıcı değiştirene kadar sabit kalır.
     }
+
+    private bool IsEntryEmpty => _store is null && !_date.HasValue && string.IsNullOrWhiteSpace(_formNo) && !_qty.HasValue;
 
     private Task EditEntryAsync(int formId)
     {
@@ -480,7 +492,16 @@
             if (!_order.Contains(saved.Id)) _order.Add(saved.Id);
             if (duplicate) Snackbar.Add($"Dikkat: \"{no}\" form numarası başka bir satırda da var.", Severity.Warning);
 
-            ClearEntry();   // giriş alanı temizlenir — yeni kayıt girilebilir
+            if (IsGas)
+            {
+                // Gaz: alanlar KALIR — aynı mağaza için yeni form no / tarihle tekrar gaz girilebilir; sıfırdan giriş için "Temizle".
+                _editingId = null;
+                _error = null;
+            }
+            else
+            {
+                ClearEntry();   // Glikol: giriş alanı temizlenir — yeni kayıt girilebilir
+            }
         }
         catch (Exception ex)
         {
