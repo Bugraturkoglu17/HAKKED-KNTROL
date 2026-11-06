@@ -298,3 +298,5 @@ html, body {
 /* Form işleme: önceki / sonraki form düğmeleri (sağ üst) */
 .form-nav { display: flex; gap: 6px; flex: 0 0 auto; margin-left: auto; }
 .form-nav .mud-icon-button { border-radius: 8px; width: 36px; height: 32px; }
+.form-nav { align-items: center; }
+.form-nav-pos { min-width: 64px; text-align: center; font-size: 14px; font-weight: 600; color: #37474f; font-variant-numeric: tabular-nums; }

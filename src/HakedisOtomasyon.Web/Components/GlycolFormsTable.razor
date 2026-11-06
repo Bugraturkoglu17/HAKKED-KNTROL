@@ -86,6 +86,7 @@
                             <MudIconButton Icon="@Icons.Material.Filled.ChevronLeft" Variant="Variant.Outlined" Color="Color.Primary"
                                            Size="Size.Small" OnClick="PreviousFileAsync" Disabled="@(!_cursor.CanPrevious)" />
                         </MudTooltip>
+                        <span class="form-nav-pos">@NavPosition</span>
                         <MudTooltip Text="Sonraki form">
                             <MudIconButton Icon="@Icons.Material.Filled.ChevronRight" Variant="Variant.Filled" Color="Color.Primary"
                                            Size="Size.Small" OnClick="NextFileAsync" Disabled="@(!_cursor.CanNext(FilePaths))" />
@@ -388,6 +389,18 @@
     protected override async Task OnParametersSetAsync() => await LoadPageCountsAsync();
 
     private List<string> FilePaths => Files.Select(f => f.FilePath).ToList();
+
+    /// <summary>Kaçıncı formda olunduğu: tüm dosyaların sayfaları sırayla sayılır ("25 / 250").</summary>
+    private string NavPosition
+    {
+        get
+        {
+            var paths = FilePaths;
+            if (paths.Count == 0) return "0 / 0";
+            var before = paths.Take(_cursor.FileIndex).Sum(p => _cursor.PagesOf(p));
+            return $"{before + _cursor.PageIndex + 1} / {paths.Sum(p => _cursor.PagesOf(p))}";
+        }
+    }
 
     /// <summary>Çok sayfalı PDF'de kullanıcı kaydırıp başka sayfaya geldi: o sayfa yeni servis formudur (oklarla geçmekle aynı).</summary>
     private void OnViewerPageChanged(int page)
