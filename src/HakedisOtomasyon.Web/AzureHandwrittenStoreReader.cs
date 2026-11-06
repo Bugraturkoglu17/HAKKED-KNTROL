@@ -62,11 +62,11 @@ public sealed class AzureHandwrittenStoreReader : IHandwrittenStoreReader
             // sonuç hazır olana kadar bekle. Ücretsiz planda (F0) sorgulama istekleri de dakikalık sınırdan (20) sayılır:
             // seyrek sorgulanır, sınıra takılırsa Azure'un söylediği kadar beklenir.
             var deadline = DateTime.UtcNow.AddSeconds(40);
-            var wait = TimeSpan.FromSeconds(3);
+            var wait = TimeSpan.FromSeconds(1.5);
             while (DateTime.UtcNow < deadline)
             {
                 await Task.Delay(wait, ct);
-                wait = TimeSpan.FromSeconds(2.5);
+                wait = TimeSpan.FromSeconds(1);
                 using var poll = new HttpRequestMessage(HttpMethod.Get, operation);
                 poll.Headers.Add("Ocp-Apim-Subscription-Key", _key);
                 using var response = await Http.SendAsync(poll, ct);
@@ -161,16 +161,38 @@ public sealed class AzureHandwrittenStoreReader : IHandwrittenStoreReader
         return list;
     }
 
-    /// <summary>Açık sayfayı JPEG'e çevirir (görselde dosyanın kendisi; Azure'un kabul etmediği biçimler de JPEG olur).</summary>
+    /// <summary>Formun yalnız gereken bölgeleri (hız için): üst %27 (başlık, form no, mağaza), %50–%80 (personel tablosundaki tarih +
+    /// "Kullanılan Malzeme" tablosu) ve alt %12 (TARİH satırı) alt alta birleştirilip JPEG yapılır. "Yapılan işler" ve ATIK
+    /// tablosu gönderilmez — Azure daha küçük görseli daha hızlı okur. Konumlar birleştirilmiş görsele göredir; mağaza/tarih
+    /// kuralları yalnız göreli sıraya baktığı için etkilenmez.</summary>
+    private static readonly (double From, double To)[] Bands = [(0.00, 0.27), (0.50, 0.80), (0.88, 1.00)];
+
     private static byte[]? PageJpeg(string path, int pageIndex)
     {
         var ext = Path.GetExtension(path).ToLowerInvariant();
-        using var bmp = ImageExtensions.Contains(ext)
+        using var page = ImageExtensions.Contains(ext)
             ? SKBitmap.Decode(path)
             : PdfiumGate.Run(() => PDFtoImage.Conversion.ToImage(File.ReadAllBytes(path), page: pageIndex, options: new PDFtoImage.RenderOptions(Dpi: 150)));
-        if (bmp is null) return null;
-        using var image = SKImage.FromBitmap(bmp);
-        using var data = image.Encode(SKEncodedImageFormat.Jpeg, 88);
+        if (page is null) return null;
+
+        const int gap = 10;
+        var heights = Bands.Select(b => (int)(page.Height * (b.To - b.From))).ToArray();
+        using var stitched = new SKBitmap(page.Width, heights.Sum() + gap * (Bands.Length - 1));
+        using (var canvas = new SKCanvas(stitched))
+        {
+            canvas.Clear(SKColors.White);
+            int y = 0;
+            for (int i = 0; i < Bands.Length; i++)
+            {
+                var top = (int)(page.Height * Bands[i].From);
+                canvas.DrawBitmap(page, new SKRectI(0, top, page.Width, top + heights[i]), new SKRect(0, y, page.Width, y + heights[i]));
+                y += heights[i] + gap;
+            }
+        }
+        var scale = Math.Min(1.0, 1300.0 / stitched.Width);
+        using var small = scale < 1 ? stitched.Resize(new SKImageInfo((int)(stitched.Width * scale), (int)(stitched.Height * scale)), SKFilterQuality.High) : stitched.Copy();
+        using var image = SKImage.FromBitmap(small);
+        using var data = image.Encode(SKEncodedImageFormat.Jpeg, 85);
         return data.ToArray();
     }
 }

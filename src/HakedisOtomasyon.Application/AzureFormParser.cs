@@ -43,6 +43,7 @@ public static class AzureFormParser
     private static readonly Regex AnyLabel = new(@"(Ç|C)A(Ğ|G)R(I|İ)|(I|İ)Ş(I|İ)N\s*YER|ADRES(I|İ)|TEL\s*:|FAX|E-?POSTA|M(Ü|U)ŞTER(I|İ)",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex CodeInParens = new(@"\(\s*(\d{3,5})\s*\)?", RegexOptions.Compiled);
+    private static readonly Regex BareCode = new(@"(?<![\d.,/])(\d{3,5})(?![\d.,/])", RegexOptions.Compiled);
     private static readonly Regex DateLabel = new(@"TAR(I|İ)H\s*:?", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex DayMonth = new(@"(?<!\d)(\d{1,2})\s*[./\-,]\s*(\d{1,2})(?!\d{2})", RegexOptions.Compiled);
     private static readonly Regex Title = new(@"FORMU", RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -57,6 +58,12 @@ public static class AzureFormParser
                 var value = ValueAfter(line, label.Match(line.Text), lines);
                 if (value.Length == 0) continue;
                 var m = CodeInParens.Match(value);
+                if (!m.Success)
+                {
+                    // parantezsiz yazılmış kod: satırdaki SON 3–5 haneli sayı ("365 Zirve Kent 3M Migros 1996" → 1996)
+                    var bare = BareCode.Matches(value);
+                    if (bare.Count > 0) m = bare[^1];
+                }
                 if (m.Success)
                 {
                     code ??= m.Groups[1].Value;
@@ -97,9 +104,10 @@ public static class AzureFormParser
         return (null, null);
     }
 
-    private static readonly Regex GasWord = new(@"\bGAZ\b|\bR\s*-?\s*(404|22|407|410|134|448|449|452|507|290|600)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex GasTypeRx = new(@"R\s*-?\s*(404|22|407|410|134|448|449|452|507|290|600)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex GasWord = new(@"\b[G6]\s*[AÂ4]\s*[ZŽ2]\b|\bR\s*-?\s*(4\s*[0O]\s*[4AhH]|22|407|410|134|448|449|452|507|290|600)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex GasTypeRx = new(@"R\s*-?\s*(4\s*[0O]\s*[4AhH]|22|407|410|134|448|449|452|507|290|600)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex CleanQty = new(@"^\s*(\d{1,3}(?:[.,]\d{1,2})?)\s*(KG|KĞ|K|KGR)?\.?\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex KgQty = new(@"\d\s*(KG|KĞ|K\b)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex AnyNumber = new(@"\d{1,3}(?:[.,]\d{1,2})?", RegexOptions.Compiled);
 
     /// <summary>En az bu güvenle okunan miktar teyitsiz kabul edilir.</summary>
@@ -132,9 +140,24 @@ public static class AzureFormParser
                     System.Globalization.CultureInfo.InvariantCulture, out var q) && q > 0 ? q : null;
                 var isClean = clean.Success && qtyCell!.Confidence >= QtyConfidence && qty is > 0 and <= 200;
                 var t = GasTypeRx.Match(cell.Text);
-                found.Add((qty, raw, isClean, t.Success ? "R" + t.Groups[1].Value : null));
+                found.Add((qty, raw, isClean, t.Success ? "R" + NormalizeGas(t.Groups[1].Value) : null));
             }
-            if (found.Count == 0) continue;
+            if (found.Count == 0)
+            {
+                // yalnız kilo cinsinden miktar (gaz kg ile yazılır; "2 ad" gibi adet satırları gaz sayılmaz)
+                var filled = table.Cells.Where(c => c.Row > 0 && qtyColumns.Contains(c.Column) && KgQty.IsMatch(c.Text)).ToList();
+                if (filled.Count == 1)
+                {
+                    var only = filled[0];
+                    var nameCell = table.Cells.Where(c => c.Row == only.Row && c.Column < only.Column).OrderByDescending(c => c.Column).FirstOrDefault();
+                    var n = AnyNumber.Match(only.Text).Value;
+                    decimal? q = decimal.TryParse(n.Replace(',', '.'), System.Globalization.NumberStyles.Number,
+                        System.Globalization.CultureInfo.InvariantCulture, out var v) && v > 0 ? v : null;
+                    return new(q, only.Text.Trim(), null, true,
+                        $"Malzeme adı gaz olarak okunamadı (\"{nameCell?.Text.Trim()}\"); tek dolu satırın miktarı alındı.");
+                }
+                continue;
+            }
 
             var type = found.Select(f => f.Type).FirstOrDefault(t => t is not null);
             if (found.Count > 1)
@@ -151,6 +174,12 @@ public static class AzureFormParser
                 : new(one.Qty, one.Raw, type, true, $"Miktar net okunamadı (formda \"{one.Raw}\").");
         }
         return null;
+    }
+
+    private static string NormalizeGas(string raw)
+    {
+        var t = raw.Replace(" ", string.Empty).ToUpperInvariant().Replace('O', '0');
+        return t.StartsWith("40") ? "404" : t;
     }
 
     /// <summary>Etiketten sonraki metin + aynı hizada, etiketin sağındaki (başka etiket olmayan) satırlar.</summary>

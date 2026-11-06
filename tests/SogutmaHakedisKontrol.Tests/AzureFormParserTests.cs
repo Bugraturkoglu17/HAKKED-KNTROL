@@ -134,6 +134,32 @@ public class AzureFormParserTests
     public void GazSatiriYoksa_Null_AtikTablosuSayilmaz()
         => Assert.Null(AzureFormParser.Gas(new[] { WasteTable(), MaterialTable(new(1, 0, "Expansion", 1), new(1, 1, "2 ad", 1)) }));
 
+    /// <summary>Kod parantezsiz, satırın sonunda: "365 Zirve Kant 3M Minros 1996" → 1996 (baştaki 365 değil).</summary>
+    [Fact]
+    public void ParantezsizKod_SatirSonundakiSayi()
+    {
+        var lines = new List<OcrLine> { new("SOĞUTMA MALZEME FORMU", 0.5, 0.13), new("ÇAĞRI BİLDİREN : 365 Zirve Kant 3M Minros 1996", 0.4, 0.16) };
+        Assert.Equal(("1996", "365 Zirve Kant 3M Minros"), AzureFormParser.Store(lines));
+    }
+
+    [Theory]
+    [InlineData("R-4O4 A 6az")]
+    [InlineData("R-40h A Gaz")]
+    public void BozukOkunanGazYazisi_Taninir(string name)
+    {
+        var g = AzureFormParser.Gas(new[] { MaterialTable(new(1, 0, name, 1), new(1, 1, "5kg", 1)) })!;
+        Assert.Equal(5m, g.Quantity);
+        Assert.Equal("R404", g.GasType);
+    }
+
+    [Fact]
+    public void GazYazisiTaninmazsa_TekDoluSatirAlinir_TeyitIster()
+    {
+        var g = AzureFormParser.Gas(new[] { MaterialTable(new(1, 0, "1 R-hOh A 6@", 1), new(1, 1, "5kg", 1)) })!;
+        Assert.Equal(5m, g.Quantity);
+        Assert.True(g.NeedsCheck);
+    }
+
     [Fact]
     public void BilgiYoksa_Bos()
     {
