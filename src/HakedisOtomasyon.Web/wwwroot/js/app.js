@@ -171,3 +171,39 @@ window.pdfPages = {
         if (state) { state.observer.disconnect(); clearTimeout(state.timer); state.ref = null; container._pdfPages = null; }
     }
 };
+
+// ─── Tarih alanı: noktalar kendiliğinden ───────────────────────────────────────
+// Yer tutucusu "gg.aa.yyyy" olan tarih kutularında kullanıcı yalnız rakam yazar: 20042026 → 20.04.2026.
+// Kendisi nokta yazarsa tek haneli gün/ay sıfırla tamamlanır (2.4. → 02.04.). Yıl 2 haneli yazılırsa (20.04.26)
+// kutudan çıkınca 2026 olur. Silme tuşlarına karışılmaz.
+(function () {
+    const isDateBox = el => el && el.tagName === 'INPUT' && el.placeholder === 'gg.aa.yyyy';
+    const format = (raw) => {
+        const parts = raw.split('.');
+        let digits = '';
+        parts.forEach((p, i) => {
+            const d = p.replace(/\D/g, '');
+            // kullanıcının noktayla bitirdiği tek haneli gün/ay → başına 0
+            digits += (i < parts.length - 1 && i < 2 && d.length === 1) ? '0' + d : d;
+        });
+        digits = digits.slice(0, 8);
+        let out = digits.slice(0, 2);
+        if (digits.length >= 2) out += '.';
+        out += digits.slice(2, 4);
+        if (digits.length >= 4) out += '.';
+        out += digits.slice(4, 8);
+        return out;
+    };
+    document.addEventListener('input', (e) => {
+        const el = e.target;
+        if (!isDateBox(el) || (e.inputType || '').startsWith('delete')) return;
+        const v = format(el.value);
+        if (v !== el.value) { el.value = v; el.setSelectionRange(v.length, v.length); }
+    }, true);
+    document.addEventListener('change', (e) => {
+        const el = e.target;
+        if (!isDateBox(el)) return;
+        const m = /^(\d{2})\.(\d{2})\.(\d{2})$/.exec(el.value);
+        if (m) el.value = `${m[1]}.${m[2]}.20${m[3]}`;
+    }, true);
+})();
