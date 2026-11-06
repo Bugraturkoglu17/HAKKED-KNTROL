@@ -106,13 +106,13 @@
                         @* Form no (sağ üst, OCR) + elle yazılmış mağaza (yapay zekâ) okunup doldurulur (tek sayfalık dosyada) *@
                         <FormNumberAutoFillButton FilePath="@CurrentFile.FilePath" PageIndex="@_cursor.PageIndex" OnRead="@(n => _formNo = n)"
                                                   Stores="@_stores" PreferredRegion="@ClaimRegion" CurrentStore="@_store"
-                                                  OnStore="@(s => _store = s)" OnDate="@(d => _date = d)" ClaimMonth="@ServiceMonth"
+                                                  OnStore="@(s => _store = s)" OnStoreCheck="@(u => _storeWarning = u)" OnDate="@(d => _date = d)" ClaimMonth="@ServiceMonth"
                                                   ReadsGas="@IsGas" OnGas="@OnGasRead" OnAllClean="@OnAutoFillClean" />
                     </MudStack>
                     <div @key="@($"kayit-{_entryKey}")">
                         <MudGrid Spacing="2">
                             <MudItem xs="12" md="9">
-                                <MudAutocomplete T="StoreDto" Value="@_store" ValueChanged="@(s => _store = s)"
+                                <MudAutocomplete T="StoreDto" Value="@_store" ValueChanged="@(s => { _store = s; _storeWarning = false; })" Error="@_storeWarning"
                                                  SearchFunc="@SearchStoresAsync"
                                                  ToStringFunc="@(s => s is null ? string.Empty : $"{s.Code} — {s.Name}")"
                                                  Label="Mağaza *" Variant="Variant.Outlined" Margin="Margin.Dense" Clearable ResetValueOnEmptyText
@@ -304,6 +304,8 @@
     private int? _editingId;
     private int _entryKey;
     private StoreDto? _store;
+    /// <summary>Mağaza formdan kesin okunamadı (adına göre seçildi / öneri / bulunamadı) — kutunun çerçevesi kırmızı kalır.</summary>
+    private bool _storeWarning;
     private DateTime? _date;
     private string? _formNo;
     private decimal? _qty;
@@ -479,7 +481,7 @@
     private void ClearEntry()
     {
         _editingId = null;
-        _store = null; _date = null; _formNo = null; _qty = null; _qtyWarning = null;
+        _store = null; _storeWarning = false; _date = null; _formNo = null; _qty = null; _qtyWarning = null;
         _error = null;
         _entryKey++;   // alanları (özellikle mağaza arama kutusunu) baştan kur → görünen metin de temizlenir
         // Gaz türü (_gas) bilerek temizlenmez: kullanıcı değiştirene kadar sabit kalır.
@@ -495,6 +497,7 @@
         if (idx >= 0) OpenFormPage(idx, f);   // formu sol panelde, kayıtlı sayfasında aç
         _editingId = f.Id;
         _store = f.StoreId.HasValue ? (_stores.FirstOrDefault(s => s.Id == f.StoreId.Value) ?? FromForm(f)) : null;
+        _storeWarning = false;
         _date = f.FormDate;
         _formNo = f.FormNumber;
         var item = GlycolItem(f);
@@ -515,7 +518,7 @@
     private void ClearForNextForm()
     {
         _editingId = null;
-        _store = null; _date = null; _formNo = null; _qty = null; _qtyWarning = null;   // gaz türü (_gas) bilerek korunur
+        _store = null; _storeWarning = false; _date = null; _formNo = null; _qty = null; _qtyWarning = null;   // gaz türü (_gas) bilerek korunur
         _error = null;
         _entryKey++;
     }

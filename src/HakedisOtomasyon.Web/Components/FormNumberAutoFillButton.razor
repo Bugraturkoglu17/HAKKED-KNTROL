@@ -58,6 +58,9 @@
     /// <summary>Seçilen mağaza.</summary>
     [Parameter] public EventCallback<StoreDto> OnStore { get; set; }
 
+    /// <summary>Mağaza kesin bulunamadıysa true (ekran mağaza kutusunun çerçevesini kırmızı yapar; ayrıca mesaj gösterilmez).</summary>
+    [Parameter] public EventCallback<bool> OnStoreCheck { get; set; }
+
     /// <summary>Okunan servis tarihi (gün/ay formdan, yıl içinde bulunulan yıl).</summary>
     [Parameter] public EventCallback<DateTime> OnDate { get; set; }
 
@@ -190,39 +193,29 @@
     /// <returns>Mağaza KODLA kesin bulunup seçildiyse true.</returns>
     private async Task<bool> ApplyStoreAsync(HandwrittenStoreResult read)
     {
-        var keep = CurrentStore is null ? string.Empty : $" Ekrandaki mağaza ({CurrentStore.Code}) değiştirilmedi.";
-        if (read.Error is not null)
+        // Kesin değilse mesaj yok: mağaza kutusunun çerçevesi kırmızı olur (kullanıcı mağazayı seçince/değiştirince kalkar).
+        // Kod okunamadıysa ekrandaki mağaza değiştirilmez.
+        if (read.Error is not null || (read.StoreCode is null && read.StoreName is null))
         {
-            Snackbar.Add($"Mağaza okunamadı: {read.Error}{keep}", Severity.Warning);
+            await OnStoreCheck.InvokeAsync(true);
             return false;
         }
-        if (read.StoreCode is null && read.StoreName is null)
-        {
-            Snackbar.Add($"Formda mağaza bilgisi okunamadı; mağazayı elle seçin.{keep}", Severity.Warning);
-            return false;
-        }
-
-        var written = string.Join(" ", new[] { read.StoreName, read.StoreCode is null ? null : $"({read.StoreCode})" }.Where(x => x is not null));
         var match = StoreMatcher.Match(read.StoreCode, read.StoreName, Stores!, PreferredRegion);
         if (match.Selected is not null)
         {
             await OnStore.InvokeAsync(match.Selected);
-            if (match.Method == "kod")
-                Snackbar.Add($"Mağaza seçildi: {match.Selected.Code} — {match.Selected.Name}", Severity.Success);
-            else
-                Snackbar.Add($"Mağaza ADINA göre seçildi: {match.Selected.Code} — {match.Selected.Name} (formda: \"{written}\"). Kod yazılı değil, lütfen kontrol edin.",
-                    Severity.Warning, o => o.VisibleStateDuration = 8000);
-            return match.Method == "kod";
+            var sure = match.Method == "kod";
+            await OnStoreCheck.InvokeAsync(!sure);   // adına göre seçildiyse kontrol edilmeli
+            if (sure) Snackbar.Add($"Mağaza seçildi: {match.Selected.Code} — {match.Selected.Name}", Severity.Success);
+            return sure;
         }
         if (match.Suggestions.Count > 0)
         {
-            _suggestions = match.Suggestions.ToList();
+            _suggestions = match.Suggestions.ToList();   // öneri çipleri butonun yanında kalır
             _storeIdAtSuggest = CurrentStore?.Id;
             _suggestFor = PageKey;
-            Snackbar.Add($"Formda \"{written}\" yazıyor; mağaza kesin bulunamadı. Önerilerden seçin ya da elle girin.{keep}", Severity.Warning);
-            return false;
         }
-        Snackbar.Add($"Formda \"{written}\" yazıyor; listede eşleşen mağaza bulunamadı.{keep}", Severity.Warning);
+        await OnStoreCheck.InvokeAsync(true);
         return false;
     }
 
@@ -230,5 +223,6 @@
     {
         _suggestions = new();
         await OnStore.InvokeAsync(store);
+        await OnStoreCheck.InvokeAsync(false);   // kullanıcı öneriden seçti
     }
 }

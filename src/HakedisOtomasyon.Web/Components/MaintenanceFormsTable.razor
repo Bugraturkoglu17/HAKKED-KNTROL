@@ -105,12 +105,12 @@
                         @* Form no (sağ üst, OCR) + elle yazılmış mağaza (yapay zekâ) okunup doldurulur (tek sayfalık dosyada) *@
                         <FormNumberAutoFillButton FilePath="@CurrentFile.FilePath" PageIndex="@_cursor.PageIndex" OnRead="@(n => _formNo = n)"
                                                   Stores="@_stores" PreferredRegion="@ClaimRegion" CurrentStore="@_store"
-                                                  OnStore="@(s => _store = s)" OnDate="@(d => _date = d)" ClaimMonth="@ServiceMonth" />
+                                                  OnStore="@(s => _store = s)" OnStoreCheck="@(u => _storeWarning = u)" OnDate="@(d => _date = d)" ClaimMonth="@ServiceMonth" />
                     </MudStack>
                     <div @key="@($"form-{_headerKey}")">
                         <MudGrid Spacing="2">
                             <MudItem xs="12" md="9">
-                                <MudAutocomplete T="StoreDto" Value="@_store" ValueChanged="@(s => _store = s)"
+                                <MudAutocomplete T="StoreDto" Value="@_store" ValueChanged="@(s => { _store = s; _storeWarning = false; })" Error="@_storeWarning"
                                                  SearchFunc="@SearchStoresAsync"
                                                  ToStringFunc="@(s => s is null ? string.Empty : $"{s.Code} — {s.Name}")"
                                                  Label="Mağaza *" Variant="Variant.Outlined" Margin="Margin.Dense" Clearable ResetValueOnEmptyText
@@ -345,6 +345,8 @@
     // form bilgisi (malzeme eklerken yerinde kalır)
     private int _headerKey;
     private StoreDto? _store;
+    /// <summary>Mağaza formdan kesin okunamadı (adına göre seçildi / öneri / bulunamadı) — kutunun çerçevesi kırmızı kalır.</summary>
+    private bool _storeWarning;
     private DateTime? _date;
     private string? _formNo;
     // malzeme (her Ekle'den sonra temizlenir)
@@ -558,7 +560,7 @@
     {
         _editingItemId = null; _editingFormId = null; _editingItemText = string.Empty;
         _error = null;
-        _store = null; _date = null; _formNo = null;
+        _store = null; _storeWarning = false; _date = null; _formNo = null;
         _headerKey++;
         ClearItem();
     }
@@ -572,7 +574,7 @@
 
     private void ClearHeader()
     {
-        _store = null; _date = null; _formNo = null;
+        _store = null; _storeWarning = false; _date = null; _formNo = null;
         _headerKey++;
     }
 
@@ -604,6 +606,7 @@
         var (name, type) = NameAndType(row.Item);
         _editingItemText = $"{row.Item.ItemCode} — {name}{(type.Length > 0 ? " · " + type : "")}".Trim(' ', '—');
         _store = f.StoreId.HasValue ? (_stores.FirstOrDefault(s => s.Id == f.StoreId.Value) ?? FromForm(f)) : null;
+        _storeWarning = false;
         _date = f.FormDate;
         _formNo = f.FormNumber;
         _priceItem = null;
