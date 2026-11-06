@@ -15,6 +15,9 @@ public sealed record HandwrittenStoreResult(string? StoreCode, string? StoreName
 
     /// <summary>Servis tarihinin ayı.</summary>
     public int? Month { get; init; }
+
+    /// <summary>"Kullanılan Malzeme" tablosundaki gaz miktarı (yalnız tabloyu okuyabilen okuyucuda; okunamadıysa null).</summary>
+    public GasReading? Gas { get; init; }
 }
 
 /// <summary>El yazısından okunan gün/aydan tarih: yıl formdan OKUNMAZ, içinde bulunulan yıl alınır (kullanıcı kuralı).</summary>

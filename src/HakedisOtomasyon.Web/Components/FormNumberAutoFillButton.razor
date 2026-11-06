@@ -61,7 +61,13 @@
     /// <summary>Okunan servis tarihi (gün/ay formdan, yıl içinde bulunulan yıl).</summary>
     [Parameter] public EventCallback<DateTime> OnDate { get; set; }
 
-    /// <summary>Hakedişin ayı (1–12) — okunan ay farklıysa uyarı verilir.</summary>
+    /// <summary>Gaz Kullanım hakedişi: "Kullanılan Malzeme" tablosundaki gaz satırının miktarı da okunur.</summary>
+    [Parameter] public bool ReadsGas { get; set; }
+
+    /// <summary>Okunan gaz miktarı (teyit gerekip gerekmediğiyle birlikte).</summary>
+    [Parameter] public EventCallback<GasReading> OnGas { get; set; }
+
+    /// <summary>Bu hakedişe girilmiş formların ayı (1–12; fatura dönemi değil) — okunan ay farklıysa uyarı verilir.</summary>
     [Parameter] public int? ClaimMonth { get; set; }
 
     private string? _countedPath;
@@ -127,6 +133,7 @@
             var store = await storeTask;
             if (store is null || PageKey != key) return;
             await ApplyDateAsync(store);
+            await ApplyGasAsync(store);
             await ApplyStoreAsync(store);
         }
         catch (Exception ex)
@@ -152,10 +159,21 @@
         }
         await OnDate.InvokeAsync(date.Value);
         if (ClaimMonth is int month and >= 1 and <= 12 && date.Value.Month != month)
-            Snackbar.Add($"Tarih {date.Value:dd.MM.yyyy} okundu ama hakediş ayı {Tr.DateTimeFormat.GetMonthName(month).ToUpper(Tr)} — "
+            Snackbar.Add($"Tarih {date.Value:dd.MM.yyyy} okundu ama bu hakedişteki formlar {Tr.DateTimeFormat.GetMonthName(month).ToUpper(Tr)} ayına ait — "
                          + "formdaki tarihi mutlaka kontrol edin.", Severity.Error, o => o.VisibleStateDuration = 10000);
         else
             Snackbar.Add($"Tarih okundu: {date.Value:dd.MM.yyyy} (yıl sabit {date.Value.Year}). Kontrol edin.", Severity.Info);
+    }
+
+    private async Task ApplyGasAsync(HandwrittenStoreResult read)
+    {
+        if (!ReadsGas || read.Error is not null) return;
+        if (read.Gas is null)
+        {
+            Snackbar.Add("Formun malzeme kısmında gaz satırı bulunamadı; miktarı elle girin.", Severity.Warning);
+            return;
+        }
+        await OnGas.InvokeAsync(read.Gas);
     }
 
     private async Task ApplyStoreAsync(HandwrittenStoreResult read)

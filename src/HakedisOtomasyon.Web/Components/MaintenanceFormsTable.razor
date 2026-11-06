@@ -105,7 +105,7 @@
                         @* Form no (sağ üst, OCR) + elle yazılmış mağaza (yapay zekâ) okunup doldurulur (tek sayfalık dosyada) *@
                         <FormNumberAutoFillButton FilePath="@CurrentFile.FilePath" PageIndex="@_cursor.PageIndex" OnRead="@(n => _formNo = n)"
                                                   Stores="@_stores" PreferredRegion="@ClaimRegion" CurrentStore="@_store"
-                                                  OnStore="@(s => _store = s)" OnDate="@(d => _date = d)" ClaimMonth="@Claim?.Month" />
+                                                  OnStore="@(s => _store = s)" OnDate="@(d => _date = d)" ClaimMonth="@ServiceMonth" />
                     </MudStack>
                     <div @key="@($"form-{_headerKey}")">
                         <MudGrid Spacing="2">
@@ -401,6 +401,11 @@
     protected override async Task OnParametersSetAsync() => await LoadPageCountsAsync();
 
     private List<string> FilePaths => Files.Select(f => f.FilePath).ToList();
+
+    /// <summary>Servis ayı: bu hakedişe girilmiş formların en çok geçen tarih ayı (fatura dönemi DEĞİL). Kayıt yoksa null.
+    /// Otomatik doldur okunan tarihin ayı bundan farklıysa uyarır (yanlış okuma ya da başka aya ait form).</summary>
+    private int? ServiceMonth => Forms.Where(f => f.FormDate.HasValue).GroupBy(f => f.FormDate!.Value.Month)
+        .OrderByDescending(g => g.Count()).Select(g => (int?)g.Key).FirstOrDefault();
 
     /// <summary>Kaçıncı formda olunduğu: tüm dosyaların sayfaları sırayla sayılır ("25 / 250").</summary>
     private string NavPosition

@@ -77,6 +77,63 @@ public class AzureFormParserTests
         Assert.Equal((3, 9), AzureFormParser.Date(acil));
     }
 
+    // ── Gaz miktarı ("Kullanılan Malzeme" tablosu; gerçek gaz formlarının Azure çıktısı) ──
+    private static OcrTable MaterialTable(params OcrCell[] rows) => new(new List<OcrCell>
+    {
+        new(0, 0, "Malzemenin Cinsi", 1), new(0, 1, "Miktarı", 1), new(0, 2, "Malzemenin Cinsi", 1), new(0, 3, "Miktarı", 1),
+    }.Concat(rows).ToList());
+
+    private static OcrTable WasteTable() => new(new List<OcrCell>
+    {
+        new(0, 0, "ATIK Malzemenin Cinsi", 1), new(0, 1, "Miktarı", 1), new(1, 0, "1 R404 gaz", 1), new(1, 1, "3kg", 1),
+    });
+
+    [Theory]
+    [InlineData("IR-404 A Gaz", "20kg", 20)]
+    [InlineData("1 R-404 A Gaz", "25kg", 25)]
+    [InlineData("gaz", "5,5 kg", 5.5)]
+    [InlineData("R22", "12", 12)]
+    public void GazSatiri_MiktarOkunur_Teyitsiz(string name, string qty, decimal expected)
+    {
+        var g = AzureFormParser.Gas(new[] { WasteTable(), MaterialTable(new(1, 0, name, 0.95), new(1, 1, qty, 0.95), new(1, 2, "11", 1)) })!;
+        Assert.Equal(expected, g.Quantity);
+        Assert.False(g.NeedsCheck);
+    }
+
+    [Fact]
+    public void GazTuru_Okunur()
+        => Assert.Equal("R404", AzureFormParser.Gas(new[] { MaterialTable(new(1, 0, "IR-404 A Gaz", 1), new(1, 1, "20kg", 1)) })!.GasType);
+
+    [Fact]
+    public void SagYaridakiGaz_SagdakiMiktarSutunundan()
+    {
+        var g = AzureFormParser.Gas(new[] { MaterialTable(new(1, 0, "1 Expansion", 1), new(1, 1, "2ad", 1), new(1, 2, "11 R404 gaz", 1), new(1, 3, "7kg", 1)) })!;
+        Assert.Equal(7m, g.Quantity);
+    }
+
+    [Theory]
+    [InlineData("2Okg", 0.95)]      // harf karışmış
+    [InlineData("20kg", 0.40)]      // düşük güven
+    [InlineData("", 1)]             // miktar yazılmamış
+    public void BozukMiktar_TeyitIster(string qty, double conf)
+    {
+        var g = AzureFormParser.Gas(new[] { MaterialTable(new(1, 0, "R404 Gaz", 1), new(1, 1, qty, conf)) })!;
+        Assert.True(g.NeedsCheck);
+        Assert.NotNull(g.Note);
+    }
+
+    [Fact]
+    public void IkiGazSatiri_ToplanirTeyitIster()
+    {
+        var g = AzureFormParser.Gas(new[] { MaterialTable(new(1, 0, "R404 Gaz", 1), new(1, 1, "10kg", 1), new(2, 0, "R404 gaz", 1), new(2, 1, "5kg", 1)) })!;
+        Assert.Equal(15m, g.Quantity);
+        Assert.True(g.NeedsCheck);
+    }
+
+    [Fact]
+    public void GazSatiriYoksa_Null_AtikTablosuSayilmaz()
+        => Assert.Null(AzureFormParser.Gas(new[] { WasteTable(), MaterialTable(new(1, 0, "Expansion", 1), new(1, 1, "2 ad", 1)) }));
+
     [Fact]
     public void BilgiYoksa_Bos()
     {

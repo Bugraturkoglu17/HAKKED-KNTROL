@@ -84,7 +84,8 @@ public sealed class AzureHandwrittenStoreReader : IHandwrittenStoreReader
                 var lines = Lines(doc.RootElement);
                 var (code, name) = AzureFormParser.Store(lines);
                 var (day, month) = AzureFormParser.Date(lines);
-                return new(code, name, null) { Day = day, Month = month };
+                var gas = AzureFormParser.Gas(Tables(doc.RootElement));
+                return new(code, name, null) { Day = day, Month = month, Gas = gas };
             }
             return new(null, null, "Azure zamanında yanıt vermedi.");
         }
@@ -124,6 +125,38 @@ public sealed class AzureHandwrittenStoreReader : IHandwrittenStoreReader
                 }
                 list.Add(new OcrLine(text, x, y));
             }
+        }
+        return list;
+    }
+
+    /// <summary>Tablolar; her hücrenin güveni = hücredeki kelimelerin en düşük güveni (kelime yoksa 1).</summary>
+    private static List<OcrTable> Tables(JsonElement root)
+    {
+        var list = new List<OcrTable>();
+        if (!root.TryGetProperty("analyzeResult", out var result) || !result.TryGetProperty("tables", out var tables)) return list;
+        var words = new List<(int Offset, int Length, double Confidence)>();
+        if (result.TryGetProperty("pages", out var pages))
+            foreach (var page in pages.EnumerateArray())
+                if (page.TryGetProperty("words", out var ws))
+                    foreach (var w in ws.EnumerateArray())
+                        words.Add((w.GetProperty("span").GetProperty("offset").GetInt32(), w.GetProperty("span").GetProperty("length").GetInt32(),
+                                   w.TryGetProperty("confidence", out var c) ? c.GetDouble() : 1d));
+        foreach (var table in tables.EnumerateArray())
+        {
+            var cells = new List<OcrCell>();
+            foreach (var cell in table.GetProperty("cells").EnumerateArray())
+            {
+                double conf = 1d;
+                if (cell.TryGetProperty("spans", out var spans))
+                    foreach (var span in spans.EnumerateArray())
+                    {
+                        int from = span.GetProperty("offset").GetInt32(), to = from + span.GetProperty("length").GetInt32();
+                        foreach (var w in words.Where(w => w.Offset >= from && w.Offset < to)) conf = Math.Min(conf, w.Confidence);
+                    }
+                cells.Add(new OcrCell(cell.GetProperty("rowIndex").GetInt32(), cell.GetProperty("columnIndex").GetInt32(),
+                    cell.TryGetProperty("content", out var ct) ? ct.GetString() ?? string.Empty : string.Empty, conf));
+            }
+            list.Add(new OcrTable(cells));
         }
         return list;
     }
