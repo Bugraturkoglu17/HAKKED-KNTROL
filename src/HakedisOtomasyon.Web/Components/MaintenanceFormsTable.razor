@@ -61,8 +61,8 @@
         <MudStack Spacing="2">
 
             @* üst satır: bilgi çipleri solda, dosya/sayfa gezinme (ileri-geri) sağ üstte *@
-            <div style="display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap">
-                <MudStack Row Spacing="1" Style="flex-wrap:wrap;flex:1 1 280px">
+            <div style="display:flex;align-items:flex-start;gap:12px">
+                <MudStack Row Spacing="1" Style="flex-wrap:wrap;flex:1 1 0;min-width:0">
                     <MudChip T="string" Size="Size.Small" Icon="@Icons.Material.Filled.CurrencyExchange"
                              Color="@(EurPricing.IsValidRate(Claim?.EurRate) ? Color.Info : Color.Warning)">
                         @(EurPricing.IsValidRate(Claim?.EurRate) ? $"EUR Kuru: {EurPricing.FormatRate(Claim!.EurRate!.Value)} ₺" : "EUR kuru girilmedi — EUR fiyatlı kalem eklenemez")
@@ -79,28 +79,17 @@
                 </MudStack>
                 @if (CurrentFile is not null)
                 {
-                    <MudPaper Elevation="1" Class="pa-1" Style="margin-left:auto;flex:0 0 auto">
-                        <MudStack Row AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
-                            <MudIconButton Icon="@Icons.Material.Filled.NavigateBefore" Size="Size.Small" OnClick="PreviousFile" Disabled="@(!_cursor.CanPrevious)" />
-                            <MudStack Row AlignItems="AlignItems.Center" Spacing="1">
-                                <MudText Typo="Typo.body2">Dosya @(_fileIndex + 1) / @Files.Count</MudText>
-                                @{ var pageCount = _cursor.PagesOf(CurrentFile.FilePath); }
-                                @if (pageCount > 1)
-                                {
-                                    @* çok sayfalı PDF: her sayfa ayrı servis formu; oklar sayfa sayfa gezer, Otomatik doldur bu sayfayı okur *@
-                                    <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Outlined" Icon="@Icons.Material.Filled.Description">
-                                        Sayfa @(_cursor.PageIndex + 1) / @pageCount
-                                    </MudChip>
-                                }
-                                @{ var cnt = FormCount(CurrentFile); }
-                                <MudChip T="string" Size="Size.Small" Color="@(cnt > 0 ? Color.Success : Color.Warning)"
-                                         Icon="@(cnt > 0 ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.WarningAmber)">
-                                    @(cnt > 0 ? $"{cnt} form girildi" : "kayıt yok")
-                                </MudChip>
-                            </MudStack>
-                            <MudIconButton Icon="@Icons.Material.Filled.NavigateNext" Size="Size.Small" OnClick="NextFile" Disabled="@(!_cursor.CanNext(FilePaths))" />
-                        </MudStack>
-                    </MudPaper>
+                    @* önceki / sonraki form (çok sayfalı PDF'de sayfa sayfa, sonra sonraki dosya) *@
+                    <div class="form-nav">
+                        <MudTooltip Text="Önceki form">
+                            <MudIconButton Icon="@Icons.Material.Filled.ChevronLeft" Variant="Variant.Outlined" Color="Color.Primary"
+                                           Size="Size.Small" OnClick="PreviousFile" Disabled="@(!_cursor.CanPrevious)" />
+                        </MudTooltip>
+                        <MudTooltip Text="Sonraki form">
+                            <MudIconButton Icon="@Icons.Material.Filled.ChevronRight" Variant="Variant.Filled" Color="Color.Primary"
+                                           Size="Size.Small" OnClick="NextFile" Disabled="@(!_cursor.CanNext(FilePaths))" />
+                        </MudTooltip>
+                    </div>
                 }
             </div>
 

@@ -294,3 +294,7 @@ html, body {
 @media (max-width: 960px) {
     .pdfpages-scroll { height: 400px; }
 }
+
+/* Form işleme: önceki / sonraki form düğmeleri (sağ üst) */
+.form-nav { display: flex; gap: 6px; flex: 0 0 auto; margin-left: auto; }
+.form-nav .mud-icon-button { border-radius: 8px; width: 36px; height: 32px; }
