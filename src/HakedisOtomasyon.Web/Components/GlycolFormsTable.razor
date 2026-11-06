@@ -107,7 +107,7 @@
                         <FormNumberAutoFillButton FilePath="@CurrentFile.FilePath" PageIndex="@_cursor.PageIndex" OnRead="@(n => _formNo = n)"
                                                   Stores="@_stores" PreferredRegion="@ClaimRegion" CurrentStore="@_store"
                                                   OnStore="@(s => _store = s)" OnDate="@(d => _date = d)" ClaimMonth="@ServiceMonth"
-                                                  ReadsGas="@IsGas" OnGas="@OnGasRead" />
+                                                  ReadsGas="@IsGas" OnGas="@OnGasRead" OnAllClean="@OnAutoFillClean" />
                     </MudStack>
                     <div @key="@($"kayit-{_entryKey}")">
                         <MudGrid Spacing="2">
@@ -139,7 +139,7 @@
                                 <MudNumericField T="decimal?" Value="_qty" ValueChanged="@((decimal? v) => { _qty = v; _qtyWarning = null; })"
                                                  Label="Miktar *" Variant="Variant.Outlined"
                                                  Margin="Margin.Dense" Min="0" Culture="@Tr" Format="0.##" HideSpinButtons
-                                                 Error="@(_qtyWarning is not null)" ErrorText="@_qtyWarning" />
+                                                 Error="@(_qtyWarning is not null)" />
                             </MudItem>
                         </MudGrid>
                     </div>
@@ -340,10 +340,17 @@
             && !string.Equals(g.GasType.Replace("-", ""), selected.Replace("-", ""), StringComparison.OrdinalIgnoreCase))
             notes.Add($"Formda {g.GasType} yazıyor, seçili gaz {selected}.");
         _qtyWarning = notes.Count == 0 ? null : "Teyit edin: " + string.Join(" ", notes);
+        // emin olunamadıysa yalnız Miktar kutusunun çerçevesi kırmızı kalır (kullanıcı değiştirince kalkar); ayrıca mesaj yok
         if (_qtyWarning is null)
             Snackbar.Add($"Gaz miktarı okundu: {g.Quantity:0.##} kg.", Severity.Success);
-        else
-            Snackbar.Add(_qtyWarning, Severity.Warning, o => o.VisibleStateDuration = 8000);
+    }
+
+    /// <summary>Gaz hakedişinde Otomatik doldur her alanı sorunsuz okuduysa (form no, KODLA mağaza, uyarısız tarih, teyitsiz
+    /// miktar) kayıt kendiliğinden eklenir — kullanıcı Ekle'ye basmaz. Bir alanda şüphe varsa eklenmez, kullanıcı kontrol eder.</summary>
+    private async Task OnAutoFillClean()
+    {
+        if (!IsGas || _editingId.HasValue || _qtyWarning is not null || MissingText().Length > 0) return;
+        await AddAsync();
     }
 
     private static string GasText(PriceItemDto g) => $"{g.PozNo} — {GasShortName(g.Description)} ({g.Description})";

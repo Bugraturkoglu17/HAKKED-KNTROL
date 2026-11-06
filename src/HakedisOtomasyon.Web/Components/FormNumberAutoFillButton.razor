@@ -67,6 +67,10 @@
     /// <summary>Okunan gaz miktarı (teyit gerekip gerekmediğiyle birlikte).</summary>
     [Parameter] public EventCallback<GasReading> OnGas { get; set; }
 
+    /// <summary>Her şey sorunsuz okundu (form no + KODLA bulunan mağaza + uyarısız tarih + (gazda) teyitsiz miktar) — ekran
+    /// isterse kaydı kendiliğinden ekler.</summary>
+    [Parameter] public EventCallback OnAllClean { get; set; }
+
     /// <summary>Bu hakedişe girilmiş formların ayı (1–12; fatura dönemi değil) — okunan ay farklıysa uyarı verilir.</summary>
     [Parameter] public int? ClaimMonth { get; set; }
 
@@ -120,6 +124,7 @@
 
             var result = await numberTask;
             if (PageKey != key) return;   // okurken başka dosyaya/sayfaya geçildi
+            var clean = result.Number is not null;
             if (result.Number is not null)
             {
                 await OnRead.InvokeAsync(result.Number);
@@ -132,9 +137,10 @@
 
             var store = await storeTask;
             if (store is null || PageKey != key) return;
-            await ApplyDateAsync(store);
-            await ApplyGasAsync(store);
-            await ApplyStoreAsync(store);
+            clean &= await ApplyDateAsync(store);
+            clean &= await ApplyGasAsync(store);
+            clean &= await ApplyStoreAsync(store);
+            if (clean && PageKey == key) await OnAllClean.InvokeAsync();
         }
         catch (Exception ex)
         {
@@ -148,46 +154,52 @@
     private static readonly System.Globalization.CultureInfo Tr = System.Globalization.CultureInfo.GetCultureInfo("tr-TR");
 
     /// <summary>Gün/ay formdan, yıl içinde bulunulan yıl (kullanıcı kuralı: yıl formdan okunmaz).</summary>
-    private async Task ApplyDateAsync(HandwrittenStoreResult read)
+    private async Task<bool> ApplyDateAsync(HandwrittenStoreResult read)
     {
-        if (read.Error is not null) return;   // mağaza mesajında zaten bildirilir
+        if (read.Error is not null) return false;   // mağaza mesajında zaten bildirilir
         var date = HandwrittenDate.Compose(read.Day, read.Month, DateTime.Today.Year);
         if (date is null)
         {
             Snackbar.Add("Formdaki tarih okunamadı; tarihi elle girin.", Severity.Warning);
-            return;
+            return false;
         }
         await OnDate.InvokeAsync(date.Value);
         if (ClaimMonth is int month and >= 1 and <= 12 && date.Value.Month != month)
+        {
             Snackbar.Add($"Tarih {date.Value:dd.MM.yyyy} okundu ama bu hakedişteki formlar {Tr.DateTimeFormat.GetMonthName(month).ToUpper(Tr)} ayına ait — "
                          + "formdaki tarihi mutlaka kontrol edin.", Severity.Error, o => o.VisibleStateDuration = 10000);
-        else
-            Snackbar.Add($"Tarih okundu: {date.Value:dd.MM.yyyy} (yıl sabit {date.Value.Year}). Kontrol edin.", Severity.Info);
+            return false;
+        }
+        Snackbar.Add($"Tarih okundu: {date.Value:dd.MM.yyyy} (yıl sabit {date.Value.Year}). Kontrol edin.", Severity.Info);
+        return true;
     }
 
-    private async Task ApplyGasAsync(HandwrittenStoreResult read)
+    private async Task<bool> ApplyGasAsync(HandwrittenStoreResult read)
     {
-        if (!ReadsGas || read.Error is not null) return;
+        if (!ReadsGas) return true;
+        if (read.Error is not null) return false;
         if (read.Gas is null)
         {
             Snackbar.Add("Formun malzeme kısmında gaz satırı bulunamadı; miktarı elle girin.", Severity.Warning);
-            return;
+            return false;
         }
         await OnGas.InvokeAsync(read.Gas);
+        return !read.Gas.NeedsCheck && read.Gas.Quantity is > 0;
     }
 
-    private async Task ApplyStoreAsync(HandwrittenStoreResult read)
+    /// <returns>Mağaza KODLA kesin bulunup seçildiyse true.</returns>
+    private async Task<bool> ApplyStoreAsync(HandwrittenStoreResult read)
     {
         var keep = CurrentStore is null ? string.Empty : $" Ekrandaki mağaza ({CurrentStore.Code}) değiştirilmedi.";
         if (read.Error is not null)
         {
             Snackbar.Add($"Mağaza okunamadı: {read.Error}{keep}", Severity.Warning);
-            return;
+            return false;
         }
         if (read.StoreCode is null && read.StoreName is null)
         {
             Snackbar.Add($"Formda mağaza bilgisi okunamadı; mağazayı elle seçin.{keep}", Severity.Warning);
-            return;
+            return false;
         }
 
         var written = string.Join(" ", new[] { read.StoreName, read.StoreCode is null ? null : $"({read.StoreCode})" }.Where(x => x is not null));
@@ -200,7 +212,7 @@
             else
                 Snackbar.Add($"Mağaza ADINA göre seçildi: {match.Selected.Code} — {match.Selected.Name} (formda: \"{written}\"). Kod yazılı değil, lütfen kontrol edin.",
                     Severity.Warning, o => o.VisibleStateDuration = 8000);
-            return;
+            return match.Method == "kod";
         }
         if (match.Suggestions.Count > 0)
         {
@@ -208,9 +220,10 @@
             _storeIdAtSuggest = CurrentStore?.Id;
             _suggestFor = PageKey;
             Snackbar.Add($"Formda \"{written}\" yazıyor; mağaza kesin bulunamadı. Önerilerden seçin ya da elle girin.{keep}", Severity.Warning);
-            return;
+            return false;
         }
         Snackbar.Add($"Formda \"{written}\" yazıyor; listede eşleşen mağaza bulunamadı.{keep}", Severity.Warning);
+        return false;
     }
 
     private async Task PickSuggestionAsync(StoreDto store)
