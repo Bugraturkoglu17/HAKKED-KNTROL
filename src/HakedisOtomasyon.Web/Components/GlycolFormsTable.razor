@@ -39,28 +39,6 @@
             <PdfViewer @key="CurrentFile.FilePath" FileUrl="@CurrentFile.FileUrl" FileName="@CurrentFile.FileName" FilePath="@CurrentFile.FilePath"
                        Page="@(_cursor.PageIndex + 1)" PageCount="@_cursor.PagesOf(CurrentFile.FilePath)"
                        PageChanged="@OnViewerPageChanged" />
-            <MudPaper Elevation="1" Class="pa-1 mt-2">
-                <MudStack Row AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
-                    <MudIconButton Icon="@Icons.Material.Filled.NavigateBefore" Size="Size.Small" OnClick="PreviousFileAsync" Disabled="@(!_cursor.CanPrevious)" />
-                    <MudStack Row AlignItems="AlignItems.Center" Spacing="1">
-                        <MudText Typo="Typo.body2">Dosya @(_fileIndex + 1) / @Files.Count</MudText>
-                        @{ var pageCount = _cursor.PagesOf(CurrentFile.FilePath); }
-                        @if (pageCount > 1)
-                        {
-                            @* çok sayfalı PDF: her sayfa ayrı servis formu; oklar sayfa sayfa gezer, Otomatik doldur bu sayfayı okur *@
-                            <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Outlined" Icon="@Icons.Material.Filled.Description">
-                                Sayfa @(_cursor.PageIndex + 1) / @pageCount
-                            </MudChip>
-                        }
-                        @{ var cnt = EntryCount(CurrentFile); }
-                        <MudChip T="string" Size="Size.Small" Color="@(cnt > 0 ? Color.Success : Color.Warning)"
-                                 Icon="@(cnt > 0 ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.WarningAmber)">
-                            @(cnt > 0 ? $"{cnt} kayıt eklendi" : "kayıt yok")
-                        </MudChip>
-                    </MudStack>
-                    <MudIconButton Icon="@Icons.Material.Filled.NavigateNext" Size="Size.Small" OnClick="NextFileAsync" Disabled="@(!_cursor.CanNext(FilePaths))" />
-                </MudStack>
-            </MudPaper>
         }
         else
         {
@@ -76,28 +54,56 @@
         <MudStack Spacing="2">
 
             @* Otomatik bilgiler *@
-            <MudStack Row Spacing="1" Style="flex-wrap:wrap">
-                <MudChip T="string" Size="Size.Small" Icon="@Icons.Material.Filled.CalendarMonth">Fatura Dönemi: <b>@Period</b></MudChip>
-                <MudChip T="string" Size="Size.Small" Icon="@Icons.Material.Filled.CurrencyExchange"
-                         Color="@(EurPricing.IsValidRate(Claim?.EurRate) ? Color.Info : Color.Warning)">
-                    @(EurPricing.IsValidRate(Claim?.EurRate) ? $"EUR Kuru: {EurPricing.FormatRate(Claim!.EurRate!.Value)} ₺" : "EUR kuru girilmedi")
-                </MudChip>
-                @if (IsGas)
-                {
-                    @if (_gas is not null)
+            @* üst satır: bilgi çipleri solda, dosya/sayfa gezinme (ileri-geri) sağ üstte *@
+            <div style="display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap">
+                <MudStack Row Spacing="1" Style="flex-wrap:wrap;flex:1 1 280px">
+                    <MudChip T="string" Size="Size.Small" Icon="@Icons.Material.Filled.CalendarMonth">Fatura Dönemi: <b>@Period</b></MudChip>
+                    <MudChip T="string" Size="Size.Small" Icon="@Icons.Material.Filled.CurrencyExchange"
+                             Color="@(EurPricing.IsValidRate(Claim?.EurRate) ? Color.Info : Color.Warning)">
+                        @(EurPricing.IsValidRate(Claim?.EurRate) ? $"EUR Kuru: {EurPricing.FormatRate(Claim!.EurRate!.Value)} ₺" : "EUR kuru girilmedi")
+                    </MudChip>
+                    @if (IsGas)
+                    {
+                        @if (_gas is not null)
+                        {
+                            <MudChip T="string" Size="Size.Small" Icon="@Icons.Material.Filled.Inventory2">
+                                Malzeme: <b>@_gas.PozNo</b> — @_gas.Description · Fiyat: <b>@GasUnitPriceTl(_gas).ToString("N2", Tr) ₺</b>
+                            </MudChip>
+                        }
+                    }
+                    else if (Info is not null)
                     {
                         <MudChip T="string" Size="Size.Small" Icon="@Icons.Material.Filled.Inventory2">
-                            Malzeme: <b>@_gas.PozNo</b> — @_gas.Description · Fiyat: <b>@GasUnitPriceTl(_gas).ToString("N2", Tr) ₺</b>
+                            Malzeme: <b>@Info.ItemCode</b> — @Info.Description · Fiyat: <b>@Info.UnitPrice.ToString("N2", Tr) ₺</b>
                         </MudChip>
                     }
-                }
-                else if (Info is not null)
+                </MudStack>
+                @if (CurrentFile is not null)
                 {
-                    <MudChip T="string" Size="Size.Small" Icon="@Icons.Material.Filled.Inventory2">
-                        Malzeme: <b>@Info.ItemCode</b> — @Info.Description · Fiyat: <b>@Info.UnitPrice.ToString("N2", Tr) ₺</b>
-                    </MudChip>
+                    <MudPaper Elevation="1" Class="pa-1" Style="margin-left:auto;flex:0 0 auto">
+                        <MudStack Row AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                            <MudIconButton Icon="@Icons.Material.Filled.NavigateBefore" Size="Size.Small" OnClick="PreviousFileAsync" Disabled="@(!_cursor.CanPrevious)" />
+                            <MudStack Row AlignItems="AlignItems.Center" Spacing="1">
+                                <MudText Typo="Typo.body2">Dosya @(_fileIndex + 1) / @Files.Count</MudText>
+                                @{ var pageCount = _cursor.PagesOf(CurrentFile.FilePath); }
+                                @if (pageCount > 1)
+                                {
+                                    @* çok sayfalı PDF: her sayfa ayrı servis formu; oklar sayfa sayfa gezer, Otomatik doldur bu sayfayı okur *@
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Outlined" Icon="@Icons.Material.Filled.Description">
+                                        Sayfa @(_cursor.PageIndex + 1) / @pageCount
+                                    </MudChip>
+                                }
+                                @{ var cnt = EntryCount(CurrentFile); }
+                                <MudChip T="string" Size="Size.Small" Color="@(cnt > 0 ? Color.Success : Color.Warning)"
+                                         Icon="@(cnt > 0 ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.WarningAmber)">
+                                    @(cnt > 0 ? $"{cnt} kayıt eklendi" : "kayıt yok")
+                                </MudChip>
+                            </MudStack>
+                            <MudIconButton Icon="@Icons.Material.Filled.NavigateNext" Size="Size.Small" OnClick="NextFileAsync" Disabled="@(!_cursor.CanNext(FilePaths))" />
+                        </MudStack>
+                    </MudPaper>
                 }
-            </MudStack>
+            </div>
 
             @* Giriş alanı: her "Ekle"den sonra temizlenir *@
             @if (CurrentFile is not null)
