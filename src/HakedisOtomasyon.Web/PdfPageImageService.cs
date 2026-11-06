@@ -27,7 +27,8 @@ public sealed class PdfPageImageService
     private readonly IFileStorageService _files;
     private readonly ConcurrentDictionary<string, PdfPagesInfo> _info = new();
     private readonly ConcurrentDictionary<string, Task<bool>> _rendering = new();
-    // PDFium aynı anda tek iş yapar; bellek için son açılan PDF'in baytları tutulur
+    // sayfalar sırayla çizilir (PDF motoruna erişim ayrıca PdfiumGate ile tüm uygulamada tek sıradır);
+    // bellek için son açılan PDF'in baytları tutulur
     private readonly SemaphoreSlim _pdfium = new(1, 1);
     private (string Path, byte[] Bytes)? _lastPdf;
 
@@ -46,7 +47,8 @@ public sealed class PdfPageImageService
         await _pdfium.WaitAsync();
         try
         {
-            var sizes = await Task.Run(() => PDFtoImage.Conversion.GetPageSizes(Bytes(abs)));
+            var bytes = Bytes(abs);
+            var sizes = await Task.Run(() => HakedisOtomasyon.Infrastructure.PdfProcessing.PdfiumGate.Run(() => PDFtoImage.Conversion.GetPageSizes(bytes)));
             var info = new PdfPagesInfo(sizes.Count, sizes.Select(s => s.Width > 0 ? s.Height / (double)s.Width : 1.414).ToList());
             _info[key] = info;
             return info;
@@ -72,7 +74,8 @@ public sealed class PdfPageImageService
         {
             return await Task.Run(() =>
             {
-                using var bmp = PDFtoImage.Conversion.ToImage(Bytes(abs), page: pageIndex, options: new PDFtoImage.RenderOptions(Dpi: Dpi));
+                var bytes = Bytes(abs);
+                using var bmp = HakedisOtomasyon.Infrastructure.PdfProcessing.PdfiumGate.Run(() => PDFtoImage.Conversion.ToImage(bytes, page: pageIndex, options: new PDFtoImage.RenderOptions(Dpi: Dpi)));
                 using var img = SKImage.FromBitmap(bmp);
                 using var data = img.Encode(SKEncodedImageFormat.Jpeg, 80);
                 Directory.CreateDirectory(Path.GetDirectoryName(file)!);

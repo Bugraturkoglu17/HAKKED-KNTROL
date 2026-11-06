@@ -91,21 +91,35 @@ window.pdfPages = {
         const state = { ref: dotNetRef, programmatic: false, last: 0, timer: null };
         container._pdfPages = state;
 
+        // Sayfa görseli istenir; gelmezse/hata olursa sayfa boş KALMAZ: birkaç saniye sonra yeniden istenir.
+        const load = (pg) => {
+            if (pg.dataset.loading || pg.dataset.loaded) return;
+            pg.dataset.loading = '1';
+            const tries = (parseInt(pg.dataset.tries || '0', 10)) + 1;
+            pg.dataset.tries = tries;
+            let settled = false;
+            const retry = () => {
+                if (settled) return;
+                settled = true;
+                delete pg.dataset.loading;
+                if (tries < 6) setTimeout(() => { if (state.ref && pg.isConnected) load(pg); }, 1500 * tries);
+                else pg.classList.add('pdfpg-error');
+            };
+            const watchdog = setTimeout(retry, 20000);   // yanıt hiç gelmezse
+            dotNetRef.invokeMethodAsync('GetPageUrl', parseInt(pg.dataset.page, 10))
+                .then(url => {
+                    clearTimeout(watchdog);
+                    const img = pg.querySelector('img');
+                    if (!url || !img) { retry(); return; }
+                    img.onload = () => { settled = true; pg.dataset.loaded = '1'; delete pg.dataset.loading; pg.classList.remove('pdfpg-error'); state.observer.unobserve(pg); };
+                    img.onerror = () => { img.removeAttribute('src'); retry(); };
+                    img.src = url + (tries > 1 ? '?r=' + tries : '');
+                })
+                .catch(() => { clearTimeout(watchdog); retry(); });
+        };
+        state.load = load;
         state.observer = new IntersectionObserver((entries) => {
-            for (const e of entries) {
-                if (!e.isIntersecting) continue;
-                const pg = e.target;
-                if (pg.dataset.loading) continue;
-                pg.dataset.loading = '1';
-                state.observer.unobserve(pg);
-                dotNetRef.invokeMethodAsync('GetPageUrl', parseInt(pg.dataset.page, 10))
-                    .then(url => {
-                        const img = pg.querySelector('img');
-                        if (url && img) img.src = url;
-                        else pg.classList.add('pdfpg-error');
-                    })
-                    .catch(() => pg.classList.add('pdfpg-error'));
-            }
+            for (const e of entries) if (e.isIntersecting) load(e.target);
         }, { root: container, rootMargin: '1200px 0px' });
         container.querySelectorAll('.pdfpg').forEach(pg => state.observer.observe(pg));
 
@@ -154,6 +168,6 @@ window.pdfPages = {
 
     dispose: function (container) {
         const state = container && container._pdfPages;
-        if (state) { state.observer.disconnect(); clearTimeout(state.timer); container._pdfPages = null; }
+        if (state) { state.observer.disconnect(); clearTimeout(state.timer); state.ref = null; container._pdfPages = null; }
     }
 };

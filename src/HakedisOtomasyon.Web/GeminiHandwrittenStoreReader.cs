@@ -127,7 +127,7 @@ public sealed class GeminiHandwrittenStoreReader : IHandwrittenStoreReader
     {
         using var page = ImageExtensions.Contains(Path.GetExtension(path).ToLowerInvariant())
             ? SKBitmap.Decode(path)
-            : PDFtoImage.Conversion.ToImage(File.ReadAllBytes(path), page: pageIndex, options: new PDFtoImage.RenderOptions(Dpi: 150));
+            : HakedisOtomasyon.Infrastructure.PdfProcessing.PdfiumGate.Run(() => PDFtoImage.Conversion.ToImage(File.ReadAllBytes(path), page: pageIndex, options: new PDFtoImage.RenderOptions(Dpi: 150)));
         if (page is null) return null;
 
         var topHeight = (int)(page.Height * 0.60);

@@ -29,7 +29,8 @@ public sealed class WindowsFormNumberReader : IFormNumberReader
             if (!File.Exists(absoluteFilePath)) return 0;
             if (IsImage(absoluteFilePath)) return 1;
             if (!IsPdf(absoluteFilePath)) return 0;
-            return PDFtoImage.Conversion.GetPageCount(File.ReadAllBytes(absoluteFilePath));
+            var bytes = File.ReadAllBytes(absoluteFilePath);
+            return HakedisOtomasyon.Infrastructure.PdfProcessing.PdfiumGate.Run(() => PDFtoImage.Conversion.GetPageCount(bytes));
         }
         catch { return 0; }
     });
@@ -81,7 +82,7 @@ public sealed class WindowsFormNumberReader : IFormNumberReader
     {
         if (IsImage(path)) return SKBitmap.Decode(path);
         var bytes = File.ReadAllBytes(path);
-        return PDFtoImage.Conversion.ToImage(bytes, page: pageIndex, options: new PDFtoImage.RenderOptions(Dpi: 200));
+        return HakedisOtomasyon.Infrastructure.PdfProcessing.PdfiumGate.Run(() => PDFtoImage.Conversion.ToImage(bytes, page: pageIndex, options: new PDFtoImage.RenderOptions(Dpi: 200)));
     }
 
     /// <summary>Kırmızı mürekkebi siyah, geri kalan her şeyi beyaz yapar (siyah baskılı başlık yazıları ayıklanır).</summary>

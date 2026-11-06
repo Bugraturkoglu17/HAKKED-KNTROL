@@ -41,8 +41,7 @@ public class PdfPreviewService : IPdfPreviewService
             var pdfBytes = await File.ReadAllBytesAsync(filePath);
 
             // PDFtoImage kütüphanesi ile ilk sayfayı render et
-            var images = PDFtoImage.Conversion.ToImages(pdfBytes);
-            var firstImage = images.FirstOrDefault();
+            using var firstImage = PdfiumGate.Run(() => PDFtoImage.Conversion.ToImage(pdfBytes, page: 0));
             if (firstImage is null) return null;
 
             using var ms = new MemoryStream();
