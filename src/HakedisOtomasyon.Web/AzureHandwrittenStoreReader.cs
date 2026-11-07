@@ -24,10 +24,19 @@ public sealed class AzureHandwrittenStoreReader : IHandwrittenStoreReader
     };
     private static readonly string[] ImageExtensions = [".jpg", ".jpeg", ".png", ".bmp", ".gif", ".webp", ".tif", ".tiff"];
 
-    private readonly string? _endpoint = Environment.GetEnvironmentVariable("AZURE_DI_ENDPOINT")?.Trim().TrimEnd('/');
-    private readonly string? _key = Environment.GetEnvironmentVariable("AZURE_DI_KEY")?.Trim();
+    // Ortamdan her seferinde okunur. Uygulama, ortam değişkenleri güncellenmeden açılmış bir pencereden (eski kabuk/Explorer oturumu)
+    // başlatılmış olsa bile Windows KULLANICI ortam değişkeni (kayıt defteri) yedek olarak okunur.
+    private static string? Env(string name)
+    {
+        var v = Environment.GetEnvironmentVariable(name);
+        if (string.IsNullOrWhiteSpace(v)) v = Environment.GetEnvironmentVariable(name, EnvironmentVariableTarget.User);
+        return v?.Trim();
+    }
 
-    public bool IsConfigured => !string.IsNullOrWhiteSpace(_endpoint) && !string.IsNullOrWhiteSpace(_key);
+    private static string? Endpoint => Env("AZURE_DI_ENDPOINT")?.TrimEnd('/');
+    private static string? Key => Env("AZURE_DI_KEY");
+
+    public bool IsConfigured => !string.IsNullOrWhiteSpace(Endpoint) && !string.IsNullOrWhiteSpace(Key);
 
     public async Task<HandwrittenStoreResult> ReadAsync(string absoluteFilePath, int pageIndex = 0, CancellationToken ct = default)
     {
@@ -42,11 +51,11 @@ public sealed class AzureHandwrittenStoreReader : IHandwrittenStoreReader
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Post,
-                $"{_endpoint}/documentintelligence/documentModels/prebuilt-layout:analyze?api-version={ApiVersion}")
+                $"{Endpoint}/documentintelligence/documentModels/prebuilt-layout:analyze?api-version={ApiVersion}")
             {
                 Content = new ByteArrayContent(jpeg),
             };
-            request.Headers.Add("Ocp-Apim-Subscription-Key", _key);
+            request.Headers.Add("Ocp-Apim-Subscription-Key", Key);
             request.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/jpeg");
             using var start = await Http.SendAsync(request, ct);
             if (!start.IsSuccessStatusCode)
@@ -68,7 +77,7 @@ public sealed class AzureHandwrittenStoreReader : IHandwrittenStoreReader
                 await Task.Delay(wait, ct);
                 wait = TimeSpan.FromSeconds(1);
                 using var poll = new HttpRequestMessage(HttpMethod.Get, operation);
-                poll.Headers.Add("Ocp-Apim-Subscription-Key", _key);
+                poll.Headers.Add("Ocp-Apim-Subscription-Key", Key);
                 using var response = await Http.SendAsync(poll, ct);
                 if ((int)response.StatusCode == 429)
                 {

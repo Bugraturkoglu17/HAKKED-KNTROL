@@ -141,6 +141,7 @@
             }
 
             var store = await storeTask;
+            PrefetchNextPages(absolute, page);   // bu sayfa bitti; kullanıcı kontrol ederken sıradakiler arka planda okunur
             if (store is null && Stores is { Count: > 0 } && !StoreReader.IsConfigured)
                 Snackbar.Add("Mağaza, tarih ve gaz okuma için Azure ayarlı değil (.env: AZURE_DI_ENDPOINT ve AZURE_DI_KEY); elle girin.", Severity.Warning);
             if (store is null || PageKey != key) return;
@@ -157,6 +158,16 @@
     }
 
     private async Task<HandwrittenStoreResult?> ReadStoreAsync(string absolutePath, int page) => await StoreReader.ReadAsync(absolutePath, page);
+
+    /// <summary>Okunan sayfadan sonraki en fazla bu kadar sayfa arka planda önceden okunur (her okumada pencere ileri kayar).</summary>
+    private const int PrefetchAhead = 5;
+
+    private void PrefetchNextPages(string absolutePath, int page)
+    {
+        if (!ReadsStore || _pageCount < 2) return;
+        var next = Enumerable.Range(page + 1, Math.Max(0, Math.Min(PrefetchAhead, _pageCount - page - 1))).ToList();
+        if (next.Count > 0) StoreReader.Prefetch(absolutePath, next);
+    }
 
     private static readonly System.Globalization.CultureInfo Tr = System.Globalization.CultureInfo.GetCultureInfo("tr-TR");
 

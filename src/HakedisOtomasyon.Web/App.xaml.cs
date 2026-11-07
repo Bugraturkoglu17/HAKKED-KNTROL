@@ -110,7 +110,8 @@ public partial class WpfApp : System.Windows.Application
         services.AddSingleton<HakedisOtomasyon.Application.IFormNumberReader, WindowsFormNumberReader>();
         // El yazısı mağaza + tarih + gaz miktarı okuma: yalnız Azure Document Intelligence (.env: AZURE_DI_ENDPOINT / AZURE_DI_KEY).
         // Form numarası ayrıca Windows OCR ile okunur (yukarıdaki kayıt).
-        services.AddSingleton<HakedisOtomasyon.Application.IHandwrittenStoreReader, AzureHandwrittenStoreReader>();
+        // Önbellek + arka planda önden okuma katmanı Azure okuyucunun önüne konur.
+        services.AddSingleton<HakedisOtomasyon.Application.IHandwrittenStoreReader>(_ => new PrefetchingStoreReader(new AzureHandwrittenStoreReader()));
         services.AddSingleton<PdfPageImageService>();
         services.AddSingleton<SogutmaHakedisKontrol.Application.Interfaces.IFilePickerService, SogutmaHakedisKontrol.Web.WpfFilePickerService>();
 

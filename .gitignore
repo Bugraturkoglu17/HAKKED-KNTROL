@@ -6,7 +6,8 @@ tests/**/obj/
 
 # Gizli anahtarlar — API key buraya yazılır, ASLA push edilmez
 .env
-
+.env.*
+!.env.example
 # Log dosyaları
 *.log
 logs/

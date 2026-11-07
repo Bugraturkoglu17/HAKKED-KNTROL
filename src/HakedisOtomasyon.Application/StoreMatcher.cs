@@ -45,6 +45,10 @@ public interface IHandwrittenStoreReader
 
     /// <param name="pageIndex">Okunacak sayfa (0 tabanlı; görselde 0).</param>
     Task<HandwrittenStoreResult> ReadAsync(string absoluteFilePath, int pageIndex = 0, CancellationToken cancellationToken = default);
+
+    /// <summary>Sonraki sayfaları arka planda önceden okur (sonuç önbelleğe alınır; sonra <see cref="ReadAsync"/> anında döner).
+    /// Önbelleği olmayan okuyucularda bir şey yapmaz.</summary>
+    void Prefetch(string absoluteFilePath, IReadOnlyList<int> pageIndexes) { }
 }
 
 /// <summary>Okunan mağaza kodu/adının mağaza listesiyle eşleştirilmesi.</summary>
