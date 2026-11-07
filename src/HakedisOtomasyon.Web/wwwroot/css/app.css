@@ -300,3 +300,89 @@ html, body {
 .form-nav .mud-icon-button { border-radius: 8px; width: 36px; height: 32px; }
 .form-nav { align-items: center; }
 .form-nav-pos { min-width: 64px; text-align: center; font-size: 14px; font-weight: 600; color: #37474f; font-variant-numeric: tabular-nums; }
+
+/* ── Analiz ekranları: gösterge kartları (KpiCard) ─────────────────────────── */
+.kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    margin-bottom: 20px;
+}
+/* 6 kart: geniş ekranda tek satır, orta genişlikte 3+3 — alt satırda tek kart kalmaz */
+@media (min-width: 900px)  { .kpi-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (min-width: 1500px) { .kpi-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+.kpi-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-height: 132px;
+    padding: 14px 16px 12px 20px;
+    border-radius: 12px;
+    background: var(--mud-palette-surface);
+    border: 1px solid var(--mud-palette-lines-default);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, .04), 0 2px 8px rgba(0, 0, 0, .04);
+    overflow: hidden;
+    transition: box-shadow .15s ease, transform .15s ease;
+}
+.kpi-card:hover { box-shadow: 0 4px 16px rgba(0, 0, 0, .08); transform: translateY(-1px); }
+.kpi-card::before {
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 4px;
+    background: var(--kpi-accent);
+}
+.kpi-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.kpi-title {
+    font-size: .72rem;
+    font-weight: 600;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    color: var(--mud-palette-text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.kpi-icon {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    color: var(--kpi-accent);
+    background: color-mix(in srgb, var(--kpi-accent) 14%, transparent);
+}
+.kpi-value {
+    font-size: 1.7rem;
+    font-weight: 700;
+    line-height: 1.15;
+    color: var(--mud-palette-text-primary);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.kpi-unit { margin-left: 4px; font-size: 1rem; font-weight: 600; color: var(--mud-palette-text-secondary); }
+.kpi-progress {
+    height: 4px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--kpi-accent) 15%, transparent);
+    overflow: hidden;
+}
+.kpi-progress > span { display: block; height: 100%; border-radius: inherit; background: var(--kpi-accent); }
+.kpi-foot {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: auto;
+    min-width: 0;
+    font-size: .76rem;
+    color: var(--mud-palette-text-secondary);
+}
+.kpi-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kpi-trend { flex: none; padding: 1px 8px; border-radius: 999px; font-size: .7rem; font-weight: 700; }
+.kpi-trend.good { color: #2e7d32; background: rgba(46, 125, 50, .12); }
+.kpi-trend.bad  { color: #c62828; background: rgba(198, 40, 40, .12); }
+.kpi-trend.flat { color: var(--mud-palette-text-secondary); background: var(--mud-palette-action-default-hover); }

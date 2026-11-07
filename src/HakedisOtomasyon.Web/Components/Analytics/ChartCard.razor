@@ -1,0 +1,37 @@
+@namespace HakedisOtomasyon.Web.Components.Analytics
+
+<MudCard Elevation="2" Style="height:100%">
+    <MudCardHeader Class="pb-0">
+        <CardHeaderContent>
+            <MudStack Row AlignItems="AlignItems.Center" Spacing="1">
+                @if (!string.IsNullOrEmpty(Icon)) { <MudIcon Icon="@Icon" Color="Color.Primary" Size="Size.Small" /> }
+                <MudText Typo="Typo.subtitle1" Style="font-weight:700">@Title</MudText>
+            </MudStack>
+            @if (!string.IsNullOrEmpty(Subtitle)) { <MudText Typo="Typo.caption" Color="Color.Secondary">@Subtitle</MudText> }
+        </CardHeaderContent>
+        <CardHeaderActions>@Actions</CardHeaderActions>
+    </MudCardHeader>
+    <MudCardContent>
+        @if (IsEmpty)
+        {
+            <MudStack AlignItems="AlignItems.Center" Justify="Justify.Center" Style="min-height:200px">
+                <MudIcon Icon="@Icons.Material.Outlined.Insights" Color="Color.Secondary" Size="Size.Large" />
+                <MudText Typo="Typo.body2" Color="Color.Secondary">@EmptyText</MudText>
+            </MudStack>
+        }
+        else
+        {
+            @ChildContent
+        }
+    </MudCardContent>
+</MudCard>
+
+@code {
+    [Parameter] public string Title { get; set; } = string.Empty;
+    [Parameter] public string? Subtitle { get; set; }
+    [Parameter] public string? Icon { get; set; }
+    [Parameter] public bool IsEmpty { get; set; }
+    [Parameter] public string EmptyText { get; set; } = "Seçili dönemde veri yok.";
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? Actions { get; set; }
+}

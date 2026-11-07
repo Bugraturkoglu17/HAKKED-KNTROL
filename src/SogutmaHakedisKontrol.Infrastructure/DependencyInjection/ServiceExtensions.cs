@@ -26,6 +26,7 @@ public static class ServiceExtensions
         services.AddScoped<IMaterialMatchingService, MaterialMatchingService>();
         services.AddScoped<IUnitPriceListService, UnitPriceListService>();
         services.AddScoped<IProgressPaymentCheckService, ProgressPaymentCheckService>();
+        services.AddScoped<IControlAnalyticsService, ControlAnalyticsService>();
 
         // ── Mağaza ana listesi + AI belge analizi ────────────────────────
         services.AddScoped<IStoreMasterService, StoreMasterService>();

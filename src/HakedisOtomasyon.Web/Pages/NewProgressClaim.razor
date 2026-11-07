@@ -71,17 +71,17 @@
                                       Adornment="Adornment.Start"
                                       HelperText="Örn: Nisan 2026 Bakım Hakedişi" />
                     </MudItem>
-                    <MudItem xs="12" md="6">
-                        <MudTextField @bind-Value="_dto.CompanyName"
-                                      Label="Firma Adı *"
-                                      Placeholder="Örn: İNTİKOŞ"
-                                      HelperText="Excel çıktısında başlıkta görünür"
-                                      Variant="Variant.Outlined"
-                                      Required
-                                      MaxLength="300"
-                                      AdornmentIcon="@Icons.Material.Outlined.Business"
-                                      Adornment="Adornment.Start" />
-                    </MudItem>
+                    @* Firma adı hakediş başına sorulmaz: program tek firma tarafından kullanılır, Ayarlar > Şirket Bilgileri'nden gelir. *@
+                    @if (string.IsNullOrWhiteSpace(_settingsCompany))
+                    {
+                        <MudItem xs="12">
+                            <MudAlert Severity="Severity.Warning" Dense>
+                                Firma adı ayarlanmamış. Hakediş oluşturmadan önce
+                                <MudLink Href="@SettingsHref" Typo="Typo.body2" Style="font-weight:600">Ayarlar › Şirket Bilgileri</MudLink>
+                                bölümünden şirket adını girin.
+                            </MudAlert>
+                        </MudItem>
+                    }
                     @if (IsCooling)
                     {
                         <MudItem xs="12" md="6">
@@ -151,9 +151,8 @@
                                           Adornment="Adornment.Start"
                                           AdornmentIcon="@Icons.Material.Filled.CurrencyExchange"
                                           OnAdornmentClick="OpenEurRateDialogAsync" />
-                        </MudItem>
-                        <MudItem xs="12" md="6" Class="d-flex align-center">
-                            <MudButton Variant="Variant.Outlined" Color="Color.Primary"
+                            @* Kur butonu, ait olduğu EUR Kuru kutusunun hemen altında *@
+                            <MudButton Variant="Variant.Outlined" Color="Color.Primary" Class="mt-2"
                                        StartIcon="@Icons.Material.Filled.CurrencyExchange"
                                        OnClick="OpenEurRateDialogAsync">
                                 @(EurPricing.IsValidRate(_dto.EurRate) ? "Kuru Değiştir" : "EUR Kurunu Gir / TCMB'den Getir")
@@ -173,7 +172,7 @@
                 <MudButton Variant="Variant.Filled" Color="Color.Primary"
                            EndIcon="@Icons.Material.Filled.ArrowForward"
                            OnClick="SaveClaimAndNext"
-                           Disabled="@(string.IsNullOrWhiteSpace(_dto.Name) || string.IsNullOrWhiteSpace(_dto.CompanyName) || (IsCooling && (!EurPricing.IsValidRate(_dto.EurRate) || !_dto.CoolingCategory.HasValue)))">
+                           Disabled="@(string.IsNullOrWhiteSpace(_dto.Name) || string.IsNullOrWhiteSpace(_settingsCompany) || (IsCooling && (!EurPricing.IsValidRate(_dto.EurRate) || !_dto.CoolingCategory.HasValue)))">
                     Devam Et
                 </MudButton>
             </MudCardActions>
@@ -550,6 +549,19 @@
     private string _exportStatus = string.Empty;
 
     /// <summary>Bu hakediş Soğutma disiplinine mi ait? (Yeni hakedişte aktif disiplin, kayıtlıda hakedişin kendi disiplini.)</summary>
+    /// <summary>Ayarlar'daki şirket adı — tüm hakedişlerde kullanılır.</summary>
+    private string _settingsCompany = string.Empty;
+
+    /// <summary>Aktif disiplinin Ayarlar sayfası ("/discipline/{x}/settings"); disiplinsiz adreste "/settings".</summary>
+    private string SettingsHref
+    {
+        get
+        {
+            var parts = Nav.ToBaseRelativePath(Nav.Uri).Split('/', StringSplitOptions.RemoveEmptyEntries);
+            return parts.Length >= 2 && parts[0] == "discipline" ? $"/discipline/{parts[1]}/settings" : "/settings";
+        }
+    }
+
     private bool IsCooling => (_claim?.Discipline ?? CurrentDiscipline.CurrentDiscipline) == MechanicalDiscipline.Cooling;
 
     private static readonly CoolingClaimCategory[] CoolingCategories = Enum.GetValues<CoolingClaimCategory>();
@@ -636,8 +648,10 @@
 
     protected override async Task OnInitializedAsync()
     {
-        var rawCompany = await Settings.GetAsync(SettingKeys.CompanyName);
-        _dto.CompanyName = rawCompany == "Şirket Adı" ? string.Empty : rawCompany;
+        // Firma adı Ayarlar'dan gelir (eski varsayılan "Şirket Adı" gerçek veri değildir)
+        var rawCompany = (await Settings.GetAsync(SettingKeys.CompanyName)).Trim();
+        _settingsCompany = rawCompany == "Şirket Adı" ? string.Empty : rawCompany;
+        _dto.CompanyName = _settingsCompany;
 
         if (ClaimId.HasValue)
         {
@@ -669,11 +683,17 @@
 
     private async Task SaveClaimAndNext()
     {
-        if (string.IsNullOrWhiteSpace(_dto.Name) || string.IsNullOrWhiteSpace(_dto.CompanyName))
+        if (string.IsNullOrWhiteSpace(_dto.Name))
         {
-            Snackbar.Add("Hakediş adı ve firma adı zorunludur.", Severity.Warning);
+            Snackbar.Add("Hakediş adı zorunludur.", Severity.Warning);
             return;
         }
+        if (string.IsNullOrWhiteSpace(_settingsCompany))
+        {
+            Snackbar.Add("Önce Ayarlar > Şirket Bilgileri bölümünden firma adını girin.", Severity.Warning);
+            return;
+        }
+        _dto.CompanyName = _settingsCompany;
         if (IsCooling && !_dto.CoolingCategory.HasValue)
         {
             Snackbar.Add("Soğutma hakedişi için hakediş türünü seçin.", Severity.Warning);

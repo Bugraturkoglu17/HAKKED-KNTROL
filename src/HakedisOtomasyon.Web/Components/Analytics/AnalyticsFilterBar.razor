@@ -1,0 +1,101 @@
+@namespace HakedisOtomasyon.Web.Components.Analytics
+
+<MudPaper Elevation="1" Class="pa-3 mb-4">
+    <MudStack Row Wrap="Wrap.Wrap" AlignItems="AlignItems.Center" Spacing="2">
+        <MudIcon Icon="@Icons.Material.Filled.DateRange" Size="Size.Small" Color="Color.Primary" />
+        <MudText Typo="Typo.subtitle2" Style="font-weight:600">Dönem:</MudText>
+        <MudText Typo="Typo.body2">@Summary</MudText>
+        <MudSpacer />
+        @if (CanReset && IsFiltered)
+        {
+            <MudButton Variant="Variant.Text" Color="Color.Secondary" StartIcon="@Icons.Material.Filled.Restore" OnClick="Reset">Tüm zamanlar</MudButton>
+        }
+        <MudButton Variant="@(_open ? Variant.Outlined : Variant.Filled)" Color="Color.Primary"
+                   StartIcon="@(_open ? Icons.Material.Filled.Close : Icons.Material.Filled.FilterAlt)"
+                   OnClick="@(() => _open = !_open)">@(_open ? "Kapat" : "Filtrele")</MudButton>
+    </MudStack>
+
+    @if (_open)
+    {
+    <MudDivider Class="my-3" />
+    <MudStack Row Wrap="Wrap.Wrap" AlignItems="AlignItems.Center" Spacing="2">
+        <MudSelect T="int" Value="State.FromMonth" ValueChanged="@(v => { State.FromMonth = v; })" Label="Başlangıç ayı" Dense Variant="Variant.Outlined" Style="width:120px">
+            @for (int m = 1; m <= 12; m++) { var v = m; <MudSelectItem Value="@v">@MonthName(v)</MudSelectItem> }
+        </MudSelect>
+        <MudSelect T="int" Value="State.FromYear" ValueChanged="@(v => { State.FromYear = v; })" Label="Yıl" Dense Variant="Variant.Outlined" Style="width:95px">
+            @foreach (var y in Years) { <MudSelectItem Value="@y">@y</MudSelectItem> }
+        </MudSelect>
+        <MudText Typo="Typo.body2">—</MudText>
+        <MudSelect T="int" Value="State.ToMonth" ValueChanged="@(v => { State.ToMonth = v; })" Label="Bitiş ayı" Dense Variant="Variant.Outlined" Style="width:120px">
+            @for (int m = 1; m <= 12; m++) { var v = m; <MudSelectItem Value="@v">@MonthName(v)</MudSelectItem> }
+        </MudSelect>
+        <MudSelect T="int" Value="State.ToYear" ValueChanged="@(v => { State.ToYear = v; })" Label="Yıl" Dense Variant="Variant.Outlined" Style="width:95px">
+            @foreach (var y in Years) { <MudSelectItem Value="@y">@y</MudSelectItem> }
+        </MudSelect>
+
+        @if (ShowCompany)
+        {
+            <MudSelect T="string" Value="State.Company" ValueChanged="@(v => { State.Company = v; })" Label="Firma" Dense Clearable
+                       Variant="Variant.Outlined" Style="min-width:180px" Disabled="@(!CompanyOptions.Any())">
+                @foreach (var c in CompanyOptions) { <MudSelectItem Value="@c">@c</MudSelectItem> }
+            </MudSelect>
+        }
+        @if (ShowRegion)
+        {
+            <MudSelect T="string" Value="State.Region" ValueChanged="@(v => { State.Region = v; })" Label="Bölge" Dense Clearable
+                       Variant="Variant.Outlined" Style="min-width:150px" Disabled="@(!RegionOptions.Any())">
+                @foreach (var r in RegionOptions) { <MudSelectItem Value="@r">@r</MudSelectItem> }
+            </MudSelect>
+        }
+
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Check" OnClick="Apply">Uygula</MudButton>
+    </MudStack>
+    }
+</MudPaper>
+
+@code {
+    [Parameter, EditorRequired] public AnalyticsFilterState State { get; set; } = null!;
+    [Parameter] public IReadOnlyList<string> CompanyOptions { get; set; } = Array.Empty<string>();
+    [Parameter] public IReadOnlyList<string> RegionOptions { get; set; } = Array.Empty<string>();
+    /// <summary>Firma filtresi. Kendi hakedişlerimizde firma tek (Ayarlar'dan) olduğu için Analiz ekranında kapalıdır;
+    /// Kontrol Analizi'nde kontrol edilen yüklenici firmalar arasında seçim için açıktır.</summary>
+    [Parameter] public bool ShowCompany { get; set; } = true;
+    [Parameter] public bool ShowRegion { get; set; } = true;
+    /// <summary>Kapalı çubukta gösterilen seçili dönem metni (örn. "Tüm zamanlar").</summary>
+    [Parameter] public string Summary { get; set; } = "";
+    /// <summary>Kullanıcı filtre uyguladıysa true; "Tüm zamanlar" geri dönüş butonu bu durumda görünür.</summary>
+    [Parameter] public bool IsFiltered { get; set; }
+    /// <summary>Yıl listesinin alt/üst sınırı için kaydı olan en son dönemin yılı.</summary>
+    [Parameter] public int AnchorYear { get; set; } = DateTime.Now.Year;
+    [Parameter] public int AnchorMonth { get; set; } = DateTime.Now.Month;
+    [Parameter] public EventCallback OnApply { get; set; }
+    /// <summary>Verilirse "Tüm zamanlar" butonu çıkar ve filtreyi sıfırlar.</summary>
+    [Parameter] public EventCallback OnReset { get; set; }
+
+    private bool _open;
+    private bool CanReset => OnReset.HasDelegate;
+
+    private IEnumerable<int> Years
+    {
+        get
+        {
+            var max = Math.Max(DateTime.Now.Year, Math.Max(State.ToYear, AnchorYear));
+            var min = Math.Min(max - 5, State.FromYear);
+            for (var y = max; y >= min; y--) yield return y;
+        }
+    }
+
+    private static string MonthName(int m) => AnalyticsCharts.Tr.DateTimeFormat.GetMonthName(m);
+
+    private async Task Apply()
+    {
+        _open = false;
+        await OnApply.InvokeAsync();
+    }
+
+    private async Task Reset()
+    {
+        _open = false;
+        await OnReset.InvokeAsync();
+    }
+}

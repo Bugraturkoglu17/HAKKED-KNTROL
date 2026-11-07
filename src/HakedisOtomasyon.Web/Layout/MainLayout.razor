@@ -61,7 +61,10 @@
                (örn. Hakediş Geçmişi'nden açılan "/new-claim/23" → menüden "Yeni Hakediş") Blazor bileşeni yeniden kullanır,
                OnInitialized tekrar çalışmaz ve ekranda eski hakediş kalır — menü tıklanmış ama sayfa değişmemiş görünür. *@
             <div style="display:contents" @key="@PageKey">
-                @Body
+                @* Analiz grafikleri (ApexCharts) koyu/açık temayı buradan okur *@
+                <CascadingValue Value="@_isDarkMode" Name="IsDarkMode">
+                    @Body
+                </CascadingValue>
             </div>
         </MudContainer>
     </MudMainContent>

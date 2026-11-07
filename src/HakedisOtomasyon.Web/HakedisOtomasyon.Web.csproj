@@ -19,6 +19,7 @@
     <InformationalVersion>1.1.0-sogutma-hakedis-kontrol-modulu</InformationalVersion>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Blazor-ApexCharts" Version="6.1.0" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebView.Wpf" Version="8.0.*" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.*" />
     <PackageReference Include="MudBlazor" Version="7.15.0" />

@@ -1,0 +1,347 @@
+@page "/discipline/yangin/analiz"
+@page "/discipline/klima/analiz"
+@page "/discipline/asansor/analiz"
+@page "/discipline/sogutma/analiz"
+@using HakedisOtomasyon.Application.Analytics
+@using SogutmaHakedisKontrol.Application.Analytics
+@inject IClaimAnalyticsService ClaimAnalytics
+@inject SogutmaHakedisKontrol.Application.Interfaces.IControlAnalyticsService ControlAnalytics
+@inject HakedisOtomasyon.Infrastructure.Services.CurrentDisciplineService CurrentDiscipline
+@inject ISnackbar Snackbar
+
+<PageTitle>Analiz — Hakediş Otomasyonu</PageTitle>
+
+<MudStack Row AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-3">
+    <div>
+        <MudText Typo="Typo.h5" Style="font-weight:700">Analiz</MudText>
+        <MudText Typo="Typo.caption" Color="Color.Secondary">Maliyet, trend ve operasyon göstergeleri · @RangeText</MudText>
+    </div>
+    @if (_loading) { <MudProgressCircular Indeterminate Size="Size.Small" /> }
+</MudStack>
+
+@if (_filter is not null)
+{
+    <AnalyticsFilterBar State="_filter" ShowCompany="false" RegionOptions="@(_data?.Regions ?? new())"
+                        Summary="@RangeText" IsFiltered="@(!_allTime)"
+                        AnchorYear="_anchor.Year" AnchorMonth="_anchor.Month" OnApply="ApplyFilterAsync" OnReset="ShowAllTimeAsync" />
+}
+
+@if (_data is not null)
+{
+    var k = _data.Kpis;
+
+    @* ── C. Operasyon göstergeleri ───────────────────────────────────────────── *@
+    <div class="kpi-grid">
+        <KpiCard Title="Yüklenen Dosya" Value="@k.UploadedFiles.ToString()" Unit="dosya" Icon="@Icons.Material.Filled.UploadFile"
+                 Accent="var(--mud-palette-primary)" Subtitle="@($"{k.FormCount} form kaydı")" />
+        <KpiCard Title="Tamamlanan Form" Value="@k.CompletedForms.ToString()" Unit="@($"/ {k.FormCount}")" Icon="@Icons.Material.Filled.TaskAlt"
+                 Accent="var(--mud-palette-success)" Progress="@Pct(k.CompletedForms, k.FormCount)" Subtitle="@CompletedRate(k)" />
+        <KpiCard Title="Tamamlanmamış" Value="@k.IncompleteForms.ToString()" Unit="form" Icon="@Icons.Material.Filled.PendingActions"
+                 Accent="var(--mud-palette-warning)" Subtitle="Bekleyen, işlenen, eksik bilgili" />
+        <KpiCard Title="Toplam Hakediş" Value="@AnalyticsCharts.Num(k.TotalAmount)" Unit="₺" Icon="@Icons.Material.Filled.AccountBalance"
+                 Accent="var(--mud-palette-tertiary)" Trend="@(_allTime ? null : k.ChangePercent)" TrendGoodWhenUp="false"
+                 Subtitle="@(_allTime ? "Tüm kayıtlar" : k.ChangePercent is null ? "Önceki dönemde kayıt yok" : "önceki dönem")"
+                 Tooltip="@(_allTime ? null : $"Önceki dönem: {AnalyticsCharts.Tl(k.PreviousTotalAmount)}")" />
+        <KpiCard Title="Hakediş" Value="@k.ClaimCount.ToString()" Unit="adet" Icon="@Icons.Material.Filled.Assignment"
+                 Accent="var(--mud-palette-secondary)" Subtitle="@($"{k.ActiveClaims} aktif · {k.ClaimCount - k.ActiveClaims} dışa aktarıldı")" />
+        @if (IsCooling && _control is not null)
+        {
+            <KpiCard Title="Yakalanan Fark" Value="@AnalyticsCharts.Num(_control.Kpis.OverbilledTotal)" Unit="₺" Icon="@Icons.Material.Filled.FactCheck"
+                     Accent="var(--mud-palette-error)" Subtitle="@($"{_control.Kpis.CheckCount} kontrolde fazla talep")" Tooltip="Hakediş kontrolünde yakalanan fazla talep" />
+        }
+        else
+        {
+            <KpiCard Title="Tekrarlayan Arıza" Value="@k.RepeatFaultCount.ToString()" Unit="kayıt" Icon="@Icons.Material.Filled.Replay"
+                     Accent="var(--mud-palette-error)" Subtitle="Aynı mağaza, 30 gün içinde" />
+        }
+    </div>
+
+    <MudGrid Spacing="3" Class="mt-1">
+        @* ── B7. Aylık hakediş tutarı (kategori kırılımı) ─────────────────── *@
+        <MudItem xs="12">
+            <ChartCard Title="Aylık Hakediş Tutarı" Subtitle="@(_monthlyCategory is null ? "Kategoriye göre · kategoriye tıklayınca yalnız o gösterilir, aya tıklayınca o aya odaklanır" : $"Yalnız {_monthlyCategory} · tümünü görmek için aynı kategoriye tekrar tıklayın")"
+                       Icon="@Icons.Material.Filled.StackedBarChart" IsEmpty="@(k.TotalAmount == 0)">
+                <ApexCharts.ApexChart TItem="PeriodCategoryAmount" @key="@($"m{_renderKey}-{_monthlyCategory}")" Height="340"
+                                      Options="@_optMonthly"
+                                      OnLegendClicked="@(l => SelectMonthlyCategory(l.Series.Name))"
+                                      OnDataPointSelection="@(d => DrillToPeriod(d.DataPointIndex))">
+                    @foreach (var cat in _data.Categories)
+                    {
+                        <ApexCharts.ApexPointSeries TItem="PeriodCategoryAmount" Name="@cat" SeriesType="ApexCharts.SeriesType.Bar"
+                                                    Items="@_data.MonthlyByCategory.Where(r => r.Category == cat).ToList()"
+                                                    XValue="@(r => r.PeriodLabel)"
+                                                    YValue="@(r => _monthlyCategory is null || r.Category == _monthlyCategory ? (decimal?)r.Amount : null)" />
+                    }
+                </ApexCharts.ApexChart>
+            </ChartCard>
+        </MudItem>
+
+        @* ── B8. Malzeme / işçilik oranı ──────────────────────────────────────── *@
+        <MudItem xs="12" md="6" lg="6">
+            <ChartCard Title="Malzeme ve İşçilik Dağılımı" Subtitle="Aylara göre maliyet kırılımı"
+                       Icon="@Icons.Material.Filled.Construction" IsEmpty="@(_data.CostBreakdown.Sum(x => x.Total) == 0)">
+                <ApexCharts.ApexChart TItem="CostBreakdownRow" @key="@($"c{_renderKey}")" Height="320"
+                                      Options="@_optCost">
+                    <ApexCharts.ApexPointSeries TItem="CostBreakdownRow" Name="Malzeme" SeriesType="ApexCharts.SeriesType.Bar"
+                                                Items="@_data.CostBreakdown" XValue="@(r => r.PeriodLabel)" YValue="@(r => (decimal?)r.Material)" />
+                    <ApexCharts.ApexPointSeries TItem="CostBreakdownRow" Name="İşçilik" SeriesType="ApexCharts.SeriesType.Bar"
+                                                Items="@_data.CostBreakdown" XValue="@(r => r.PeriodLabel)" YValue="@(r => (decimal?)r.Labor)" />
+                    <ApexCharts.ApexPointSeries TItem="CostBreakdownRow" Name="Fatura" SeriesType="ApexCharts.SeriesType.Bar"
+                                                Items="@_data.CostBreakdown" XValue="@(r => r.PeriodLabel)" YValue="@(r => (decimal?)r.Invoice)" />
+                    @if (_data.CostBreakdown.Any(r => r.Other != 0))
+                    {
+                        <ApexCharts.ApexPointSeries TItem="CostBreakdownRow" Name="Diğer (kural/oran)" SeriesType="ApexCharts.SeriesType.Bar"
+                                                    Items="@_data.CostBreakdown" XValue="@(r => r.PeriodLabel)" YValue="@(r => (decimal?)r.Other)" />
+                    }
+                </ApexCharts.ApexChart>
+            </ChartCard>
+        </MudItem>
+
+        @* ── B11. En maliyetli mağazalar ──────────────────────────────────────── *@
+        <MudItem xs="12" md="6" lg="6">
+            <ChartCard Title="En Maliyetli Mağazalar" Subtitle="Toplam tutara göre ilk 15"
+                       Icon="@Icons.Material.Filled.Store" IsEmpty="@(!_data.TopStores.Any())">
+                <ApexCharts.ApexChart TItem="StoreCostRow" @key="@($"s{_renderKey}")" Height="@(Math.Max(220, _data.TopStores.Count * 26 + 60))"
+                                      Options="@_optStores">
+                    <ApexCharts.ApexPointSeries TItem="StoreCostRow" Name="Tutar" SeriesType="ApexCharts.SeriesType.Bar"
+                                                Items="@_data.TopStores" XValue="@(r => StoreLabel(r.StoreCode, r.StoreName))" YValue="@(r => (decimal?)r.TotalAmount)" />
+                </ApexCharts.ApexChart>
+            </ChartCard>
+        </MudItem>
+
+        @* ── B10. Kurdan etkilenen tutar ─────────────────────────────────────── *@
+        @if (_data.Currency.Any(c => c.TlTotal != 0))
+        {
+            <MudItem xs="12">
+                <ChartCard Title="Döviz Bazlı Kalemler ve Kur Etkisi"
+                           Subtitle="TL karşılığı (çubuk) ve dönemin ilk ayının kuruna göre oluşan fark (çizgi)"
+                           Icon="@Icons.Material.Filled.CurrencyExchange">
+                    <ApexCharts.ApexChart TItem="CurrencyPeriodRow" @key="@($"x{_renderKey}")" Height="320"
+                                          Options="@_optCurrency">
+                        @foreach (var code in _data.Currency.Select(c => c.CurrencyCode).Distinct())
+                        {
+                            var cur = code;
+                            <ApexCharts.ApexPointSeries TItem="CurrencyPeriodRow" Name="@($"{cur} kalemleri (TL)")" SeriesType="ApexCharts.SeriesType.Bar"
+                                                        Items="@_data.Currency.Where(c => c.CurrencyCode == cur).ToList()"
+                                                        XValue="@(r => r.PeriodLabel)" YValue="@(r => (decimal?)r.TlTotal)" />
+                            <ApexCharts.ApexPointSeries TItem="CurrencyPeriodRow" Name="@($"{cur} kur etkisi")" SeriesType="ApexCharts.SeriesType.Line"
+                                                        Items="@_data.Currency.Where(c => c.CurrencyCode == cur).ToList()"
+                                                        XValue="@(r => r.PeriodLabel)" YValue="@(r => (decimal?)r.RateImpactTl)" />
+                        }
+                    </ApexCharts.ApexChart>
+                    <MudSimpleTable Dense Hover Class="mt-2">
+                        <thead><tr><th>Dönem</th><th>Döviz</th><th style="text-align:right">Döviz tutarı</th><th style="text-align:right">Ort. kur</th><th style="text-align:right">TL karşılığı</th><th style="text-align:right">Kur etkisi</th></tr></thead>
+                        <tbody>
+                            @foreach (var r in _data.Currency.Where(c => c.TlTotal != 0))
+                            {
+                                <tr>
+                                    <td>@r.PeriodLabel</td><td>@r.CurrencyCode</td>
+                                    <td style="text-align:right">@AnalyticsCharts.Num(r.ForeignTotal, 2)</td>
+                                    <td style="text-align:right">@AnalyticsCharts.Num(r.AverageRate, 4)</td>
+                                    <td style="text-align:right">@AnalyticsCharts.Tl(r.TlTotal)</td>
+                                    <td style="text-align:right; color:@(r.RateImpactTl > 0 ? "var(--mud-palette-error)" : "inherit")">@AnalyticsCharts.Tl(r.RateImpactTl)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </MudSimpleTable>
+                </ChartCard>
+            </MudItem>
+        }
+
+        @* ── C14. Gaz / glikol tüketimi ──────────────────────────────────────── *@
+        @if (IsCooling)
+        {
+            <MudItem xs="12" lg="7">
+                <ChartCard Title="Gaz ve Glikol Tüketimi" Icon="@Icons.Material.Filled.PropaneTank"
+                           IsEmpty="@(!_data.Consumption.Any())" EmptyText="Seçili dönemde gaz / glikol kullanım hakedişi yok.">
+                    <MudTable Items="@_data.Consumption" Dense Hover FixedHeader Height="360px" Elevation="0">
+                        <HeaderContent>
+                            <MudTh>Mağaza</MudTh><MudTh>İl</MudTh><MudTh>Malzeme</MudTh>
+                            <MudTh Style="text-align:right">Form</MudTh><MudTh Style="text-align:right">Toplam</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd>
+                                @StoreLabel(context.StoreCode, context.StoreName)
+                            </MudTd>
+                            <MudTd>@context.City</MudTd>
+                            <MudTd>@context.Material</MudTd>
+                            <MudTd Style="text-align:right">@context.FormCount</MudTd>
+                            <MudTd Style="text-align:right">@AnalyticsCharts.Num(context.TotalQuantity, 2) @context.Unit</MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                </ChartCard>
+            </MudItem>
+        }
+
+        @* ── C13. Tekrarlayan arızalar ───────────────────────────────────────── *@
+        <MudItem xs="12" lg="@(IsCooling ? 5 : 12)">
+            <ChartCard Title="Tekrarlayan Arızalar" Icon="@Icons.Material.Filled.Replay"
+                       Subtitle="@($"Aynı mağazada aynı kategoride {ClaimAnalyticsCalculator.RepeatFaultWindowDays} gün içinde tekrar gelen formlar")"
+                       IsEmpty="@(!_data.RepeatFaults.Any())" EmptyText="Seçili dönemde tekrarlayan arıza yok.">
+                <MudTable Items="@_data.RepeatFaults" Dense Hover FixedHeader Height="360px" Elevation="0">
+                    <HeaderContent>
+                        <MudTh>Mağaza</MudTh><MudTh>Kategori</MudTh><MudTh>İlk</MudTh><MudTh>Tekrar</MudTh><MudTh Style="text-align:right">Gün</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@StoreLabel(context.StoreCode, context.StoreName)</MudTd>
+                        <MudTd>@context.Category</MudTd>
+                        <MudTd>@context.FirstDate.ToString("dd.MM.yyyy")</MudTd>
+                        <MudTd>@context.SecondDate.ToString("dd.MM.yyyy")</MudTd>
+                        <MudTd Style="text-align:right">
+                            <MudChip T="string" Size="Size.Small" Color="@(context.DaysBetween <= 7 ? Color.Error : Color.Warning)">@context.DaysBetween</MudChip>
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            </ChartCard>
+        </MudItem>
+
+        @* ── Mağaza tablosu (B11 detay) ─────────────────────────────────────── *@
+        <MudItem xs="12">
+            <ChartCard Title="Mağaza Detayı" Icon="@Icons.Material.Filled.TableChart" IsEmpty="@(!_data.TopStores.Any())">
+                <MudSimpleTable Dense Hover>
+                    <thead><tr><th>Mağaza</th><th>İl</th><th style="text-align:right">Form sayısı</th><th style="text-align:right">Toplam tutar</th></tr></thead>
+                    <tbody>
+                        @foreach (var s in _data.TopStores)
+                        {
+                            <tr>
+                                <td>@StoreLabel(s.StoreCode, s.StoreName)</td><td>@s.City</td>
+                                <td style="text-align:right">@s.FormCount</td>
+                                <td style="text-align:right">@AnalyticsCharts.Tl(s.TotalAmount)</td>                            </tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            </ChartCard>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    [CascadingParameter(Name = "IsDarkMode")] public bool IsDark { get; set; }
+
+    private AnalyticsFilterState? _filter;
+    private ClaimAnalyticsResult? _data;
+    private ControlAnalyticsResult? _control;
+    private (int Year, int Month) _anchor = (DateTime.Now.Year, DateTime.Now.Month);
+    private (int Year, int Month) _earliest = (DateTime.Now.Year, DateTime.Now.Month);
+    /// <summary>Ekran varsayılan olarak tüm zamanları gösterir; kullanıcı Filtrele ile daraltabilir.</summary>
+    private bool _allTime = true;
+    private bool _loading;
+    private int _renderKey;
+    private bool _lastDark;
+
+    private ApexCharts.ApexChartOptions<PeriodCategoryAmount> _optMonthly = new();
+    private ApexCharts.ApexChartOptions<CostBreakdownRow> _optCost = new();
+    private ApexCharts.ApexChartOptions<StoreCostRow> _optStores = new();
+    private ApexCharts.ApexChartOptions<CurrencyPeriodRow> _optCurrency = new();
+
+    /// <summary>Grafik seçenekleri her yeniden kurulumda (veri/tema değişimi) baştan oluşturulur.</summary>
+    private void BuildOptions()
+    {
+        _optMonthly = AnalyticsCharts.Money<PeriodCategoryAmount>(IsDark, stacked: true);
+        // Lejanttaki kategoriye tıklamak o seriyi gizlemez; yalnız o kategoriyi gösterir (SelectMonthlyCategory)
+        _optMonthly.Legend.OnItemClick = new ApexCharts.LegendOnItemClick { ToggleDataSeries = false };
+        _optCost = AnalyticsCharts.Money<CostBreakdownRow>(IsDark, stacked: true);
+        _optStores = AnalyticsCharts.Money<StoreCostRow>(IsDark, horizontal: true);
+        _optCurrency = AnalyticsCharts.Money<CurrencyPeriodRow>(IsDark);
+        _renderKey++;
+    }
+
+    private bool IsCooling => CurrentDiscipline.CurrentDiscipline == MechanicalDiscipline.Cooling;
+
+    private string RangeText => _filter is null ? "" : _allTime ? "Tüm zamanlar" :
+        (_filter.FromIndex == _filter.ToIndex
+            ? $"{AnalyticsCharts.Tr.DateTimeFormat.GetMonthName(_filter.FromMonth)} {_filter.FromYear}"
+            : $"{AnalyticsCharts.Tr.DateTimeFormat.GetMonthName(_filter.FromMonth)} {_filter.FromYear} – {AnalyticsCharts.Tr.DateTimeFormat.GetMonthName(_filter.ToMonth)} {_filter.ToYear}")
+            + (string.IsNullOrEmpty(_filter.Region) ? "" : $" · {_filter.Region}");
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Ekran tüm zamanlarla açılır: kaydı olan en eski dönemden en son döneme kadar
+        var latest = await ClaimAnalytics.GetLatestPeriodAsync();
+        if (latest is { } p) _anchor = (p.Year, p.Month);
+        var earliest = await ClaimAnalytics.GetEarliestPeriodAsync();
+        _earliest = earliest is { } e ? (e.Year, e.Month) : _anchor;
+        _filter = new AnalyticsFilterState();
+        _lastDark = IsDark;
+        await ShowAllTimeAsync();
+    }
+
+    private async Task ShowAllTimeAsync()
+    {
+        if (_filter is null) return;
+        _allTime = true;
+        _filter.Region = null;
+        _filter.SetRange(_earliest.Year * 12 + _earliest.Month - 1, _anchor.Year * 12 + _anchor.Month - 1);
+        await LoadAsync();
+    }
+
+    private async Task ApplyFilterAsync()
+    {
+        _allTime = false;
+        await LoadAsync();
+    }
+
+    protected override void OnParametersSet()
+    {
+        // Tema değişince grafikler yeni temayla yeniden kurulur
+        if (_filter is not null && _lastDark != IsDark) { _lastDark = IsDark; BuildOptions(); }
+    }
+
+    private async Task LoadAsync()
+    {
+        if (_filter is null) return;
+        if (_filter.FromIndex > _filter.ToIndex) _filter.SetRange(_filter.FromIndex, _filter.ToIndex);
+        _loading = true;
+        try
+        {
+            // Firma tek (Ayarlar'dan) — firma filtresi uygulanmaz
+            var f = new AnalyticsFilter(new Period(_filter.FromYear, _filter.FromMonth), new Period(_filter.ToYear, _filter.ToMonth),
+                CompanyName: null, Region: _filter.Region);
+            _data = await ClaimAnalytics.GetAsync(f);
+            if (_monthlyCategory is not null && !_data.Categories.Contains(_monthlyCategory)) _monthlyCategory = null;
+            if (IsCooling)
+            {
+                try
+                {
+                    _control = await ControlAnalytics.GetAsync(new ControlAnalyticsFilter(_filter.FromYear, _filter.FromMonth,
+                        _filter.ToYear, _filter.ToMonth, null, null));
+                }
+                catch { _control = null; }   // kontrol modülü veritabanı yoksa bu kart gizlenir
+            }
+            BuildOptions();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Analiz verisi okunamadı: {ex.Message}", Severity.Error);
+        }
+        finally { _loading = false; }
+    }
+
+    /// <summary>Aylık tutar grafiğinde seçili tek kategori (null = tümü). Aynı kategoriye tekrar tıklamak seçimi kaldırır.</summary>
+    private string? _monthlyCategory;
+
+    private void SelectMonthlyCategory(string? name) =>
+        _monthlyCategory = string.IsNullOrEmpty(name) || name == _monthlyCategory ? null : name;
+
+    private async Task DrillToPeriod(int index)
+    {
+        if (_filter is null || index < 0) return;
+        var idx = _filter.FromIndex + index;
+        if (idx > _filter.ToIndex || _filter.FromIndex == _filter.ToIndex) return;
+        _filter.SetRange(idx, idx);
+        _allTime = false;
+        await LoadAsync();
+    }
+
+    private static string StoreLabel(string code, string name) =>
+        string.IsNullOrWhiteSpace(code) ? name : string.IsNullOrWhiteSpace(name) ? code : $"{code} · {name}";
+
+    private static decimal Pct(int part, int total) => total == 0 ? 0 : Math.Round(part * 100m / total, 1);
+
+    private static string CompletedRate(ClaimKpis k) =>
+        k.FormCount == 0 ? "Form yok" : $"%{Math.Round(k.CompletedForms * 100m / k.FormCount, 0)} tamamlandı";
+
+    private static string ChangeText(ClaimKpis k) => k.ChangePercent is { } c
+        ? $"{(c >= 0 ? "▲" : "▼")} %{Math.Abs(c).ToString("N1", AnalyticsCharts.Tr)} önceki döneme göre"
+        : "Önceki dönemde kayıt yok";
+}

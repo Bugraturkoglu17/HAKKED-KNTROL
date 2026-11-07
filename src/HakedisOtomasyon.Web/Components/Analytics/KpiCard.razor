@@ -1,0 +1,43 @@
+@namespace HakedisOtomasyon.Web.Components.Analytics
+
+@* Analiz ekranlarının gösterge kartı: sabit yükseklik, tek satır başlık/değer, renkli vurgu çizgisi.
+   Stiller wwwroot/css/app.css içindeki ".kpi-" sınıflarındadır. *@
+<div class="kpi-card" lang="tr" style="--kpi-accent:@Accent" title="@Tooltip">
+    <div class="kpi-head">
+        <span class="kpi-title">@Title</span>
+        <span class="kpi-icon"><MudIcon Icon="@Icon" Size="Size.Small" /></span>
+    </div>
+    <div class="kpi-value">@Value@if (!string.IsNullOrEmpty(Unit)) {<span class="kpi-unit">@Unit</span>}</div>
+    @if (Progress is { } p)
+    {
+        <div class="kpi-progress"><span style="width:@(Math.Clamp(p, 0, 100).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture))%"></span></div>
+    }
+    <div class="kpi-foot">
+        @if (Trend is { } t)
+        {
+            var good = t == 0 ? (bool?)null : (t > 0) == TrendGoodWhenUp;
+            <span class="kpi-trend @(good is null ? "flat" : good.Value ? "good" : "bad")">
+                @(t > 0 ? "▲" : t < 0 ? "▼" : "■") %@Math.Abs(t).ToString("N1", AnalyticsCharts.Tr)
+            </span>
+        }
+        <span class="kpi-sub">@Subtitle</span>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string Title { get; set; } = string.Empty;
+    [Parameter] public string Value { get; set; } = "0";
+    /// <summary>Değerin yanında küçük yazılan birim (₺, kalem…).</summary>
+    [Parameter] public string? Unit { get; set; }
+    [Parameter] public string? Subtitle { get; set; }
+    [Parameter] public string Icon { get; set; } = Icons.Material.Filled.Insights;
+    /// <summary>Vurgu rengi (CSS), ör. "var(--mud-palette-primary)".</summary>
+    [Parameter] public string Accent { get; set; } = "var(--mud-palette-primary)";
+    /// <summary>Önceki döneme göre değişim (%). Null ise gösterilmez.</summary>
+    [Parameter] public decimal? Trend { get; set; }
+    /// <summary>Artış iyi mi (yeşil) kötü mü (kırmızı)?</summary>
+    [Parameter] public bool TrendGoodWhenUp { get; set; } = true;
+    /// <summary>0-100 arası ilerleme çubuğu (oranlar için). Null ise gösterilmez.</summary>
+    [Parameter] public decimal? Progress { get; set; }
+    [Parameter] public string? Tooltip { get; set; }
+}

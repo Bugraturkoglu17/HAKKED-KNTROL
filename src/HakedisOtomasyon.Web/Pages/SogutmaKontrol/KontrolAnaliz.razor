@@ -1,0 +1,284 @@
+@page "/discipline/sogutma/kontrol/analiz"
+@using SogutmaHakedisKontrol.Application.Analytics
+@using HakedisOtomasyon.Web.Components.Analytics
+@inject IControlAnalyticsService ControlAnalytics
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+
+<PageTitle>Kontrol Analizi</PageTitle>
+
+<MudStack Row AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-3">
+    <div>
+        <MudText Typo="Typo.h5" Style="font-weight:700">Kontrol Analizi</MudText>
+        <MudText Typo="Typo.caption" Color="Color.Secondary">Firma hakedişlerinin fiyat ve form kontrol sonuçları · @RangeText</MudText>
+    </div>
+    <MudStack Row AlignItems="AlignItems.Center">
+        @if (_loading) { <MudProgressCircular Indeterminate Size="Size.Small" /> }
+        <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.ArrowBack" Href="/discipline/sogutma/kontrol">Kontrol Merkezine Dön</MudButton>
+    </MudStack>
+</MudStack>
+
+@if (_filter is not null)
+{
+    <AnalyticsFilterBar State="_filter" CompanyOptions="@(_data?.CompanyOptions ?? new())" RegionOptions="@(_data?.RegionOptions ?? new())" Summary="@RangeText"
+                        AnchorYear="_anchor.Year" AnchorMonth="_anchor.Month" OnApply="LoadAsync" />
+}
+
+@if (_data is not null)
+{
+    var k = _data.Kpis;
+
+    <div class="kpi-grid">
+        <KpiCard Title="Kontrol" Value="@k.CheckCount.ToString()" Unit="adet" Icon="@Icons.Material.Filled.FactCheck"
+                 Accent="var(--mud-palette-primary)" Progress="@(k.CheckCount == 0 ? 0 : Math.Round(k.CompletedChecks * 100m / k.CheckCount, 1))"
+                 Subtitle="@($"{k.CompletedChecks} tamamlandı")" />
+        <KpiCard Title="Firma Talebi" Value="@AnalyticsCharts.Num(k.CompanyTotal)" Unit="₺" Icon="@Icons.Material.Filled.RequestQuote"
+                 Accent="var(--mud-palette-info)" Subtitle="Firmanın hakedişte istediği" />
+        <KpiCard Title="Hesaplanan" Value="@AnalyticsCharts.Num(k.CalculatedTotal)" Unit="₺" Icon="@Icons.Material.Filled.Calculate"
+                 Accent="var(--mud-palette-success)" Subtitle="Onaylı birim fiyatlarla" />
+        <KpiCard Title="Fazla Talep" Value="@AnalyticsCharts.Num(k.OverbilledTotal)" Unit="₺" Icon="@Icons.Material.Filled.TrendingUp"
+                 Accent="var(--mud-palette-error)" Subtitle="@($"Net fark: {AnalyticsCharts.Tl(k.Difference)}")" />
+        <KpiCard Title="Hatalı Kalem" Value="@($"%{AnalyticsCharts.Num(k.ErrorRatePercent, 1)}")" Icon="@Icons.Material.Filled.ErrorOutline"
+                 Accent="var(--mud-palette-warning)" Progress="@k.ErrorRatePercent" Subtitle="@($"{k.ErrorItemCount} / {k.ItemCount} kalem")" />
+        <KpiCard Title="Onay Bekleyen" Value="@k.PendingItemCount.ToString()" Unit="kalem" Icon="@Icons.Material.Filled.HourglassTop"
+                 Accent="var(--mud-palette-secondary)" Subtitle="Kontrol gerekli + onay bekliyor" />
+    </div>
+
+    <MudGrid Spacing="3" Class="mt-1">
+        @* ── A1. Firma talebi / hesaplanan ────────────────────────────────── *@
+        <MudItem xs="12" lg="8">
+            <ChartCard Title="Firma Talebi ve Hesaplanan Tutar" Subtitle="Çubuk: tutarlar · Çizgi: fark (firma − hesaplanan) · bir aya tıklayınca o aya odaklanır"
+                       Icon="@Icons.Material.Filled.BarChart" IsEmpty="@(k.CheckCount == 0)" EmptyText="Seçili dönemde hakediş kontrolü yok.">
+                <ApexCharts.ApexChart TItem="ControlPeriodRow" @key="@($"p{_renderKey}")" Height="340" Options="@_optPeriods"
+                                      OnDataPointSelection="@(d => DrillToPeriod(d.DataPointIndex))">
+                    <ApexCharts.ApexPointSeries TItem="ControlPeriodRow" Name="Firma talebi" SeriesType="ApexCharts.SeriesType.Bar"
+                                                Items="@_data.Periods" XValue="@(r => r.PeriodLabel)" YValue="@(r => (decimal?)r.CompanyTotal)" />
+                    <ApexCharts.ApexPointSeries TItem="ControlPeriodRow" Name="Hesaplanan" SeriesType="ApexCharts.SeriesType.Bar"
+                                                Items="@_data.Periods" XValue="@(r => r.PeriodLabel)" YValue="@(r => (decimal?)r.CalculatedTotal)" />
+                    <ApexCharts.ApexPointSeries TItem="ControlPeriodRow" Name="Fark" SeriesType="ApexCharts.SeriesType.Line"
+                                                Items="@_data.Periods" XValue="@(r => r.PeriodLabel)" YValue="@(r => (decimal?)r.Difference)" />
+                </ApexCharts.ApexChart>
+            </ChartCard>
+        </MudItem>
+
+        @* ── A2. Kontrol sonucu dağılımı ─────────────────────────────────── *@
+        <MudItem xs="12" md="6" lg="4">
+            <ChartCard Title="Kontrol Sonucu Dağılımı" Subtitle="Kalem sayısına göre (kontrol dışı hariç)"
+                       Icon="@Icons.Material.Filled.DonutLarge" IsEmpty="@(!_data.StatusDistribution.Any())">
+                <ApexCharts.ApexChart TItem="ControlStatusRow" @key="@($"d{_renderKey}")" Height="320" Options="@_optStatus">
+                    <ApexCharts.ApexPointSeries TItem="ControlStatusRow" Name="Kalem" SeriesType="ApexCharts.SeriesType.Donut"
+                                                Items="@_data.StatusDistribution" XValue="@(r => r.Status)" YValue="@(r => (decimal?)r.Count)" />
+                </ApexCharts.ApexChart>
+            </ChartCard>
+        </MudItem>
+
+        @* ── A3. En çok sapan malzemeler ─────────────────────────────────── *@
+        <MudItem xs="12" md="6" lg="6">
+            <ChartCard Title="En Çok Sapan Malzemeler" Subtitle="Fazla talep edilen toplam tutara göre ilk 10"
+                       Icon="@Icons.Material.Filled.Inventory2" IsEmpty="@(!_data.TopMaterials.Any())" EmptyText="Fazla talep edilen kalem yok.">
+                <ApexCharts.ApexChart TItem="ControlMaterialRow" @key="@($"t{_renderKey}")" Height="@(Math.Max(220, _data.TopMaterials.Count * 30 + 60))" Options="@_optMaterials">
+                    <ApexCharts.ApexPointSeries TItem="ControlMaterialRow" Name="Fazla talep" SeriesType="ApexCharts.SeriesType.Bar"
+                                                Items="@_data.TopMaterials" XValue="@(r => Short(r.MaterialName))" YValue="@(r => (decimal?)r.TotalDifference)" />
+                </ApexCharts.ApexChart>
+                <MudSimpleTable Dense Hover Class="mt-2">
+                    <thead><tr><th>Malzeme</th><th style="text-align:right">Kalem</th><th style="text-align:right">Ort. sapma</th><th style="text-align:right">Fazla talep</th></tr></thead>
+                    <tbody>
+                        @foreach (var m in _data.TopMaterials)
+                        {
+                            <tr><td>@m.MaterialName</td><td style="text-align:right">@m.Count</td>
+                                <td style="text-align:right">%@AnalyticsCharts.Num(m.AverageDifferencePercent, 1)</td>
+                                <td style="text-align:right">@AnalyticsCharts.Tl(m.TotalDifference)</td></tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            </ChartCard>
+        </MudItem>
+
+        @* ── A4. İl bazında fark ve hata oranı ───────────────────────────── *@
+        <MudItem xs="12" md="6" lg="6">
+            <ChartCard Title="İllere Göre Fark ve Hata Oranı" Subtitle="Net farka göre ilk 15 il"
+                       Icon="@Icons.Material.Filled.Map" IsEmpty="@(!_data.Cities.Any())">
+                <ApexCharts.ApexChart TItem="ControlCityRow" @key="@($"c{_renderKey}")" Height="@(Math.Max(220, _data.Cities.Count * 26 + 60))" Options="@_optCities">
+                    <ApexCharts.ApexPointSeries TItem="ControlCityRow" Name="Net fark" SeriesType="ApexCharts.SeriesType.Bar"
+                                                Items="@_data.Cities" XValue="@(r => r.City)" YValue="@(r => (decimal?)r.TotalDifference)" />
+                </ApexCharts.ApexChart>
+                <MudSimpleTable Dense Hover Class="mt-2">
+                    <thead><tr><th>İl</th><th style="text-align:right">Kalem</th><th style="text-align:right">Hatalı</th><th style="text-align:right">Hata oranı</th><th style="text-align:right">Net fark</th></tr></thead>
+                    <tbody>
+                        @foreach (var c in _data.Cities)
+                        {
+                            <tr><td>@c.City</td><td style="text-align:right">@c.ItemCount</td><td style="text-align:right">@c.ErrorCount</td>
+                                <td style="text-align:right">@RateChip(c.ErrorRatePercent)</td>
+                                <td style="text-align:right">@AnalyticsCharts.Tl(c.TotalDifference)</td></tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            </ChartCard>
+        </MudItem>
+
+        @* ── A5. Firma karşılaştırması ───────────────────────────────────── *@
+        <MudItem xs="12" lg="6">
+            <ChartCard Title="Firma Karşılaştırması" Subtitle="Hatalı kalem oranı (%)"
+                       Icon="@Icons.Material.Filled.CompareArrows" IsEmpty="@(!_data.Companies.Any())">
+                @if (_data.Companies.Count > 1)
+                {
+                    <ApexCharts.ApexChart TItem="ControlCompanyRow" @key="@($"f{_renderKey}")" Height="@(Math.Max(200, _data.Companies.Count * 32 + 60))" Options="@_optCompanies">
+                        <ApexCharts.ApexPointSeries TItem="ControlCompanyRow" Name="Hata oranı" SeriesType="ApexCharts.SeriesType.Bar"
+                                                    Items="@_data.Companies" XValue="@(r => r.CompanyName)" YValue="@(r => (decimal?)r.ErrorRatePercent)" />
+                    </ApexCharts.ApexChart>
+                }
+                <MudSimpleTable Dense Hover Class="mt-2">
+                    <thead><tr><th>Firma</th><th style="text-align:right">Kontrol</th><th style="text-align:right">Kalem</th><th style="text-align:right">Hata oranı</th><th style="text-align:right">Ort. sapma</th><th style="text-align:right">Net fark</th></tr></thead>
+                    <tbody>
+                        @foreach (var c in _data.Companies)
+                        {
+                            <tr><td>@c.CompanyName</td><td style="text-align:right">@c.CheckCount</td><td style="text-align:right">@c.ItemCount</td>
+                                <td style="text-align:right">@RateChip(c.ErrorRatePercent)</td>
+                                <td style="text-align:right">%@AnalyticsCharts.Num(c.AverageDifferencePercent, 1)</td>
+                                <td style="text-align:right">@AnalyticsCharts.Tl(c.TotalDifference)</td></tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            </ChartCard>
+        </MudItem>
+
+        @* ── A6. AI karşılaştırma kalitesi ───────────────────────────────── *@
+        <MudItem xs="12" lg="6">
+            <ChartCard Title="AI Form Kontrolü Kalitesi" Icon="@Icons.Material.Filled.AutoAwesome"
+                       Subtitle="@($"{_data.AiTotal} karşılaştırma · kullanıcı düzeltmesi: {_data.AiOverridden} (%{AnalyticsCharts.Num(_data.AiOverrideRatePercent, 1)})")"
+                       IsEmpty="@(_data.AiTotal == 0)" EmptyText="Seçili dönemde AI form kontrolü yapılmamış.">
+                <MudGrid Spacing="2">
+                    <MudItem xs="12" md="5">
+                        <ApexCharts.ApexChart TItem="ControlAiStatusRow" @key="@($"a{_renderKey}")" Height="260" Options="@_optAi">
+                            <ApexCharts.ApexPointSeries TItem="ControlAiStatusRow" Name="Karşılaştırma" SeriesType="ApexCharts.SeriesType.Donut"
+                                                        Items="@_data.AiStatuses" XValue="@(r => r.Status)" YValue="@(r => (decimal?)r.Count)" />
+                        </ApexCharts.ApexChart>
+                    </MudItem>
+                    <MudItem xs="12" md="7">
+                        <MudSimpleTable Dense Hover>
+                            <thead><tr><th>Tür</th><th style="text-align:right">Toplam</th><th style="text-align:right">Uygun</th><th style="text-align:right">Uygun değil</th><th style="text-align:right">Eksik</th><th style="text-align:right">Manuel</th><th style="text-align:right">Düzeltilen</th></tr></thead>
+                            <tbody>
+                                @foreach (var t in _data.AiByType)
+                                {
+                                    <tr><td>@t.ItemType</td><td style="text-align:right">@t.Total</td><td style="text-align:right">@t.Uygun</td>
+                                        <td style="text-align:right">@t.UygunDegil</td><td style="text-align:right">@t.Eksik</td>
+                                        <td style="text-align:right">@t.Manuel</td><td style="text-align:right">@t.Overridden</td></tr>
+                                }
+                            </tbody>
+                        </MudSimpleTable>
+                    </MudItem>
+                </MudGrid>
+            </ChartCard>
+        </MudItem>
+
+        @* ── Detaya inme: kontrol listesi ────────────────────────────────── *@
+        <MudItem xs="12">
+            <ChartCard Title="Kontroller" Subtitle="Satıra tıklayınca kontrol sonucu açılır" Icon="@Icons.Material.Filled.List" IsEmpty="@(!_data.Checks.Any())">
+                <MudTable Items="@_data.Checks" Dense Hover Elevation="0" RowsPerPage="15" T="ControlCheckListRow" Style="cursor:pointer"
+                          OnRowClick="@(e => Nav.NavigateTo($"/discipline/sogutma/kontrol/{e.Item!.Id}/sonuc"))">
+                    <HeaderContent>
+                        <MudTh>Dönem</MudTh><MudTh>Firma</MudTh><MudTh>Bölge</MudTh><MudTh>Tür</MudTh>
+                        <MudTh Style="text-align:right">Firma talebi</MudTh><MudTh Style="text-align:right">Hesaplanan</MudTh>
+                        <MudTh Style="text-align:right">Fark</MudTh><MudTh Style="text-align:right">Hatalı kalem</MudTh><MudTh>Durum</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context.PeriodLabel</MudTd><MudTd>@context.CompanyName</MudTd><MudTd>@context.Region</MudTd><MudTd>@context.CategoryName</MudTd>
+                        <MudTd Style="text-align:right">@AnalyticsCharts.Tl(context.CompanyTotal)</MudTd>
+                        <MudTd Style="text-align:right">@AnalyticsCharts.Tl(context.CalculatedTotal)</MudTd>
+                        <MudTd Style="@($"text-align:right;{(context.Difference > 0 ? "color:var(--mud-palette-error);font-weight:600" : "")}")">@AnalyticsCharts.Tl(context.Difference)</MudTd>
+                        <MudTd Style="text-align:right">@context.ErrorItemCount</MudTd>
+                        <MudTd>
+                            <MudChip T="string" Size="Size.Small" Color="@(context.IsCompleted ? Color.Success : Color.Warning)">@(context.IsCompleted ? "Tamamlandı" : "Devam ediyor")</MudChip>
+                        </MudTd>
+                    </RowTemplate>
+                    <PagerContent><MudTablePager RowsPerPageString="Sayfa başına" /></PagerContent>
+                </MudTable>
+            </ChartCard>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    [CascadingParameter(Name = "IsDarkMode")] public bool IsDark { get; set; }
+
+    private AnalyticsFilterState? _filter;
+    private ControlAnalyticsResult? _data;
+    private (int Year, int Month) _anchor = (DateTime.Now.Year, DateTime.Now.Month);
+    private bool _loading;
+    private int _renderKey;
+    private bool _lastDark;
+
+    private ApexCharts.ApexChartOptions<ControlPeriodRow> _optPeriods = new();
+    private ApexCharts.ApexChartOptions<ControlStatusRow> _optStatus = new();
+    private ApexCharts.ApexChartOptions<ControlMaterialRow> _optMaterials = new();
+    private ApexCharts.ApexChartOptions<ControlCityRow> _optCities = new();
+    private ApexCharts.ApexChartOptions<ControlCompanyRow> _optCompanies = new();
+    private ApexCharts.ApexChartOptions<ControlAiStatusRow> _optAi = new();
+
+    private string RangeText => _filter is null ? "" :
+        _filter.FromIndex == _filter.ToIndex
+            ? $"{AnalyticsCharts.Tr.DateTimeFormat.GetMonthName(_filter.FromMonth)} {_filter.FromYear}"
+            : $"{AnalyticsCharts.Tr.DateTimeFormat.GetMonthName(_filter.FromMonth)} {_filter.FromYear} – {AnalyticsCharts.Tr.DateTimeFormat.GetMonthName(_filter.ToMonth)} {_filter.ToYear}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var latest = await ControlAnalytics.GetLatestPeriodAsync();
+        if (latest is { } p) _anchor = p;
+        _filter = AnalyticsFilterState.LastMonths(_anchor.Year, _anchor.Month, 6);
+        _lastDark = IsDark;
+        await LoadAsync();
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (_filter is not null && _lastDark != IsDark) { _lastDark = IsDark; BuildOptions(); }
+    }
+
+    private void BuildOptions()
+    {
+        _optPeriods = AnalyticsCharts.Money<ControlPeriodRow>(IsDark);
+        _optPeriods.Colors = new List<string> { "#FFA726", "#1976D2", "#C62828" };
+        _optStatus = AnalyticsCharts.Donut<ControlStatusRow>(IsDark, _data?.StatusDistribution.Select(s => s.Color));
+        _optMaterials = AnalyticsCharts.Money<ControlMaterialRow>(IsDark, horizontal: true);
+        _optMaterials.Colors = new List<string> { "#C62828" };
+        _optCities = AnalyticsCharts.Money<ControlCityRow>(IsDark, horizontal: true);
+        _optCompanies = AnalyticsCharts.Percent<ControlCompanyRow>(IsDark);
+        _optCompanies.Colors = new List<string> { "#EF6C00" };
+        _optAi = AnalyticsCharts.Donut<ControlAiStatusRow>(IsDark, _data?.AiStatuses.Select(s => s.Color));
+        _renderKey++;
+    }
+
+    private async Task LoadAsync()
+    {
+        if (_filter is null) return;
+        if (_filter.FromIndex > _filter.ToIndex) _filter.SetRange(_filter.FromIndex, _filter.ToIndex);
+        _loading = true;
+        try
+        {
+            _data = await ControlAnalytics.GetAsync(new ControlAnalyticsFilter(_filter.FromYear, _filter.FromMonth,
+                _filter.ToYear, _filter.ToMonth, _filter.Company, _filter.Region));
+            BuildOptions();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Kontrol analizi okunamadı: {ex.Message}", Severity.Error);
+        }
+        finally { _loading = false; }
+    }
+
+    private async Task DrillToPeriod(int index)
+    {
+        if (_filter is null || index < 0) return;
+        var idx = _filter.FromIndex + index;
+        if (idx > _filter.ToIndex || _filter.FromIndex == _filter.ToIndex) return;
+        _filter.SetRange(idx, idx);
+        await LoadAsync();
+    }
+
+    private static string Short(string s) => s.Length > 40 ? s[..38] + "…" : s;
+
+    private static RenderFragment RateChip(decimal rate) => __builder =>
+    {
+        <MudChip T="string" Size="Size.Small" Color="@(rate >= 20 ? Color.Error : rate >= 5 ? Color.Warning : Color.Success)">%@AnalyticsCharts.Num(rate, 1)</MudChip>
+    };
+}

@@ -95,6 +95,8 @@ public partial class WpfApp : System.Windows.Application
             cfg.SnackbarConfiguration.ShowTransitionDuration = 300;
         });
 
+        ApexCharts.ApexChartsExtensions.AddApexCharts(services, _ => { });   // analiz grafikleri
+
         services.AddSingleton<IConfiguration>(config);
         // appPathService önceden oluşturuldu; doğrulanmış DB yolunu kullan
         services.AddApplicationServices(config, appPathService);

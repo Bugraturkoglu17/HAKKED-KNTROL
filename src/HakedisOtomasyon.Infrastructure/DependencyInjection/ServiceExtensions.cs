@@ -41,6 +41,7 @@ public static class ServiceExtensions
         services.AddScoped<IInvoiceService, InvoiceService>();
         services.AddScoped<ISettingsService, SettingsService>();
         services.AddScoped<IDashboardService, DashboardService>();
+        services.AddScoped<IClaimAnalyticsService, ClaimAnalyticsService>();
         services.AddScoped<IExcelExportService, ExcelExportService>();
         services.AddScoped<IDataBackupService, DataBackupService>();
         services.AddScoped<IFileCleanupService, FileCleanupService>();
