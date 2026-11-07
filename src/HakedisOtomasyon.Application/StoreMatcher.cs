@@ -18,6 +18,12 @@ public sealed record HandwrittenStoreResult(string? StoreCode, string? StoreName
 
     /// <summary>"Kullanılan Malzeme" tablosundaki gaz miktarı (yalnız tabloyu okuyabilen okuyucuda; okunamadıysa null).</summary>
     public GasReading? Gas { get; init; }
+
+    /// <summary>"Kullanılan Malzeme" tablosundaki glikol miktarı (kg; yalnız tabloyu okuyabilen okuyucuda; bulunamadıysa null).</summary>
+    public GasReading? Glycol { get; init; }
+
+    /// <summary>Okunan diğer olası mağaza kodları (güvenilirlik sırasıyla); <see cref="StoreCode"/> listede yoksa denenir.</summary>
+    public IReadOnlyList<string> AltCodes { get; init; } = Array.Empty<string>();
 }
 
 /// <summary>El yazısından okunan gün/aydan tarih: yıl formdan OKUNMAZ, içinde bulunulan yıl alınır (kullanıcı kuralı).</summary>

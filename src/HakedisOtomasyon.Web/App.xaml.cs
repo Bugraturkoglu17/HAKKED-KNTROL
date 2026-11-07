@@ -108,12 +108,9 @@ public partial class WpfApp : System.Windows.Application
         services.AddSingleton<IFilePickerService, WpfFilePickerService>();
         // Servis formundan form numarası okuma (Windows OCR, çevrimdışı)
         services.AddSingleton<HakedisOtomasyon.Application.IFormNumberReader, WindowsFormNumberReader>();
-        // El yazısı mağaza + tarih okuma: Azure Document Intelligence (kullanıcı kararı); .env'de Azure yoksa Gemini
-        services.AddSingleton<HakedisOtomasyon.Application.IHandwrittenStoreReader>(_ =>
-        {
-            var azure = new AzureHandwrittenStoreReader();
-            return azure.IsConfigured ? azure : new GeminiHandwrittenStoreReader();
-        });
+        // El yazısı mağaza + tarih + gaz miktarı okuma: yalnız Azure Document Intelligence (.env: AZURE_DI_ENDPOINT / AZURE_DI_KEY).
+        // Form numarası ayrıca Windows OCR ile okunur (yukarıdaki kayıt).
+        services.AddSingleton<HakedisOtomasyon.Application.IHandwrittenStoreReader, AzureHandwrittenStoreReader>();
         services.AddSingleton<PdfPageImageService>();
         services.AddSingleton<SogutmaHakedisKontrol.Application.Interfaces.IFilePickerService, SogutmaHakedisKontrol.Web.WpfFilePickerService>();
 

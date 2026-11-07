@@ -77,6 +77,98 @@ public class AzureFormParserTests
         Assert.Equal((3, 9), AzureFormParser.Date(acil));
     }
 
+    /// <summary>Kullanıcı örneği: ad okunamıyor ("İZ FMS"), üstte el yazısı "4280" var, "İŞİN YERİ" satırında da kod geçiyor.</summary>
+    [Theory]
+    [InlineData("4280")]
+    [InlineData("4 280")]
+    [InlineData("(4280)")]
+    [InlineData("4.280")]
+    public void AdOkunamasa_UstteElYazisiKodAlinir(string written)
+    {
+        var lines = new List<OcrLine>
+        {
+            new("ISO 9001:2015", 0.45, 0.38), new(written, 0.52, 0.34), new("014535", 0.80, 0.40),
+            new("SOĞUTMA MALZEME FORMU", 0.50, 0.55),
+            new("ÇAĞRI BİLDİREN :", 0.12, 0.62), new("İZ FMS", 0.28, 0.62),
+            new("İŞİN YERİ:", 0.10, 0.66), new("Ergazi Gençlik M Jet Migros 4280", 0.40, 0.66),
+        };
+        Assert.Equal("4280", AzureFormParser.Store(lines).Code);
+        Assert.Equal("4280", AzureFormParser.StoreCodes(lines)[0]);
+    }
+
+    [Fact]
+    public void UstKodYoksa_IsinYeriSatirindakiKodAday_OlurVeSiraKorunur()
+    {
+        var lines = new List<OcrLine>
+        {
+            new("SOĞUTMA MALZEME FORMU", 0.50, 0.55),
+            new("ÇAĞRI BİLDİREN :", 0.12, 0.62), new("İZ FMS", 0.28, 0.62),
+            new("İŞİN YERİ:", 0.10, 0.66), new("Ergazi Gençlik M Jet Migros 4280", 0.40, 0.66),
+        };
+        Assert.Equal(new[] { "4280" }, AzureFormParser.StoreCodes(lines));
+        Assert.Null(AzureFormParser.Store(lines).Code);   // ad etiketlerinden kod çıkmaz; yalnız aday listesinde
+    }
+
+    /// <summary>Gerçek Azure çıktısı (TEMMUZ glikol formları): "Glikol" bozuk okunur, miktar adda "80kg" ya da sağda "4bidon" yazar.</summary>
+    [Fact]
+    public void Glikol_AdHucresindeKg_BidonlaTutarliysaTeyitsiz()
+    {
+        // gerçek güvenler: "Glika" 0.67 (bozuk ad), "80kg" 0.95, "4bidon" 0.62 → hücre güveni 0.67 olsa da miktar net
+        var name = new OcrCell(1, 0, "1 Glika 80kg", 0.67) { Words = new[] { new OcrWord("1", 1), new OcrWord("Glika", 0.67), new OcrWord("80kg", 0.95) } };
+        var g = AzureFormParser.Glycol(new[] { WasteTable(), MaterialTable(name, new(1, 1, "4bidon", 0.62), new(1, 2, "11", 1)) })!;
+        Assert.Equal(80m, g.Quantity);
+        Assert.False(g.NeedsCheck);
+    }
+
+    [Fact]
+    public void Glikol_MiktarKelimesiDusukGuvenliyse_TeyitIster()
+    {
+        var name = new OcrCell(1, 0, "1 Glikol 80kg", 0.5) { Words = new[] { new OcrWord("Glikol", 0.9), new OcrWord("80kg", 0.5) } };
+        Assert.True(AzureFormParser.Glycol(new[] { MaterialTable(name, new(1, 1, "", 1)) })!.NeedsCheck);
+    }
+
+    [Fact]
+    public void Glikol_YalnizBidonYaziyorsa_Bidon20KgVeTeyitIster()
+    {
+        var g = AzureFormParser.Glycol(new[] { MaterialTable(new(1, 0, "1 Rhol AGa", 0.9), new(1, 1, "Visp", 0.9), new(4, 0, "4 Gilla 404", 0.9), new(4, 1, "2bdes", 0.9)) })!;
+        Assert.Equal(40m, g.Quantity);
+        Assert.True(g.NeedsCheck);
+    }
+
+    [Fact]
+    public void Glikol_SagdakiMiktarKgIse_Okunur()
+    {
+        var g = AzureFormParser.Glycol(new[] { MaterialTable(new(1, 0, "1 Glikol", 1), new(1, 1, "40 kg", 0.95)) })!;
+        Assert.Equal(40m, g.Quantity);
+        Assert.False(g.NeedsCheck);
+    }
+
+    [Fact]
+    public void Glikol_BidonVeKgTutmuyorsa_TeyitIster()
+    {
+        var g = AzureFormParser.Glycol(new[] { MaterialTable(new(1, 0, "1 Glikol 80kg", 1), new(1, 1, "3 bidon", 1)) })!;
+        Assert.True(g.NeedsCheck);
+    }
+
+    [Fact]
+    public void Glikol_DusukGuven_TeyitIster()
+        => Assert.True(AzureFormParser.Glycol(new[] { MaterialTable(new(1, 0, "1 Glikol 80kg", 0.5), new(1, 1, "", 1)) })!.NeedsCheck);
+
+    [Fact]
+    public void Glikol_GazSatiriGlikolSayilmaz_GlikolYoksaNull()
+    {
+        var table = MaterialTable(new(1, 0, "1 R404 gaz", 1), new(1, 1, "7kg", 1), new(2, 0, "2 Hava borusu", 1), new(2, 1, "2 Adet", 1));
+        Assert.Null(AzureFormParser.Glycol(new[] { table }));
+    }
+
+    [Fact]
+    public void Glikol_AtikTablosuSayilmaz()
+        => Assert.Null(AzureFormParser.Glycol(new[] { new OcrTable(new List<OcrCell> { new(0, 0, "ATIK Malzemenin Cinsi", 1), new(0, 1, "Miktarı", 1), new(1, 0, "1 Glikol", 1), new(1, 1, "20kg", 1) }) }));
+
+    [Fact]
+    public void GazSatiri_GazOkuyucuyaDokunulmadi()
+        => Assert.Equal(7m, AzureFormParser.Gas(new[] { MaterialTable(new(1, 0, "1 R404 gaz", 1), new(1, 1, "7kg", 1)) })!.Quantity);
+
     // ── Gaz miktarı ("Kullanılan Malzeme" tablosu; gerçek gaz formlarının Azure çıktısı) ──
     private static OcrTable MaterialTable(params OcrCell[] rows) => new(new List<OcrCell>
     {

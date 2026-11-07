@@ -5,8 +5,16 @@ namespace HakedisOtomasyon.Application;
 /// <summary>OCR'ın okuduğu bir satır: metin + sayfadaki konumu (sol üst köşeye göre 0–1 arası, satırın ortası).</summary>
 public sealed record OcrLine(string Text, double X, double Y);
 
+/// <summary>OCR'ın okuduğu bir hücredeki kelime ve güveni (0–1).</summary>
+public sealed record OcrWord(string Text, double Confidence);
+
 /// <summary>OCR'ın okuduğu bir tablo hücresi; <paramref name="Confidence"/> hücredeki kelimelerin en düşük güveni (0–1).</summary>
-public sealed record OcrCell(int Row, int Column, string Text, double Confidence);
+public sealed record OcrCell(int Row, int Column, string Text, double Confidence)
+{
+    /// <summary>Hücredeki kelimeler ve ayrı ayrı güvenleri (bilinmiyorsa null). Bozuk okunan bir kelime ("Glika") aynı hücredeki
+    /// net kelimenin ("80kg") güvenini düşürmesin diye miktar güveni buradan alınır.</summary>
+    public IReadOnlyList<OcrWord>? Words { get; init; }
+}
 
 /// <summary>OCR'ın okuduğu bir tablo.</summary>
 public sealed record OcrTable(IReadOnlyList<OcrCell> Cells);
@@ -76,14 +84,46 @@ public static class AzureFormParser
         }
 
         // Elle yazılmış kod (parantezsiz): başlıktan ("... FORMU") önce, sağ üstteki basılı form numarası bölgesinin dışında
-        if (code is null)
-        {
-            var titleY = lines.Where(l => Title.IsMatch(l.Text)).Select(l => l.Y).DefaultIfEmpty(0.25).Min();
-            code = lines.Where(l => l.Y < titleY && l.X < 0.70)
-                        .Select(l => Regex.Match(l.Text.Trim(), @"^\(?(\d{3,5})\)?$"))
-                        .Where(m => m.Success).Select(m => m.Groups[1].Value).FirstOrDefault();
-        }
+        code ??= TopHandwrittenCode(lines);
         return (code, name);
+    }
+
+    /// <summary>
+    /// Mağaza kodu adayları, güvenilirlik sırasıyla: <see cref="Store"/>'un kodu, sayfanın üstündeki el yazısı kod, sonra
+    /// "ÇAĞRI BİLDİREN / İŞİN YERİ / MÜŞTERİ" satırlarında geçen diğer 3–5 haneli sayılar. Ad okunabilse bile üstteki el yazısı kod
+    /// ve "İŞİN YERİ: … Migros 4280" gibi satırlar kod için kullanılır; eşleştirme listede olmayanı eler.
+    /// </summary>
+    public static IReadOnlyList<string> StoreCodes(IReadOnlyList<OcrLine> lines)
+    {
+        var codes = new List<string>();
+        void Add(string? c) { if (!string.IsNullOrEmpty(c) && !codes.Contains(c)) codes.Add(c); }
+
+        Add(Store(lines).Code);
+        Add(TopHandwrittenCode(lines));
+        foreach (var label in StoreLabels)
+            foreach (var line in lines.Where(l => label.IsMatch(l.Text)).OrderBy(l => l.Y))
+            {
+                var value = ValueAfter(line, label.Match(line.Text), lines);
+                var m = CodeInParens.Match(value);
+                if (m.Success) { Add(m.Groups[1].Value); continue; }
+                var bare = BareCode.Matches(value);
+                if (bare.Count > 0) Add(bare[^1].Groups[1].Value);
+            }
+        return codes;
+    }
+
+    /// <summary>
+    /// Başlığın ("... FORMU") üstünde, form numarası bölgesi dışında, tek başına duran el yazısı 3–5 haneli sayı.
+    /// El yazısı OCR'ı aralık/nokta ekleyebilir ("4 280", "4.280", "(4280)"); bunlar silinip bakılır. Telefon, ISO numarası gibi
+    /// basılı metinler başka sözcük içerdiği ya da hane sayısı tutmadığı için eşleşmez.
+    /// </summary>
+    private static string? TopHandwrittenCode(IReadOnlyList<OcrLine> lines)
+    {
+        var titleY = lines.Where(l => Title.IsMatch(l.Text)).Select(l => l.Y).DefaultIfEmpty(0.25).Min();
+        return lines.Where(l => l.Y < titleY && l.X < 0.70)
+                    .Select(l => Regex.Replace(l.Text, @"[\s.,()\-]", string.Empty))
+                    .Where(t => Regex.IsMatch(t, @"^\d{3,5}$"))
+                    .FirstOrDefault();
     }
 
     public static (int? Day, int? Month) Date(IReadOnlyList<OcrLine> lines)
@@ -180,6 +220,89 @@ public static class AzureFormParser
     {
         var t = raw.Replace(" ", string.Empty).ToUpperInvariant().Replace('O', '0');
         return t.StartsWith("40") ? "404" : t;
+    }
+
+    // El yazısında "Glikol" çoğu zaman bozuk okunur ("Glika", "Gilla", "Glikol"); G + l/i + k/c/l harfleri aranır. Gaz ("Gaz") eşleşmez.
+    private static readonly Regex GlycolWord = new(@"(?<![A-Za-zÇĞİÖŞÜçğıöşü])G[lLiI1]{1,2}[kKcCgGlL][A-Za-zçğıöşü]{0,3}(?![A-Za-zÇĞİÖŞÜçğıöşü])|ANT[İI]FR[İI]Z|PROP[İI]LEN|SO[ĞG]UTKAN", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex KgInText = new(@"(?<!\d)(\d{1,3}(?:[.,]\d{1,2})?)\s*(KG|KĞ|KGR|KQ)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex BidonInText = new(@"(?<!\d)(\d{1,2})\s*(B[İI]DON|BDN|BD[A-Z]{0,3}|B[İI]D[A-Z]{0,3})\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>Glikol bidonunun kg'ı (gerçek formlarda: 4 bidon = 80 kg, 2 bidon = 40 kg).</summary>
+    private const decimal KgPerBidon = 20m;
+
+    private static decimal? ParseQty(string s)
+        => decimal.TryParse(s.Replace(',', '.'), System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var q) && q > 0 ? q : null;
+
+    /// <summary>"80kg" eşleşmesini içeren kelimenin(lerin) güveni; kelime bilgisi yoksa hücrenin genel güveni.</summary>
+    private static double WordConfidence(OcrCell cell, Match qty)
+    {
+        if (cell.Words is not { Count: > 0 } words) return cell.Confidence;
+        var digits = qty.Groups[1].Value;
+        var hit = words.Where(w => w.Text.Contains(digits, StringComparison.Ordinal) || w.Text.Trim().Equals("kg", StringComparison.OrdinalIgnoreCase)).ToList();
+        return hit.Count == 0 ? cell.Confidence : hit.Min(w => w.Confidence);
+    }
+
+    /// <summary>
+    /// "Kullanılan Malzeme" tablosunda adı "glikol" olan (bozuk yazılmış olabilir) satır(lar)ın miktarı, kg cinsinden.
+    /// Miktar iki yerde yazılabilir: malzeme adı hücresinde ("Glikol 80kg") ya da sağdaki "Miktarı" sütununda ("80 kg" / "4 bidon").
+    /// Önce "kg" olarak yazılan alınır (net okunduysa teyitsiz); yalnız bidon yazıyorsa bidon × 20 kg alınır ve teyit istenir;
+    /// düz sayı ya da okunamayan miktar da teyit ister. Birden çok glikol satırı toplanır ve teyit ister.
+    /// </summary>
+    public static GasReading? Glycol(IReadOnlyList<OcrTable> tables)
+    {
+        foreach (var table in tables)
+        {
+            var header = table.Cells.Where(c => c.Row == 0).ToList();
+            var headerText = string.Join(" ", header.Select(c => c.Text));
+            if (!headerText.Contains("Cins", StringComparison.OrdinalIgnoreCase) || !headerText.Contains("Miktar", StringComparison.OrdinalIgnoreCase)
+                || headerText.Contains("ATIK", StringComparison.OrdinalIgnoreCase)) continue;
+            var qtyColumns = header.Where(c => c.Text.Contains("Miktar", StringComparison.OrdinalIgnoreCase)).Select(c => c.Column).OrderBy(c => c).ToList();
+
+            var rows = new List<(decimal? Qty, string Raw, bool Clean, string? Note)>();
+            foreach (var cell in table.Cells.Where(c => c.Row > 0 && !qtyColumns.Contains(c.Column) && GlycolWord.IsMatch(c.Text)))
+            {
+                var qtyCol = qtyColumns.Where(c => c > cell.Column).DefaultIfEmpty(-1).Min();
+                var qtyCell = table.Cells.FirstOrDefault(c => c.Row == cell.Row && c.Column == qtyCol);
+                var qtyText = qtyCell?.Text.Trim() ?? string.Empty;
+                var raw = (cell.Text.Trim() + " | " + qtyText).Trim(' ', '|');
+
+                var nameKg = KgInText.Match(cell.Text);
+                var cellKg = KgInText.Match(qtyText);
+                var bidon = BidonInText.Match(qtyText);
+                if (nameKg.Success || cellKg.Success)
+                {
+                    var useName = nameKg.Success;
+                    var qty = ParseQty((useName ? nameKg : cellKg).Groups[1].Value);
+                    var conf = useName ? WordConfidence(cell, nameKg) : WordConfidence(qtyCell!, cellKg);
+                    var ok = qty is > 0 and <= 500 && conf >= QtyConfidence;
+                    // adda "80kg", sağda "4 bidon": tutmuyorsa teyit istenir (bidon çok kötü okunduysa karşılaştırılmaz)
+                    var conflict = bidon.Success && (qtyCell?.Confidence ?? 1d) >= 0.5 && ParseQty(bidon.Groups[1].Value) * KgPerBidon != qty;
+                    rows.Add((qty, raw, ok && !conflict, ok && !conflict ? null : conflict ? $"Formda \"{qtyText}\" ve \"{cell.Text.Trim()}\" tutmuyor." : $"Miktar net okunamadı (formda \"{raw}\")."));
+                }
+                else if (bidon.Success)
+                {
+                    var n = ParseQty(bidon.Groups[1].Value);
+                    rows.Add((n * KgPerBidon, raw, false, $"Formda \"{qtyText}\" yazıyor; bidon başına {KgPerBidon:0} kg varsayıldı."));
+                }
+                else
+                {
+                    var n = AnyNumber.Match(qtyText);
+                    rows.Add((n.Success ? ParseQty(n.Value) : null, raw, false,
+                        qtyText.Length == 0 ? "Glikol satırı var ama miktar okunamadı." : $"Miktar birimi okunamadı (formda \"{qtyText}\")."));
+                }
+            }
+            if (rows.Count == 0) continue;
+
+            if (rows.Count > 1)
+            {
+                var sum = rows.All(r => r.Qty.HasValue) ? rows.Sum(r => r.Qty!.Value) : (decimal?)null;
+                return new(sum, string.Join(" + ", rows.Select(r => r.Raw)), null, true,
+                    $"Formda {rows.Count} glikol satırı var; toplam yazıldı.");
+            }
+            var one = rows[0];
+            return new(one.Qty, one.Raw, null, !one.Clean, one.Note);
+        }
+        return null;
     }
 
     /// <summary>Etiketten sonraki metin + aynı hizada, etiketin sağındaki (başka etiket olmayan) satırlar.</summary>

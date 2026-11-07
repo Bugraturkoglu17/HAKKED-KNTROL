@@ -75,8 +75,8 @@ public class AiAnalysisPipelineService : IAiAnalysisPipelineService
 
         if (!_visionClient.IsConfigured)
             throw new InvalidOperationException(
-                "AI sağlayıcısı yapılandırılmamış. AI_PROVIDER=openai ise OPENAI_API_KEY'i .env dosyasına " +
-                "girin; AI_PROVIDER=ollama ise Ollama'nın çalıştığından ve modelin indirildiğinden emin olun.");
+                "AI sağlayıcısı yapılandırılmamış. AI_PROVIDER=gemini (varsayılan) ise GEMINI_API_KEY'i, " +
+                "AI_PROVIDER=openai ise OPENAI_API_KEY'i .env dosyasına girin.");
 
         Report(progress, AiJobStatus.Pending, "PDF hazırlanıyor...");
 

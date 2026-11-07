@@ -3,6 +3,7 @@
 @using HakedisOtomasyon.Infrastructure.Services
 @inject CurrentDisciplineService CurrentDiscipline
 @inject NavigationManager Nav
+@inject ISnackbar Snackbar
 
 <PageTitle>Soğutma — Modül Seçimi</PageTitle>
 
@@ -17,7 +18,7 @@
 
     <MudGrid Justify="Justify.Center" Spacing="4" Class="mt-4">
         <MudItem xs="12" sm="6" md="5">
-            <div class="module-card" style="--card-color:#1565C0" @onclick="GoToKontrol">
+            <div class="module-card inactive" style="--card-color:#1565C0" @onclick="GoToKontrol">
                 <div class="module-card-icon">
                     <MudIcon Icon="@Icons.Material.Filled.FactCheck" Size="Size.Large" />
                 </div>
@@ -25,6 +26,7 @@
                 <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-2">
                     Firma hakedişini onaylı birim fiyat listesiyle karşılaştırın
                 </MudText>
+                <MudChip T="string" Color="Color.Default" Size="Size.Small" Class="mt-2">Yakında</MudChip>
             </div>
         </MudItem>
         <MudItem xs="12" sm="6" md="5">
@@ -78,6 +80,17 @@
         transform: translateY(-6px);
         box-shadow: 0 10px 24px color-mix(in srgb, var(--card-color) 35%, transparent);
     }
+
+    .module-card.inactive {
+        opacity: .55;
+        filter: grayscale(35%);
+    }
+
+    .module-card.inactive:hover {
+        opacity: .75;
+        transform: translateY(-2px);
+        box-shadow: none;
+    }
 </style>
 
 @code {
@@ -86,6 +99,6 @@
         CurrentDiscipline.CurrentDiscipline = HakedisOtomasyon.Domain.Enums.MechanicalDiscipline.Cooling;
     }
 
-    private void GoToKontrol() => Nav.NavigateTo("/discipline/sogutma/kontrol");
+    private void GoToKontrol() => Snackbar.Add("Bu modül henüz aktif değildir.", Severity.Info);
     private void GoToOlusturma() => Nav.NavigateTo("/discipline/sogutma/dashboard");
 }

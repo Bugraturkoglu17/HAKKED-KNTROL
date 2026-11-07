@@ -9,7 +9,7 @@ namespace HakedisOtomasyon.Web;
 
 /// <summary>
 /// Servis formundaki el yazısı mağaza kodunu/adını ve servis tarihinin gün/ayını Azure Document Intelligence (prebuilt-layout,
-/// el yazısı destekli) ile okur. Gemini'nin yerine kullanılır (kullanıcı kararı, 2026-11). Form numarası bu sınıfın işi değildir.
+/// el yazısı destekli) ile okur. Servis formunda Windows OCR ile okunan form numarası dışındaki her şeyi (mağaza, tarih, gaz) Azure okur.
 ///   • Açık sayfa (çok sayfalı PDF'de yalnız o sayfa) 150 DPI JPEG olarak gönderilir; WebP vb. Azure'un kabul etmediği
 ///     görseller de JPEG'e çevrilir.
 ///   • Adres ve anahtar .env'den: AZURE_DI_ENDPOINT, AZURE_DI_KEY (hiçbir yere yazılmaz/loglanmaz).
@@ -84,8 +84,10 @@ public sealed class AzureHandwrittenStoreReader : IHandwrittenStoreReader
                 var lines = Lines(doc.RootElement);
                 var (code, name) = AzureFormParser.Store(lines);
                 var (day, month) = AzureFormParser.Date(lines);
-                var gas = AzureFormParser.Gas(Tables(doc.RootElement));
-                return new(code, name, null) { Day = day, Month = month, Gas = gas };
+                var tables = Tables(doc.RootElement);
+                var gas = AzureFormParser.Gas(tables);
+                var glycol = AzureFormParser.Glycol(tables);
+                return new(code, name, null) { Day = day, Month = month, Gas = gas, Glycol = glycol, AltCodes = AzureFormParser.StoreCodes(lines) };
             }
             return new(null, null, "Azure zamanında yanıt vermedi.");
         }
@@ -134,27 +136,33 @@ public sealed class AzureHandwrittenStoreReader : IHandwrittenStoreReader
     {
         var list = new List<OcrTable>();
         if (!root.TryGetProperty("analyzeResult", out var result) || !result.TryGetProperty("tables", out var tables)) return list;
-        var words = new List<(int Offset, int Length, double Confidence)>();
+        var words = new List<(int Offset, int Length, double Confidence, string Text)>();
         if (result.TryGetProperty("pages", out var pages))
             foreach (var page in pages.EnumerateArray())
                 if (page.TryGetProperty("words", out var ws))
                     foreach (var w in ws.EnumerateArray())
                         words.Add((w.GetProperty("span").GetProperty("offset").GetInt32(), w.GetProperty("span").GetProperty("length").GetInt32(),
-                                   w.TryGetProperty("confidence", out var c) ? c.GetDouble() : 1d));
+                                   w.TryGetProperty("confidence", out var c) ? c.GetDouble() : 1d,
+                                   w.TryGetProperty("content", out var wc) ? wc.GetString() ?? string.Empty : string.Empty));
         foreach (var table in tables.EnumerateArray())
         {
             var cells = new List<OcrCell>();
             foreach (var cell in table.GetProperty("cells").EnumerateArray())
             {
                 double conf = 1d;
+                var cellWords = new List<OcrWord>();
                 if (cell.TryGetProperty("spans", out var spans))
                     foreach (var span in spans.EnumerateArray())
                     {
                         int from = span.GetProperty("offset").GetInt32(), to = from + span.GetProperty("length").GetInt32();
-                        foreach (var w in words.Where(w => w.Offset >= from && w.Offset < to)) conf = Math.Min(conf, w.Confidence);
+                        foreach (var w in words.Where(w => w.Offset >= from && w.Offset < to))
+                        {
+                            conf = Math.Min(conf, w.Confidence);
+                            cellWords.Add(new OcrWord(w.Text, w.Confidence));
+                        }
                     }
                 cells.Add(new OcrCell(cell.GetProperty("rowIndex").GetInt32(), cell.GetProperty("columnIndex").GetInt32(),
-                    cell.TryGetProperty("content", out var ct) ? ct.GetString() ?? string.Empty : string.Empty, conf));
+                    cell.TryGetProperty("content", out var ct) ? ct.GetString() ?? string.Empty : string.Empty, conf) { Words = cellWords });
             }
             list.Add(new OcrTable(cells));
         }

@@ -107,7 +107,7 @@
                         <FormNumberAutoFillButton FilePath="@CurrentFile.FilePath" PageIndex="@_cursor.PageIndex" OnRead="@(n => _formNo = n)"
                                                   Stores="@_stores" PreferredRegion="@ClaimRegion" CurrentStore="@_store"
                                                   OnStore="@(s => _store = s)" OnStoreCheck="@(u => _storeWarning = u)" OnDate="@(d => _date = d)" ClaimMonth="@ServiceMonth"
-                                                  ReadsGas="@IsGas" OnGas="@OnGasRead" OnAllClean="@OnAutoFillClean" />
+                                                  ReadsGas="@IsGas" ReadsGlycol="@(!IsGas)" OnGas="@OnGasRead" OnAllClean="@OnAutoFillClean" />
                     </MudStack>
                     <div @key="@($"kayit-{_entryKey}")">
                         <MudGrid Spacing="2">
@@ -330,7 +330,7 @@
         return i >= 0 ? d[(i + 1)..] : d;   // "SOĞUTUCU GAZ 10,9 KG TÜP (kg fiyatı) R404" → "R404"
     }
 
-    /// <summary>Otomatik doldur: formun malzeme tablosundaki gaz miktarı. Kesin okunamadıysa ya da formdaki gaz türü seçili
+    /// <summary>Otomatik doldur: formun malzeme tablosundaki gaz ya da glikol miktarı. Kesin okunamadıysa ya da formdaki gaz türü seçili
     /// gazdan farklıysa miktar yine yazılır ama "teyit edin" uyarısı alanın altında kalır.</summary>
     private void OnGasRead(GasReading g)
     {
@@ -342,17 +342,18 @@
             && !string.Equals(g.GasType.Replace("-", ""), selected.Replace("-", ""), StringComparison.OrdinalIgnoreCase))
             notes.Add($"Formda {g.GasType} yazıyor, seçili gaz {selected}.");
         _qtyWarning = notes.Count == 0 ? null : "Teyit edin: " + string.Join(" ", notes);
-        // emin olunamadıysa yalnız Miktar kutusunun çerçevesi kırmızı kalır (kullanıcı değiştirince kalkar); ayrıca mesaj yok
-        if (_qtyWarning is null)
-            Snackbar.Add($"Gaz miktarı okundu: {g.Quantity:0.##} kg.", Severity.Success);
+        // emin olunamadıysa yalnız Miktar kutusunun çerçevesi kırmızı kalır ve uyarı notu alanın altında görünür; net okunduysa mesaj yok
     }
 
-    /// <summary>Gaz hakedişinde Otomatik doldur her alanı sorunsuz okuduysa (form no, KODLA mağaza, uyarısız tarih, teyitsiz
-    /// miktar) kayıt kendiliğinden eklenir — kullanıcı Ekle'ye basmaz. Bir alanda şüphe varsa eklenmez, kullanıcı kontrol eder.</summary>
+    /// <summary>Otomatik doldur her alanı sorunsuz okuduysa (form no, KODLA mağaza, uyarısız tarih, teyitsiz
+    /// miktar) kayıt kendiliğinden eklenir (Gaz ve Glikol) — kullanıcı Ekle'ye basmaz; tek mesaj "Veriler başarıyla eklendi".
+    /// Bir alanda şüphe varsa eklenmez, yalnız o alanın uyarısı görünür ve kullanıcı kontrol eder.</summary>
     private async Task OnAutoFillClean()
     {
-        if (!IsGas || _editingId.HasValue || _qtyWarning is not null || MissingText().Length > 0) return;
+        if (_editingId.HasValue || _qtyWarning is not null || MissingText().Length > 0) return;
         await AddAsync();
+        if (IsEntryEmpty) Snackbar.Add("Veriler başarıyla eklendi.", Severity.Success);   // eklendiyse alanlar boşalmıştır
+        StateHasChanged();
     }
 
     private static string GasText(PriceItemDto g) => $"{g.PozNo} — {GasShortName(g.Description)} ({g.Description})";
@@ -603,16 +604,8 @@
             if (!_order.Contains(saved.Id)) _order.Add(saved.Id);
             if (duplicate) Snackbar.Add($"Dikkat: \"{no}\" form numarası başka bir satırda da var.", Severity.Warning);
 
-            if (IsGas)
-            {
-                // Gaz: alanlar KALIR — aynı mağaza için yeni form no / tarihle tekrar gaz girilebilir; sıfırdan giriş için "Temizle".
-                _editingId = null;
-                _error = null;
-            }
-            else
-            {
-                ClearEntry();   // Glikol: giriş alanı temizlenir — yeni kayıt girilebilir
-            }
+            // Ekle (elle ya da otomatik) sonrası giriş alanı temizlenir (gaz türü kalır) — sıradaki form hızlıca girilebilsin.
+            ClearEntry();
         }
         catch (Exception ex)
         {

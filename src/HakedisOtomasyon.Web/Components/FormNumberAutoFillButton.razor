@@ -8,7 +8,7 @@
 
 @* Açık servis formundan:
      • sağ üstteki form numarasını Windows OCR ile (yapay zekâ yok) okuyup Bakım Form No'ya yazar,
-     • elle yazılmış mağaza kodunu/adını yapay zekâ (Gemini) ile okuyup mağaza listesiyle eşler,
+     • elle yazılmış mağaza kodunu/adını Azure Document Intelligence ile okuyup mağaza listesiyle eşler,
      • aynı istekte formun altındaki TARİH'in gün/ayını okur; yıl okunmaz, içinde bulunulan yıl alınır. Ay hakediş ayından
        farklıysa uyarı verilir (yanlış okuma ya da başka aya ait form olabilir).
    Mağaza kodla bulunduysa seçilir; yalnız adla bulunduysa seçilir ama "kontrol edin" uyarısı verilir; emin olunamazsa
@@ -67,7 +67,10 @@
     /// <summary>Gaz Kullanım hakedişi: "Kullanılan Malzeme" tablosundaki gaz satırının miktarı da okunur.</summary>
     [Parameter] public bool ReadsGas { get; set; }
 
-    /// <summary>Okunan gaz miktarı (teyit gerekip gerekmediğiyle birlikte).</summary>
+    /// <summary>Glikol Kullanım hakedişi: "Kullanılan Malzeme" tablosundaki glikol satırının miktarı (kg) okunur; sonuç <see cref="OnGas"/> ile bildirilir.</summary>
+    [Parameter] public bool ReadsGlycol { get; set; }
+
+    /// <summary>Okunan gaz/glikol miktarı (teyit gerekip gerekmediğiyle birlikte).</summary>
     [Parameter] public EventCallback<GasReading> OnGas { get; set; }
 
     /// <summary>Her şey sorunsuz okundu (form no + KODLA bulunan mağaza + uyarısız tarih + (gazda) teyitsiz miktar) — ekran
@@ -131,7 +134,6 @@
             if (result.Number is not null)
             {
                 await OnRead.InvokeAsync(result.Number);
-                Snackbar.Add($"Form numarası okundu: {result.Number}.", Severity.Success);
             }
             else
             {
@@ -139,6 +141,8 @@
             }
 
             var store = await storeTask;
+            if (store is null && Stores is { Count: > 0 } && !StoreReader.IsConfigured)
+                Snackbar.Add("Mağaza, tarih ve gaz okuma için Azure ayarlı değil (.env: AZURE_DI_ENDPOINT ve AZURE_DI_KEY); elle girin.", Severity.Warning);
             if (store is null || PageKey != key) return;
             clean &= await ApplyDateAsync(store);
             clean &= await ApplyGasAsync(store);
@@ -173,21 +177,22 @@
                          + "formdaki tarihi mutlaka kontrol edin.", Severity.Error, o => o.VisibleStateDuration = 10000);
             return false;
         }
-        Snackbar.Add($"Tarih okundu: {date.Value:dd.MM.yyyy} (yıl sabit {date.Value.Year}). Kontrol edin.", Severity.Info);
+        // Sorunsuz okunan tarih için mesaj yok; yalnız okunamayan ya da hakediş ayına uymayan tarih uyarılır.
         return true;
     }
 
     private async Task<bool> ApplyGasAsync(HandwrittenStoreResult read)
     {
-        if (!ReadsGas) return true;
+        if (!ReadsGas && !ReadsGlycol) return true;
         if (read.Error is not null) return false;
-        if (read.Gas is null)
+        var material = ReadsGlycol ? read.Glycol : read.Gas;
+        if (material is null)
         {
-            Snackbar.Add("Formun malzeme kısmında gaz satırı bulunamadı; miktarı elle girin.", Severity.Warning);
+            Snackbar.Add($"Formun malzeme kısmında {(ReadsGlycol ? "glikol" : "gaz")} satırı bulunamadı; miktarı elle girin.", Severity.Warning);
             return false;
         }
-        await OnGas.InvokeAsync(read.Gas);
-        return !read.Gas.NeedsCheck && read.Gas.Quantity is > 0;
+        await OnGas.InvokeAsync(material);
+        return !material.NeedsCheck && material.Quantity is > 0;
     }
 
     /// <returns>Mağaza KODLA kesin bulunup seçildiyse true.</returns>
@@ -195,18 +200,26 @@
     {
         // Kesin değilse mesaj yok: mağaza kutusunun çerçevesi kırmızı olur (kullanıcı mağazayı seçince/değiştirince kalkar).
         // Kod okunamadıysa ekrandaki mağaza değiştirilmez.
-        if (read.Error is not null || (read.StoreCode is null && read.StoreName is null))
+        if (read.Error is not null || (read.StoreCode is null && read.StoreName is null && read.AltCodes.Count == 0))
         {
             await OnStoreCheck.InvokeAsync(true);
             return false;
         }
+        // Önce okunan tüm kod adayları denenir (ad okunamasa da sayfanın üstündeki el yazısı koddan bulunur); kod yoksa ada bakılır.
         var match = StoreMatcher.Match(read.StoreCode, read.StoreName, Stores!, PreferredRegion);
+        if (match.Method != "kod")
+        {
+            foreach (var alt in read.AltCodes)
+            {
+                var byCode = StoreMatcher.Match(alt, null, Stores!);
+                if (byCode.Selected is not null) { match = byCode; break; }
+            }
+        }
         if (match.Selected is not null)
         {
             await OnStore.InvokeAsync(match.Selected);
             var sure = match.Method == "kod";
-            await OnStoreCheck.InvokeAsync(!sure);   // adına göre seçildiyse kontrol edilmeli
-            if (sure) Snackbar.Add($"Mağaza seçildi: {match.Selected.Code} — {match.Selected.Name}", Severity.Success);
+            await OnStoreCheck.InvokeAsync(!sure);   // adına göre seçildiyse kontrol edilmeli (mağaza kutusu kırmızı çerçeveli kalır)
             return sure;
         }
         if (match.Suggestions.Count > 0)

@@ -106,7 +106,18 @@
         {
             var profile = DisciplineProfileService.GetByRoute(parts[1]);
             if (profile is not null)
+            {
+                // Pasif disiplinler ve Soğutma "Hakediş Kontrolü" doğrudan adresle de açılamaz.
+                var kontrolPasif = profile.Discipline == HakedisOtomasyon.Domain.Enums.MechanicalDiscipline.Cooling
+                    && parts.Length >= 3 && parts[2].Equals("kontrol", StringComparison.OrdinalIgnoreCase);
+                if (!profile.IsActive || kontrolPasif)
+                {
+                    Snackbar.Add("Bu modül henüz aktif değildir.", Severity.Info);
+                    Nav.NavigateTo(profile.IsActive ? "/discipline/sogutma" : "/", replace: true);
+                    return;
+                }
                 CurrentDiscipline.CurrentDiscipline = profile.Discipline;
+            }
         }
     }
 

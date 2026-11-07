@@ -35,16 +35,13 @@ public static class ServiceExtensions
         services.AddScoped<IManHoursCalculator, ManHoursCalculator>();
         services.AddScoped<IAiUsageTracker, AiUsageTracker>();
 
-        // AI_PROVIDER=ollama (varsayılan) → yerel, internete çıkmayan vision modeli (kurumsal ağ
-        // engeli OpenAI'ı bloklarsa bile çalışır). AI_PROVIDER=openai → OpenAI Responses API.
-        // AI_PROVIDER=gemini → Google Gemini API (bulut, GEMINI_API_KEY gerekir).
-        var aiProvider = (Environment.GetEnvironmentVariable("AI_PROVIDER") ?? "ollama").Trim().ToLowerInvariant();
+        // AI_PROVIDER=gemini (varsayılan) → Google Gemini API (bulut, GEMINI_API_KEY gerekir).
+        // AI_PROVIDER=openai → OpenAI Responses API.
+        var aiProvider = (Environment.GetEnvironmentVariable("AI_PROVIDER") ?? "gemini").Trim().ToLowerInvariant();
         if (aiProvider == "openai")
             services.AddScoped<IAiVisionClient, OpenAiVisionClient>();
-        else if (aiProvider == "gemini")
-            services.AddScoped<IAiVisionClient, GeminiVisionClient>();
         else
-            services.AddScoped<IAiVisionClient, OllamaVisionClient>();
+            services.AddScoped<IAiVisionClient, GeminiVisionClient>();
 
         services.AddScoped<IAiAnalysisPipelineService, AiAnalysisPipelineService>();
 
