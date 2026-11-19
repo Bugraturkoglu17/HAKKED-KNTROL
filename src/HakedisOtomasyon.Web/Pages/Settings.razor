@@ -87,6 +87,86 @@ else
             </MudCard>
         </MudItem>
 
+        <!-- Yapay Zekâ (Form Okuma) -->
+        <MudItem xs="12">
+            <MudCard Elevation="2">
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudStack Row AlignItems="AlignItems.Center" Spacing="1">
+                            <MudIcon Icon="@Icons.Material.Filled.AutoAwesome" Color="Color.Primary" />
+                            <MudText Typo="Typo.h6">Yapay Zekâ (Form Okuma)</MudText>
+                        </MudStack>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            "Otomatik doldur" servis formundaki mağaza, tarih ve gaz/glikol miktarını bu yapay zekâ ile okur
+                            (form numarası bilgisayarda okunur). Şu an kullanılan: <b>@HakedisOtomasyon.Web.AiSettings.Describe()</b>
+                        </MudText>
+                    </CardHeaderContent>
+                </MudCardHeader>
+                <MudCardContent>
+                    <MudRadioGroup T="string" @bind-Value="_aiProvider">
+                        <MudRadio T="string" Value="@HakedisOtomasyon.Web.AiSettings.Gemini" Color="Color.Primary">Google Gemini</MudRadio>
+                        <MudRadio T="string" Value="@HakedisOtomasyon.Web.AiSettings.Azure" Color="Color.Primary">Azure Document Intelligence</MudRadio>
+                    </MudRadioGroup>
+
+                    @if (_aiProvider == HakedisOtomasyon.Web.AiSettings.Gemini)
+                    {
+                        <MudGrid Spacing="2" Class="mt-1">
+                            <MudItem xs="12" md="6">
+                                <MudSelect T="string" @bind-Value="_geminiModelChoice" Label="Model" Variant="Variant.Outlined" Margin="Margin.Dense">
+                                    @foreach (var m in HakedisOtomasyon.Web.AiSettings.GeminiModels)
+                                    {
+                                        <MudSelectItem T="string" Value="@m.Id">@m.Label</MudSelectItem>
+                                    }
+                                    <MudSelectItem T="string" Value="@OtherModel">Diğer (model adını elle yaz)</MudSelectItem>
+                                </MudSelect>
+                                @if (_geminiModelChoice == OtherModel)
+                                {
+                                    <MudTextField @bind-Value="_geminiModelCustom" Label="Model adı" Placeholder="örn. gemini-3.5-flash-lite"
+                                                  Variant="Variant.Outlined" Margin="Margin.Dense" Class="mt-2" />
+                                }
+                            </MudItem>
+                            <MudItem xs="12" md="6">
+                                <MudTextField @bind-Value="_geminiKey" Label="Gemini API anahtarı" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                              InputType="@(_showKeys ? InputType.Text : InputType.Password)"
+                                              Placeholder="@GeminiKeyPlaceholder"
+                                              HelperText="Boş bırakılırsa kayıtlı anahtar korunur"
+                                              Adornment="Adornment.End" AdornmentIcon="@(_showKeys ? Icons.Material.Filled.VisibilityOff : Icons.Material.Filled.Visibility)"
+                                              OnAdornmentClick="@(() => _showKeys = !_showKeys)" />
+                            </MudItem>
+                        </MudGrid>
+                    }
+                    else
+                    {
+                        <MudGrid Spacing="2" Class="mt-1">
+                            <MudItem xs="12" md="6">
+                                <MudTextField @bind-Value="_azureEndpoint" Label="Endpoint (adres)" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                              Placeholder="https://kaynak-adi.cognitiveservices.azure.com/" />
+                            </MudItem>
+                            <MudItem xs="12" md="6">
+                                <MudTextField @bind-Value="_azureKey" Label="Azure anahtarı (KEY 1)" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                              InputType="@(_showKeys ? InputType.Text : InputType.Password)"
+                                              Placeholder="@AzureKeyPlaceholder"
+                                              HelperText="Boş bırakılırsa kayıtlı anahtar korunur"
+                                              Adornment="Adornment.End" AdornmentIcon="@(_showKeys ? Icons.Material.Filled.VisibilityOff : Icons.Material.Filled.Visibility)"
+                                              OnAdornmentClick="@(() => _showKeys = !_showKeys)" />
+                            </MudItem>
+                        </MudGrid>
+                    }
+
+                    <MudStack Row Spacing="2" Class="mt-3" AlignItems="AlignItems.Center">
+                        <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.NetworkCheck"
+                                   Disabled="@_aiBusy" OnClick="TestAiAsync">Bağlantıyı test et</MudButton>
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Save"
+                                   Disabled="@_aiBusy" OnClick="SaveAiAsync">Kaydet</MudButton>
+                        @if (_aiStatus is not null)
+                        {
+                            <MudText Typo="Typo.body2" Color="@(_aiStatusOk ? Color.Success : Color.Error)">@_aiStatus</MudText>
+                        }
+                    </MudStack>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+
         <!-- Excel Çıktı Yolu -->
         <MudItem xs="12">
             <MudCard Elevation="2">
@@ -497,6 +577,83 @@ else
 }
 
 @code {
+
+    // ─── Yapay Zekâ (Form Okuma) ─────────────────────────────────────────
+    private const string OtherModel = "__diger__";
+    private string _aiProvider = HakedisOtomasyon.Web.AiSettings.Provider;
+    private string _geminiModelChoice = InitialModelChoice();
+    private string _geminiModelCustom = HakedisOtomasyon.Web.AiSettings.GeminiModel;
+    private string _geminiKey = string.Empty;
+    private string _azureEndpoint = HakedisOtomasyon.Web.AiSettings.Get(HakedisOtomasyon.Web.AiSettings.AzureEndpointVar) ?? string.Empty;
+    private string _azureKey = string.Empty;
+    private bool _showKeys;
+    private bool _aiBusy;
+    private string? _aiStatus;
+    private bool _aiStatusOk;
+
+    private static string InitialModelChoice()
+    {
+        var m = HakedisOtomasyon.Web.AiSettings.GeminiModel;
+        return HakedisOtomasyon.Web.AiSettings.GeminiModels.Any(x => x.Id == m) ? m : OtherModel;
+    }
+
+    private static string GeminiKeyPlaceholder => HakedisOtomasyon.Web.AiSettings.Masked(HakedisOtomasyon.Web.AiSettings.GeminiKeyVar) is { } g
+        ? $"Kayıtlı ({g}) — değiştirmek için yapıştırın" : "Google AI Studio'dan aldığınız anahtarı yapıştırın";
+
+    private static string AzureKeyPlaceholder => HakedisOtomasyon.Web.AiSettings.Masked(HakedisOtomasyon.Web.AiSettings.AzureKeyVar) is { } a
+        ? $"Kayıtlı ({a}) — değiştirmek için yapıştırın" : "Azure portal → Keys and Endpoint → KEY 1";
+
+    private string SelectedGeminiModel => (_geminiModelChoice == OtherModel ? _geminiModelCustom : _geminiModelChoice)?.Trim() ?? string.Empty;
+
+    private async Task<(bool Ok, string Message)> TestCurrentAsync()
+    {
+        if (_aiProvider == HakedisOtomasyon.Web.AiSettings.Gemini)
+        {
+            var key = string.IsNullOrWhiteSpace(_geminiKey) ? HakedisOtomasyon.Web.AiSettings.Get(HakedisOtomasyon.Web.AiSettings.GeminiKeyVar) : _geminiKey.Trim();
+            if (string.IsNullOrWhiteSpace(key)) return (false, "Gemini API anahtarını girin.");
+            if (string.IsNullOrWhiteSpace(SelectedGeminiModel)) return (false, "Model seçin.");
+            return await HakedisOtomasyon.Web.AiSettings.TestGeminiAsync(key, SelectedGeminiModel);
+        }
+        var azKey = string.IsNullOrWhiteSpace(_azureKey) ? HakedisOtomasyon.Web.AiSettings.Get(HakedisOtomasyon.Web.AiSettings.AzureKeyVar) : _azureKey.Trim();
+        if (string.IsNullOrWhiteSpace(_azureEndpoint) || string.IsNullOrWhiteSpace(azKey)) return (false, "Azure adresini ve anahtarını girin.");
+        return await HakedisOtomasyon.Web.AiSettings.TestAzureAsync(_azureEndpoint, azKey);
+    }
+
+    private async Task TestAiAsync()
+    {
+        _aiBusy = true; _aiStatus = "Deneniyor...";
+        try { (_aiStatusOk, _aiStatus) = await TestCurrentAsync(); }
+        finally { _aiBusy = false; }
+    }
+
+    /// <summary>Önce bağlantı denenir; başarılıysa .env'e yazılır ve hemen geçerli olur.</summary>
+    private async Task SaveAiAsync()
+    {
+        _aiBusy = true; _aiStatus = "Deneniyor...";
+        try
+        {
+            var (ok, message) = await TestCurrentAsync();
+            if (!ok) { _aiStatusOk = false; _aiStatus = message + " Kaydedilmedi."; return; }
+            var values = new Dictionary<string, string?> { [HakedisOtomasyon.Web.AiSettings.ProviderVar] = _aiProvider };
+            if (_aiProvider == HakedisOtomasyon.Web.AiSettings.Gemini)
+            {
+                values[HakedisOtomasyon.Web.AiSettings.GeminiModelVar] = SelectedGeminiModel;
+                if (!string.IsNullOrWhiteSpace(_geminiKey)) values[HakedisOtomasyon.Web.AiSettings.GeminiKeyVar] = _geminiKey.Trim();
+            }
+            else
+            {
+                values[HakedisOtomasyon.Web.AiSettings.AzureEndpointVar] = _azureEndpoint.Trim();
+                if (!string.IsNullOrWhiteSpace(_azureKey)) values[HakedisOtomasyon.Web.AiSettings.AzureKeyVar] = _azureKey.Trim();
+            }
+            HakedisOtomasyon.Web.AiSettings.Save(values);
+            _geminiKey = _azureKey = string.Empty;
+            _aiStatusOk = true;
+            _aiStatus = $"Kaydedildi. Artık kullanılan: {HakedisOtomasyon.Web.AiSettings.Describe()}";
+            Snackbar.Add(_aiStatus, Severity.Success);
+        }
+        catch (Exception ex) { _aiStatusOk = false; _aiStatus = $"Kaydedilemedi: {ex.Message}"; }
+        finally { _aiBusy = false; }
+    }
     private bool _posRefreshing = false;
     private bool _loading = true;
     private decimal _serviceFee;

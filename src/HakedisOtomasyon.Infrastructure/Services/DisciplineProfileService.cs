@@ -17,9 +17,9 @@ public class DisciplineProfileService : IDisciplineProfileService
 
     private static readonly IReadOnlyList<DisciplineProfile> _profiles = new List<DisciplineProfile>
     {
-        new() { Discipline = MechanicalDiscipline.Fire,     DisplayName = "Yangın",  RouteName = "yangin",  ThemeColor = "#B3261E", DataFolderName = "Yangin",  IsActive = true  },
-        new() { Discipline = MechanicalDiscipline.Hvac,     DisplayName = "Klima",   RouteName = "klima",   ThemeColor = "#009688", DataFolderName = "Klima",   IsActive = true  },
-        new() { Discipline = MechanicalDiscipline.Elevator, DisplayName = "Asansör", RouteName = "asansor", ThemeColor = "#5E35B1", DataFolderName = "Asansor", IsActive = true  },
+        new() { Discipline = MechanicalDiscipline.Fire,     DisplayName = "Yangın",  RouteName = "yangin",  ThemeColor = "#B3261E", DataFolderName = "Yangin",  IsActive = false },
+        new() { Discipline = MechanicalDiscipline.Hvac,     DisplayName = "Klima",   RouteName = "klima",   ThemeColor = "#009688", DataFolderName = "Klima",   IsActive = false },
+        new() { Discipline = MechanicalDiscipline.Elevator, DisplayName = "Asansör", RouteName = "asansor", ThemeColor = "#5E35B1", DataFolderName = "Asansor", IsActive = false },
         new() { Discipline = MechanicalDiscipline.Cooling,  DisplayName = "Soğutma", RouteName = "sogutma", ThemeColor = "#1976D2", DataFolderName = "Sogutma", IsActive = true  },
     };
 

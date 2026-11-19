@@ -17,7 +17,6 @@ echo - Hakedis kayitlari
 echo - Servis formlari
 echo - Faturalar
 echo - Excel ciktilari
-echo - Lisans bilgisi
 echo - AppData ayarlari
 echo.
 echo Devam etmek icin EVET yazin.

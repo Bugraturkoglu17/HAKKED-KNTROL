@@ -3,7 +3,6 @@ using HakedisOtomasyon.Infrastructure.Data;
 using HakedisOtomasyon.Infrastructure.DependencyInjection;
 using HakedisOtomasyon.Infrastructure.FileStorage;
 using HakedisOtomasyon.Infrastructure.Services;
-using HakedisOtomasyon.Web.Licensing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -28,18 +27,6 @@ public partial class WpfApp : System.Windows.Application
         // Hata yakalayıcılar
         DispatcherUnhandledException += OnDispatcherUnhandledException;
 
-        // ─── 0. Lisans kontrolü ────────────────────────────────────────────
-        if (!LicenseService.IsLicenseValid())
-        {
-            var licenseWindow = new LicenseActivationWindow();
-            bool? activated = licenseWindow.ShowDialog();
-
-            if (activated != true || !licenseWindow.ActivationSucceeded)
-            {
-                Shutdown();
-                return;
-            }
-        }
         AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
         TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
 
@@ -111,7 +98,7 @@ public partial class WpfApp : System.Windows.Application
         // El yazısı mağaza + tarih + gaz miktarı okuma: yalnız Azure Document Intelligence (.env: AZURE_DI_ENDPOINT / AZURE_DI_KEY).
         // Form numarası ayrıca Windows OCR ile okunur (yukarıdaki kayıt).
         // Önbellek + arka planda önden okuma katmanı Azure okuyucunun önüne konur.
-        services.AddSingleton<HakedisOtomasyon.Application.IHandwrittenStoreReader>(_ => new PrefetchingStoreReader(new AzureHandwrittenStoreReader()));
+        services.AddSingleton<HakedisOtomasyon.Application.IHandwrittenStoreReader>(_ => new PrefetchingStoreReader(new SelectedStoreReader()));
         services.AddSingleton<PdfPageImageService>();
         services.AddSingleton<SogutmaHakedisKontrol.Application.Interfaces.IFilePickerService, SogutmaHakedisKontrol.Web.WpfFilePickerService>();
 

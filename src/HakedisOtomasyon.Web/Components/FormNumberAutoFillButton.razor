@@ -27,6 +27,12 @@
             <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="@(() => _suggestions = new())" />
         </MudTooltip>
     }
+    @* hangi yapay zekâ ile okunduğu (Ayarlar → Yapay Zekâ'dan değiştirilir) *@
+    <MudTooltip Text="Form okuma yapay zekâsı — Ayarlar → Yapay Zekâ'dan değiştirilebilir">
+        <MudText Typo="Typo.caption" Color="Color.Secondary" Style="font-size:11px;white-space:nowrap">
+            <MudIcon Icon="@Icons.Material.Filled.AutoAwesome" Style="font-size:12px;vertical-align:-2px" /> @HakedisOtomasyon.Web.AiSettings.Describe()
+        </MudText>
+    </MudTooltip>
     <MudTooltip Text="@TooltipText">
         <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small"
                    StartIcon="@Icons.Material.Filled.AutoFixHigh"

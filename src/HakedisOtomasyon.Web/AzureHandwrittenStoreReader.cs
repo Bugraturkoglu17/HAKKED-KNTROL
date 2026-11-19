@@ -184,7 +184,7 @@ public sealed class AzureHandwrittenStoreReader : IHandwrittenStoreReader
     /// kuralları yalnız göreli sıraya baktığı için etkilenmez.</summary>
     private static readonly (double From, double To)[] Bands = [(0.00, 0.27), (0.50, 0.80), (0.88, 1.00)];
 
-    private static byte[]? PageJpeg(string path, int pageIndex)
+    internal static byte[]? PageJpeg(string path, int pageIndex)
     {
         var ext = Path.GetExtension(path).ToLowerInvariant();
         using var page = ImageExtensions.Contains(ext)

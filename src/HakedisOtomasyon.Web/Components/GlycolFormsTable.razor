@@ -339,7 +339,7 @@
         if (g.NeedsCheck) notes.Add(g.Note ?? "Miktar teyit edilmeli.");
         var selected = _gas is null ? null : GasShortName(_gas.Description);
         if (g.GasType is not null && selected is not null
-            && !string.Equals(g.GasType.Replace("-", ""), selected.Replace("-", ""), StringComparison.OrdinalIgnoreCase))
+            && GasDigits(g.GasType) != GasDigits(selected))   // "R404A", "R-404 A", "R404" aynı gaz sayılır
             notes.Add($"Formda {g.GasType} yazıyor, seçili gaz {selected}.");
         _qtyWarning = notes.Count == 0 ? null : "Teyit edin: " + string.Join(" ", notes);
         // emin olunamadıysa yalnız Miktar kutusunun çerçevesi kırmızı kalır ve uyarı notu alanın altında görünür; net okunduysa mesaj yok
@@ -355,6 +355,8 @@
         if (IsEntryEmpty) Snackbar.Add("Veriler başarıyla eklendi.", Severity.Success);   // eklendiyse alanlar boşalmıştır
         StateHasChanged();
     }
+
+    private static string GasDigits(string t) => new(t.Where(char.IsDigit).ToArray());
 
     private static string GasText(PriceItemDto g) => $"{g.PozNo} — {GasShortName(g.Description)} ({g.Description})";
 

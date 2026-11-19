@@ -44,7 +44,7 @@ public sealed class PrefetchingStoreReader : IHandwrittenStoreReader
     private static string CacheKey(string path, int page)
     {
         var info = new FileInfo(path);
-        return $"{path}|{info.Length}|{info.LastWriteTimeUtc.Ticks}|{page}";
+        return $"{path}|{info.Length}|{info.LastWriteTimeUtc.Ticks}|{page}|{AiSettings.Describe()}";   // sağlayıcı/model değişince yeniden okunur
     }
 
     private async Task<HandwrittenStoreResult> RunAsync(string key, Entry entry, string path, int page)
