@@ -54,6 +54,11 @@ rmdir /s /q "%LOCALAPPDATA%\SismikHakedis" 2>nul
 rmdir /s /q "%APPDATA%\SismikHakedis" 2>nul
 
 echo.
+echo Kisayollar siliniyor...
+del /q "%USERPROFILE%\Desktop\Servis Hakediş.lnk" 2>nul
+del /q "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Servis Hakediş.lnk" 2>nul
+
+echo.
 echo Uygulama klasoru siliniyor...
 
 set "APPDIR=%~dp0"

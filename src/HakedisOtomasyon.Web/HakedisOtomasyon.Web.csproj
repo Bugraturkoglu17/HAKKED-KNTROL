@@ -64,13 +64,14 @@
   </ItemGroup>
   <ItemGroup>
     <!-- .env örnek şablonu her zaman commit edilir. Gerçek .env (API key içerir) .gitignore'da
-         hariç tutulur; varsa build çıktısına kopyalanır ki uygulama onu bulabilsin. -->
+         hariç tutulur; varsa yalnız geliştiricinin build çıktısına kopyalanır ki uygulama onu bulabilsin.
+         YAYIN (publish / kurulum) çıktısına ASLA kopyalanmaz: firma kendi anahtarını Ayarlar → Yapay Zekâ'dan girer. -->
     <Content Include=".env.example">
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </Content>
     <Content Include=".env" Condition="Exists('.env')">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+      <CopyToPublishDirectory>Never</CopyToPublishDirectory>
     </Content>
   </ItemGroup>
 </Project>
