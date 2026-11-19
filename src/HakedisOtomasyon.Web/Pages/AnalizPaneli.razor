@@ -148,33 +148,8 @@
             </MudItem>
         }
 
-        @* ── C14. Gaz / glikol tüketimi ──────────────────────────────────────── *@
-        @if (IsCooling)
-        {
-            <MudItem xs="12" lg="7">
-                <ChartCard Title="Gaz ve Glikol Tüketimi" Icon="@Icons.Material.Filled.PropaneTank"
-                           IsEmpty="@(!_data.Consumption.Any())" EmptyText="Seçili dönemde gaz / glikol kullanım hakedişi yok.">
-                    <MudTable Items="@_data.Consumption" Dense Hover FixedHeader Height="360px" Elevation="0">
-                        <HeaderContent>
-                            <MudTh>Mağaza</MudTh><MudTh>İl</MudTh><MudTh>Malzeme</MudTh>
-                            <MudTh Style="text-align:right">Form</MudTh><MudTh Style="text-align:right">Toplam</MudTh>
-                        </HeaderContent>
-                        <RowTemplate>
-                            <MudTd>
-                                @StoreLabel(context.StoreCode, context.StoreName)
-                            </MudTd>
-                            <MudTd>@context.City</MudTd>
-                            <MudTd>@context.Material</MudTd>
-                            <MudTd Style="text-align:right">@context.FormCount</MudTd>
-                            <MudTd Style="text-align:right">@AnalyticsCharts.Num(context.TotalQuantity, 2) @context.Unit</MudTd>
-                        </RowTemplate>
-                    </MudTable>
-                </ChartCard>
-            </MudItem>
-        }
-
         @* ── C13. Tekrarlayan arızalar ───────────────────────────────────────── *@
-        <MudItem xs="12" lg="@(IsCooling ? 5 : 12)">
+        <MudItem xs="12">
             <ChartCard Title="Tekrarlayan Arızalar" Icon="@Icons.Material.Filled.Replay"
                        Subtitle="@($"Aynı mağazada aynı kategoride {ClaimAnalyticsCalculator.RepeatFaultWindowDays} gün içinde tekrar gelen formlar")"
                        IsEmpty="@(!_data.RepeatFaults.Any())" EmptyText="Seçili dönemde tekrarlayan arıza yok.">
