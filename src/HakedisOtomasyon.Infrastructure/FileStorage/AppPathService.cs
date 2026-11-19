@@ -35,10 +35,11 @@ public class AppPathService : IAppPathService
 
         if (string.IsNullOrWhiteSpace(config.DataRootPath))
         {
-            // İlk açılış: varsayılan masaüstü konumu
+            // İlk açılış (yeni kurulum): varsayılan masaüstü konumu sormadan oluşturulur — "klasör bulunamadı" uyarısı çıkmaz
             DataRootPath = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.Desktop),
                 "HAKEDİŞ DATABASE");
+            try { Directory.CreateDirectory(DataRootPath); } catch { /* oluşturulamazsa aşağıda klasör seçme penceresi çıkar */ }
             config.DataRootPath = DataRootPath;
             AppDataSettings.Save(config);
         }

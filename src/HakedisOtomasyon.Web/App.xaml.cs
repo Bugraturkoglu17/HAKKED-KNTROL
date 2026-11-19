@@ -200,11 +200,24 @@ public partial class WpfApp : System.Windows.Application
                     }
                     else
                     {
-                        var scanResult = await recovery.ScanForRecoverySourcesAsync();
-                        if (scanResult.HasAnySource)
+                        // Yeni kurulum (boş veritabanı, korunan yedek yok): kurulumla gelen Soğutma mağaza + birim fiyat
+                        // listesi HEMEN yüklenir — kullanıcı başka bilgisayardan hakedis.db taşımak zorunda kalmaz. Masaüstünde
+                        // eski bir HAKEDİŞ DATABASE vb. bulunsa bile önce bu yapılır; kurtarma ekranı yalnız yükleme olmazsa çıkar.
+                        try
                         {
-                            recoveryState.RecoveryNeeded = true;
-                            recoveryState.ScanResult     = scanResult;
+                            var seedDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "SeedData");
+                            await HakedisOtomasyon.Infrastructure.Services.CoolingSeedService.SeedIfNeededAsync(db, seedDir);
+                        }
+                        catch (Exception seedEx) { LogError("Yeni kurulumda Soğutma başlangıç verisi yüklenemedi", seedEx); }
+
+                        if (await recovery.TablesAreEmptyAsync())
+                        {
+                            var scanResult = await recovery.ScanForRecoverySourcesAsync();
+                            if (scanResult.HasAnySource)
+                            {
+                                recoveryState.RecoveryNeeded = true;
+                                recoveryState.ScanResult     = scanResult;
+                            }
                         }
                     }
                 }
